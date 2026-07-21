@@ -1,49 +1,68 @@
 -- lib/menu.lua
--- Simple keyboard-driven vertical menu, shared by menu-like states so they
--- don't each reimplement navigation and drawing.
+-- Vertical menu: a thin layout container over UI.Button that unifies keyboard
+-- focus and mouse hover into one `selected` index.
 --
 -- Each item is a table:
---   label    : string, OR a function(item) -> string for live values
---              (e.g. "Fullscreen: ON")
---   onSelect : function(item) called when the item is activated
+--   label    : string, OR a function -> string for live values
+--   onSelect : function called when the item is activated
 --
 -- Usage:
 --   self.menu = Menu.new({
 --       { label = "Play",    onSelect = function() ... end },
 --       { label = "Options", onSelect = function() ... end },
---   }, Assets.get("menuFont"))
+--   })
 --
---   function State:keypressed(key) self.menu:keypressed(key) end
---   function State:draw()          self.menu:draw(320, 44)    end
+--   function State:update(dt)               self.menu:update(dt)              end
+--   function State:keypressed(key)          self.menu:keypressed(key)         end
+--   function State:mousemoved(x, y)         self.menu:mousemoved(x, y)        end
+--   function State:mousepressed(x, y, btn)  self.menu:mousepressed(x, y, btn) end
+--   function State:draw()                   self.menu:draw(320)               end
+
+local Theme = require "lib.ui.theme"
+local Button = require "lib.ui.button"
 
 local Menu = {}
 Menu.__index = Menu
 
 function Menu.new(items, font)
-    return setmetatable({
-        items = items,
+    local self = setmetatable({
+        buttons = {},
         selected = 1,
-        font = font, -- optional; falls back to the current graphics font
+        font = font or Theme.font("body"),
+        minWidth = 280,
     }, Menu)
-end
 
-local function labelOf(item)
-    if type(item.label) == "function" then
-        return item.label(item)
+    for _, item in ipairs(items) do
+        self.buttons[#self.buttons + 1] = Button.new{
+            label = item.label,
+            onSelect = item.onSelect,
+            font = self.font,
+        }
     end
-    return item.label
+
+    self:setFocus(1)
+    self.buttons[1].glow = 1 -- first frame already shows the focus
+
+    return self
 end
 
--- Moves the highlight by delta, wrapping around the ends.
+function Menu:setFocus(index)
+    self.selected = index
+    for i, button in ipairs(self.buttons) do
+        button.focused = (i == index)
+    end
+end
+
+-- Moves the focus by delta, wrapping around the ends.
 function Menu:move(delta)
-    local count = #self.items
-    self.selected = (self.selected - 1 + delta) % count + 1
+    local count = #self.buttons
+    self:setFocus((self.selected - 1 + delta) % count + 1)
 end
 
 function Menu:activate()
-    local item = self.items[self.selected]
-    if item and item.onSelect then
-        item.onSelect(item)
+    local button = self.buttons[self.selected]
+    if button then
+        button:activate()
     end
 end
 
@@ -57,31 +76,56 @@ function Menu:keypressed(key)
     end
 end
 
--- Draws the items centered horizontally, starting at y, spacing pixels apart.
-function Menu:draw(y, spacing)
-    spacing = spacing or 40
-    local width = love.graphics.getWidth()
-
-    local previousFont
-    if self.font then
-        previousFont = love.graphics.getFont()
-        love.graphics.setFont(self.font)
-    end
-
-    for i, item in ipairs(self.items) do
-        local text = labelOf(item)
-        if i == self.selected then
-            love.graphics.setColor(1, 0.85, 0.2, 1) -- highlight
-            text = "> " .. text .. " <"
-        else
-            love.graphics.setColor(1, 1, 1, 1)
+-- Hover focuses the button under the cursor; off any button, the current
+-- focus is kept (so keyboard and mouse coexist without flicker).
+function Menu:mousemoved(x, y)
+    for i, button in ipairs(self.buttons) do
+        if button:contains(x, y) then
+            self:setFocus(i)
+            return
         end
-        love.graphics.printf(text, 0, y + (i - 1) * spacing, width, "center")
+    end
+end
+
+function Menu:mousepressed(x, y, mouseButton)
+    if mouseButton ~= 1 then return end
+    for i, button in ipairs(self.buttons) do
+        if button:contains(x, y) then
+            self:setFocus(i)
+            button:activate()
+            return
+        end
+    end
+end
+
+function Menu:mousereleased(x, y, mouseButton) -- luacheck: no unused
+    -- No-op today; kept so states can forward it uniformly.
+end
+
+function Menu:update(dt)
+    for _, button in ipairs(self.buttons) do
+        button:update(dt)
+    end
+end
+
+-- Lays the buttons out centered horizontally starting at y, then draws them.
+-- All buttons share one width (widest label wins) so the column reads as a
+-- unit. spacing is the vertical step between button tops.
+function Menu:draw(y, spacing)
+    local m = Theme.metrics
+    spacing = spacing or (m.rowHeight + m.rowGap)
+
+    local width = self.minWidth
+    for _, button in ipairs(self.buttons) do
+        width = math.max(width, self.font:getWidth(button:labelText()) + m.padding * 4)
     end
 
-    love.graphics.setColor(1, 1, 1, 1)
-    if previousFont then
-        love.graphics.setFont(previousFont)
+    local x = (love.graphics.getWidth() - width) / 2
+    for i, button in ipairs(self.buttons) do
+        button.x = x
+        button.y = y + (i - 1) * spacing
+        button.w = width
+        button:draw()
     end
 end
 

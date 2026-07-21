@@ -1,0 +1,20 @@
+-- lib/ui.lua
+-- Namespace for the game's UI toolkit. Usage:
+--
+--   local UI = require "lib.ui"
+--   UI.Theme.colors.accent
+--   UI.Button.new{ label = "Play", onSelect = ... }
+--
+-- (This lives at lib/ui.lua rather than lib/ui/init.lua because these modules
+-- resolve through plain package.path, which may not include ?/init.lua.)
+
+return {
+    Theme       = require "lib.ui.theme",
+    Button      = require "lib.ui.button",
+    Toggle      = require "lib.ui.toggle",
+    Slider      = require "lib.ui.slider",
+    Selector    = require "lib.ui.selector",
+    TabBar      = require "lib.ui.tabBar",
+    ProgressBar = require "lib.ui.progressBar",
+    Label       = require "lib.ui.label",
+}

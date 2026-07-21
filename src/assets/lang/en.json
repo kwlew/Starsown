@@ -1,0 +1,44 @@
+{
+  "language": { "name": "English", "code": "en" },
+
+  "menu": {
+    "play": "Play",
+    "options": "Options",
+    "quit": "Quit",
+    "hint": "W/S or Mouse: navigate    Enter or Click: select"
+  },
+
+  "options": {
+    "title": "OPTIONS",
+    "back": "Back",
+    "apply": "Apply",
+    "applyDirty": "Apply Changes",
+    "volume": "Volume",
+    "language": "Language",
+    "resolution": "Resolution",
+    "displayMode": "Display Mode",
+    "vsync": "VSync",
+    "tab": {
+      "general": "General",
+      "graphics": "Graphics"
+    },
+    "windowMode": {
+      "windowed": "Windowed",
+      "borderless": "Borderless",
+      "exclusive": "Fullscreen"
+    },
+    "hint": {
+      "general": "Arrows: adjust    Enter or Click: change    Esc: back",
+      "graphics": "Graphics changes take effect when you press Apply    Esc: back"
+    }
+  },
+
+  "loading": {
+    "title": "Loading",
+    "task": {
+      "interface": "Preparing interface",
+      "settings": "Loading settings",
+      "warmup": "Warming up"
+    }
+  }
+}

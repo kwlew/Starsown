@@ -1,0 +1,44 @@
+{
+  "language": { "name": "Español", "code": "es" },
+
+  "menu": {
+    "play": "Jugar",
+    "options": "Opciones",
+    "quit": "Salir",
+    "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar"
+  },
+
+  "options": {
+    "title": "OPCIONES",
+    "back": "Volver",
+    "apply": "Aplicar",
+    "applyDirty": "Aplicar Cambios",
+    "volume": "Volumen",
+    "language": "Idioma",
+    "resolution": "Resolución",
+    "displayMode": "Modo de Pantalla",
+    "vsync": "VSync",
+    "tab": {
+      "general": "General",
+      "graphics": "Gráficos"
+    },
+    "windowMode": {
+      "windowed": "Ventana",
+      "borderless": "Sin Bordes",
+      "exclusive": "Pantalla Completa"
+    },
+    "hint": {
+      "general": "Flechas: ajustar    Enter o Clic: cambiar    Esc: volver",
+      "graphics": "Los cambios gráficos se aplican al pulsar Aplicar    Esc: volver"
+    }
+  },
+
+  "loading": {
+    "title": "Cargando",
+    "task": {
+      "interface": "Preparando la interfaz",
+      "settings": "Cargando configuración",
+      "warmup": "Calentando"
+    }
+  }
+}

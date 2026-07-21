@@ -1,3 +1,5 @@
+local Theme = require "lib.ui.theme"
+
 local Debug = {}
 
 function Debug:new()
@@ -33,9 +35,18 @@ function Debug:update()
 end
 
 function Debug:draw()
-    love.graphics.printf("FPS: " .. Debug.fps, 0, 0, love.graphics.getWidth(), "left")
-    love.graphics.printf("Memory: " .. Debug.memory .. " KB", 0, 20, love.graphics.getWidth(), "left")
-    love.graphics.printf("Latency: " .. Debug.latency .. " ms", 0, 40, love.graphics.getWidth(), "left")
+    local previousFont = love.graphics.getFont()
+    local font = Theme.font("small")
+    local lineHeight = font:getHeight() + 2
+
+    love.graphics.setFont(font)
+    love.graphics.setColor(Theme.colors.textDim)
+    love.graphics.printf("FPS: " .. Debug.fps, 4, 2, love.graphics.getWidth(), "left")
+    love.graphics.printf("Memory: " .. Debug.memory .. " KB", 4, 2 + lineHeight, love.graphics.getWidth(), "left")
+    love.graphics.printf("Latency: " .. Debug.latency .. " ms", 4, 2 + lineHeight * 2, love.graphics.getWidth(), "left")
+
+    love.graphics.setFont(previousFont)
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 return Debug

@@ -1,5 +1,8 @@
 local Debug = require "lib.debug"
 local StateManager = require "lib.stateManager"
+local RPC = require "lib.discordRPC"
+local Settings = require "lib.settings"
+local I18n = require "lib.i18n"
 
 -- Concrete game screens (live under src/, loaded via LÖVE's filesystem).
 local loadingState = require "states.loading"
@@ -44,7 +47,12 @@ function love.run()
 end
 
 function love.load()
-    love.window.setTitle("TD Idle")
+    love.window.setTitle("Game")
+
+    -- Load translations and select the saved language before any screen draws,
+    -- so even the loading screen's own text is localized.
+    I18n.load()
+    I18n.setLanguage(Settings.load().language)
 
     -- Register every screen, then boot into the loading sequence.
     StateManager.register("loading", loadingState)
@@ -52,11 +60,14 @@ function love.load()
     StateManager.register("options", optionsState)
 
     StateManager.switch("loading")
+
+    RPC.initialize("1528201797863473362")
 end
 
 function love.update(dt)
     StateManager.update(dt)
     Debug:update()
+    RPC.update()
 end
 
 function love.draw()
