@@ -5,6 +5,10 @@
 --   local b = Button.new{ label = "Play", onSelect = function() ... end }
 --   -- layout owner sets b.x/y/w/h, then: b:update(dt)  b:draw()
 --   -- input: b:contains(x, y), b:activate(), b:mousepressed(x, y, button)
+--
+-- Set b.enabled = false to grey it out and make it inert (ignores clicks and
+-- Enter, never glows). The layout owner is responsible for skipping disabled
+-- buttons in its own focus/hover routing (see Options).
 
 local Theme = require "lib.ui.theme"
 
@@ -15,6 +19,7 @@ function Button.new(config)
     return setmetatable({
         label = config.label or "",   -- string, or function(self) -> string
         onSelect = config.onSelect,
+        enabled = config.enabled ~= false, -- disabled = greyed out and inert
         font = config.font or Theme.font("body"),
         x = config.x or 0,
         y = config.y or 0,
@@ -35,6 +40,7 @@ function Button:contains(px, py)
 end
 
 function Button:activate()
+    if not self.enabled then return end
     if self.onSelect then
         self.onSelect(self)
     end
@@ -48,16 +54,18 @@ end
 
 function Button:update(dt)
     self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, self.focused and 1 or 0, dt)
+    self.glow = Theme.approach(self.glow, (self.focused and self.enabled) and 1 or 0, dt)
 end
 
 function Button:draw()
     local c = Theme.colors
+    -- Disabled buttons render dimmed and never glow (update forces glow to 0).
+    local alpha = self.enabled and 1 or 0.4
 
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time)
+    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
 
     Theme.withFont(self.font, function()
-        love.graphics.setColor(c.text)
+        love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
         local textY = Theme.centerY(self.y, self.h, self.font)
         love.graphics.printf(self:labelText(), self.x, textY, self.w, "center")
     end)

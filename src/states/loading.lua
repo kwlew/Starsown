@@ -9,6 +9,7 @@ local Assets = require "lib.assets"
 local Settings = require "lib.settings"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
+local Audio = require "lib.audio"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
 
@@ -83,6 +84,16 @@ function Loading:update(dt)
     -- the minimum on-screen time has elapsed.
     if not self.finished and self.bar:isComplete() and self.elapsed >= self.minDuration then
         self.finished = true
+        -- Audio.play needs a real Source, not a path string; "stream" avoids
+        -- decoding the whole track into memory up front for background music.
+        -- Volume comes from the music channel (see lib/audio.lua), not an
+        -- opts.volume — Audio.play has no such option.
+        local ok, source = pcall(love.audio.newSource, "assets/audio/bg/ambientmain_0.ogg", "stream")
+        if ok then
+            Audio.play("music", source, { loop = true })
+        else
+            print("[loading] failed to load background music: " .. tostring(source))
+        end
         StateManager.switch("mainMenu")
     end
 end

@@ -8,6 +8,7 @@ local Menu = require "lib.menu"
 local TextFactory = require "lib.textFactory"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
+local Starfield = require "lib.starfield"
 
 -- Layout is expressed as fractions of the window so it survives resizing and
 -- runs at any resolution, instead of hardcoded pixel offsets.
@@ -57,6 +58,7 @@ end
 
 function MainMenu:enter()
     self.title = buildTitle()
+    self.starfield = self.starfield or Starfield.new{}
 
     -- The menu itself is stateless between visits, so build it just once.
     -- Labels are functions so they re-read the active language every draw; a
@@ -80,6 +82,7 @@ function MainMenu:enter()
 end
 
 function MainMenu:update(dt)
+    self.starfield:update(dt)
     self.title:update(dt)
     self.menu:update(dt)
     self:pushPresence()
@@ -107,6 +110,8 @@ end
 
 function MainMenu:draw()
     local h = love.graphics.getHeight()
+
+    self.starfield:draw()
 
     self.title.y = h * TITLE_Y_RATIO -- keep vertical position responsive
     self.title:drawChroma()

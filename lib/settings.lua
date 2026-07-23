@@ -4,6 +4,8 @@
 -- can be read back with love.filesystem.load; loading is defensive so a
 -- missing, corrupt, or hand-edited file always falls back to defaults.
 
+local Audio = require "lib.audio"
+
 local Settings = {}
 
 Settings.FILENAME = "settings.lua"
@@ -11,7 +13,9 @@ Settings.FILENAME = "settings.lua"
 Settings.defaults = {
     windowMode = "windowed", -- "windowed" | "borderless" | "exclusive"
     vsync = 0,
-    volume = 0.8,
+    volume = 0.8,      -- master: applied via love.audio.setVolume, scales every channel
+    musicVolume = 0.8, -- channel volume, see lib/audio.lua
+    sfxVolume = 0.8,   -- channel volume, see lib/audio.lua
     res_x = 1280,
     res_y = 720,
     language = "en", -- locale code; validated against available files by I18n
@@ -136,9 +140,13 @@ function Settings.applyGraphics(settings)
 end
 
 -- Pushes the settings into LÖVE (call once at boot and whenever they change).
+-- Master multiplies every channel via love.audio.setVolume; music/sfx are
+-- per-channel volumes applied through lib/audio.lua (see there for why).
 function Settings.apply(settings)
     Settings.applyGraphics(settings)
     love.audio.setVolume(settings.volume)
+    Audio.setVolume("music", settings.musicVolume)
+    Audio.setVolume("sfx", settings.sfxVolume)
 end
 
 return Settings

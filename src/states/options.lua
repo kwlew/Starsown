@@ -11,12 +11,13 @@ local Assets = require "lib.assets"
 local Settings = require "lib.settings"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
+local Audio = require "lib.audio"
 
 local HEADING_Y_RATIO = 0.12
 local PANEL_Y_RATIO   = 0.32
 local PANEL_PAD       = 20
 
-local RESOLUTIONS = { {1280, 720}, {1600, 900}, {1920, 1080} }
+local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
 
 -- Window modes in selector order. Display names come from the active locale
 -- (options.windowMode.<mode>): "Borderless" is desktop-type fullscreen,
@@ -68,10 +69,15 @@ function Options:moveFocus(delta)
     self:setFocus(index)
 end
 
--- Greys out rows that don't apply to the staged display mode: in borderless,
--- the game always runs at desktop resolution, so the resolution row is inert.
+-- Keeps derived enabled-states in sync with the pending graphics changes.
+-- Call after any mutation of `pending`. Two rules:
+--   * The resolution row is inert in borderless (the game always runs at the
+--     desktop resolution there).
+--   * The Apply button is greyed out when there's nothing to apply, so its
+--     label can stay a constant "Apply" instead of changing text.
 function Options:syncEnabledStates()
     self.resolutionSelector.enabled = self.pending.windowMode ~= "borderless"
+    self.applyButton.enabled = self:isDirty()
 end
 
 -- True when the graphics widgets differ from what's actually in effect.
@@ -106,6 +112,7 @@ function Options:applyPending()
 
     Settings.applyGraphics(self.settings)
     Settings.save(self.settings)
+    self:syncEnabledStates() -- nothing left to apply -> grey the button out
 end
 
 -- Rebuilds the focus list for the active tab: tab bar first, then the tab's
@@ -138,7 +145,10 @@ function Options:enter()
         -- active language every draw — changing language updates the screen
         -- live, no rebuild.
 
-        -- General tab: applies live, persists immediately.
+        -- General tab: all three volume sliders apply live and persist
+        -- immediately. Master scales every channel via love.audio.setVolume;
+        -- Music/SFX are independent channels (see lib/audio.lua) so lowering
+        -- one doesn't affect the other.
         self.volumeSlider = UI.Slider.new{
             label = function() return I18n.t("options.volume") end,
             value = self.settings.volume,
@@ -148,6 +158,32 @@ function Options:enter()
                 love.audio.setVolume(value)
             end,
             onRelease = function() -- final, fires when the change settles
+                persist()
+            end,
+        }
+
+        self.musicVolumeSlider = UI.Slider.new{
+            label = function() return I18n.t("options.musicVolume") end,
+            value = self.settings.musicVolume,
+            step = 0.1,
+            onChange = function(value)
+                self.settings.musicVolume = value
+                Audio.setVolume("music", value)
+            end,
+            onRelease = function()
+                persist()
+            end,
+        }
+
+        self.sfxVolumeSlider = UI.Slider.new{
+            label = function() return I18n.t("options.sfxVolume") end,
+            value = self.settings.sfxVolume,
+            step = 0.1,
+            onChange = function(value)
+                self.settings.sfxVolume = value
+                Audio.setVolume("sfx", value)
+            end,
+            onRelease = function()
                 persist()
             end,
         }
@@ -172,6 +208,7 @@ function Options:enter()
             format = function(o) return o[1] .. "x" .. o[2] end,
             onChange = function(_, index)
                 self.pending.resIndex = index
+                self:syncEnabledStates()
             end,
         }
 
@@ -189,13 +226,14 @@ function Options:enter()
             label = function() return I18n.t("options.vsync") end,
             onChange = function(value)
                 self.pending.vsync = value and 1 or 0
+                self:syncEnabledStates()
             end,
         }
 
+        -- Label is a constant "Apply"; the button greys out (via
+        -- syncEnabledStates -> enabled = isDirty) when there's nothing to apply.
         self.applyButton = UI.Button.new{
-            label = function()
-                return self:isDirty() and I18n.t("options.applyDirty") or I18n.t("options.apply")
-            end,
+            label = function() return I18n.t("options.apply") end,
             onSelect = function()
                 self:applyPending()
             end,
@@ -208,8 +246,18 @@ function Options:enter()
             end,
         }
 
+        -- Sliders need special mouse routing (see mousemoved/mousereleased):
+        -- a drag must keep tracking even if the cursor leaves the widget's
+        -- rect, and a release must reach whichever slider is mid-drag.
+        self.sliders = { self.volumeSlider, self.musicVolumeSlider, self.sfxVolumeSlider }
+        self.sliderSet = {}
+        for _, slider in ipairs(self.sliders) do
+            self.sliderSet[slider] = true
+        end
+
         self.tabs = {
-            { name = "general",  widgets = { self.volumeSlider, self.languageSelector } },
+            { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
+                                             self.sfxVolumeSlider, self.languageSelector } },
             { name = "graphics", widgets = { self.resolutionSelector, self.windowModeSelector,
                                              self.vsyncToggle, self.applyButton } },
         }
@@ -227,6 +275,8 @@ function Options:enter()
 
     -- Fresh visit: discard any stale pending edits, re-sync live values.
     self.volumeSlider.value = self.settings.volume
+    self.musicVolumeSlider.value = self.settings.musicVolume
+    self.sfxVolumeSlider.value = self.settings.sfxVolume
     self.languageSelector.index = languageIndexFor(self.settings.language)
     self:resetPending()
     self:selectTab(self.tabBar.index)
@@ -259,13 +309,19 @@ function Options:keypressed(key)
 end
 
 function Options:mousemoved(x, y)
-    -- A drag in progress owns the mouse; don't steal focus mid-drag.
-    self.volumeSlider:mousemoved(x, y)
-    if self.volumeSlider.dragging then return end
+    -- A drag in progress owns the mouse; don't steal focus mid-drag. Every
+    -- slider gets a chance to continue its drag even if the cursor has left
+    -- its rect (Slider:mousemoved no-ops unless it's the one dragging).
+    local dragging = false
+    for _, slider in ipairs(self.sliders) do
+        slider:mousemoved(x, y)
+        dragging = dragging or slider.dragging
+    end
+    if dragging then return end
 
     -- Let widgets with hover feedback (chevrons, tab segments) track the cursor.
     for _, widget in ipairs(self.widgets) do
-        if widget.mousemoved and widget ~= self.volumeSlider then
+        if widget.mousemoved and not self.sliderSet[widget] then
             widget:mousemoved(x, y)
         end
     end
@@ -289,7 +345,9 @@ function Options:mousepressed(x, y, button)
 end
 
 function Options:mousereleased(x, y, button)
-    self.volumeSlider:mousereleased(x, y, button)
+    for _, slider in ipairs(self.sliders) do
+        slider:mousereleased(x, y, button)
+    end
 end
 
 function Options:draw()
