@@ -4,18 +4,38 @@
 --   Graphics — resolution / display mode / vsync; changes accumulate in a
 --              `pending` table and only take effect (and persist) when the
 --              Apply button is pressed. Leaving the screen discards pending.
--- Esc or "Back" returns to the main menu.
+--
+-- Esc or "Back" returns to whichever state opened this one:
+--
+--   StateManager.switch("options", { returnTo = "game" })
+--
+-- Opened from the game, the footer also grows a "Quit" button that abandons
+-- the run and drops back to the main menu — from the main menu there's nothing
+-- to quit back to, so it's hidden.
 
 local StateManager = require "lib.stateManager"
 local Assets = require "lib.assets"
 local Settings = require "lib.settings"
+local RPC = require "lib.discordRPC"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
+local Audios = require "lib.utils.audios"
 
 local HEADING_Y_RATIO = 0.12
 local PANEL_Y_RATIO   = 0.32
+-- Design-space px, scaled through Theme.px at use.
 local PANEL_PAD       = 20
+local PANEL_MAX_W     = 560
+local HINT_BOTTOM     = 48 -- distance from the bottom edge to the hint line
+
+-- See mainMenu.lua: the focus blip fires on every arrow press.
+local FOCUS_BLIP_VOLUME = 0.35
+
+-- How long the player has to confirm a graphics change before it reverts on its
+-- own. A resolution or fullscreen mode the monitor can't display leaves them
+-- unable to see, let alone click, a revert button — so the game has to do it.
+local REVERT_SECONDS = 10
 
 local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
 
@@ -52,23 +72,6 @@ local function windowModeIndexFor(mode)
     return 1
 end
 
-function Options:setFocus(index)
-    self.focusIndex = index
-    for i, widget in ipairs(self.widgets) do
-        widget.focused = (i == index)
-    end
-end
-
--- Moves focus, skipping disabled widgets (e.g. resolution while borderless).
-function Options:moveFocus(delta)
-    local count = #self.widgets
-    local index = self.focusIndex
-    repeat
-        index = (index - 1 + delta) % count + 1
-    until self.widgets[index].enabled ~= false or index == self.focusIndex
-    self:setFocus(index)
-end
-
 -- Keeps derived enabled-states in sync with the pending graphics changes.
 -- Call after any mutation of `pending`. Two rules:
 --   * The resolution row is inert in borderless (the game always runs at the
@@ -78,6 +81,9 @@ end
 function Options:syncEnabledStates()
     self.resolutionSelector.enabled = self.pending.windowMode ~= "borderless"
     self.applyButton.enabled = self:isDirty()
+    -- Applying is what greys Apply out, so the row under the focus can go inert
+    -- beneath it; move focus along rather than leaving it on a dead control.
+    self.group:refresh()
 end
 
 -- True when the graphics widgets differ from what's actually in effect.
@@ -101,9 +107,23 @@ function Options:resetPending()
     self:syncEnabledStates()
 end
 
--- Commits pending graphics changes: settings <- pending, apply, persist.
+-- A copy of the graphics settings currently in effect, for reverting to.
+function Options:graphicsSnapshot()
+    return {
+        res_x = self.settings.res_x,
+        res_y = self.settings.res_y,
+        windowMode = self.settings.windowMode,
+        vsync = self.settings.vsync,
+    }
+end
+
+-- Commits pending graphics changes: settings <- pending, apply, then ask the
+-- player to confirm before persisting. Nothing is written to disk until they
+-- do — an unusable mode must not survive a restart.
 function Options:applyPending()
     if not self:isDirty() then return end
+
+    self.revertTo = self:graphicsSnapshot()
 
     local res = RESOLUTIONS[self.pending.resIndex]
     self.settings.res_x, self.settings.res_y = res[1], res[2]
@@ -111,30 +131,212 @@ function Options:applyPending()
     self.settings.vsync = self.pending.vsync
 
     Settings.applyGraphics(self.settings)
-    Settings.save(self.settings)
     self:syncEnabledStates() -- nothing left to apply -> grey the button out
+    self.revertDialog:openDialog()
+end
+
+-- Player confirmed the new mode is usable: now it's safe to persist.
+function Options:keepGraphics()
+    self.revertDialog:close()
+    self.revertTo = nil
+    Settings.save(self.settings)
+end
+
+-- Player declined, or the countdown ran out (which is the case that matters —
+-- it's what a player who can't see anything is relying on).
+function Options:revertGraphics()
+    self.revertDialog:close()
+    if not self.revertTo then return end
+
+    for key, value in pairs(self.revertTo) do
+        self.settings[key] = value
+    end
+    self.revertTo = nil
+
+    Settings.applyGraphics(self.settings)
+    self:resetPending()
+end
+
+-- Buttons stacked under the panel, in draw order. Quit is only offered when
+-- Options was opened from the game; entered from the main menu there's no run
+-- to abandon. Both the layout and the focus list read this, so the button can
+-- never be visible-but-unfocusable (or vice versa).
+function Options:footerButtons()
+    if self.returnTo == "game" then
+        return { self.backButton, self.quitButton }
+    end
+    return { self.backButton }
+end
+
+-- Leaves for whichever state opened this screen. Pending graphics edits are
+-- simply dropped (resetPending on the next visit).
+function Options:goBack()
+    Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+    StateManager.fadeTo(self.returnTo)
+end
+
+-- The two modals this screen owns. Built once with the widgets.
+function Options:buildDialogs()
+    local function blip()
+        Audio.play("sfx", Audios.clone("menuBlipSelect"), { volume = FOCUS_BLIP_VOLUME })
+    end
+
+    self.quitDialog = UI.Dialog.new{
+        title = function() return I18n.t("dialog.quit.title") end,
+        message = function() return I18n.t("dialog.quit.message") end,
+        onCancel = function() self.quitDialog:close() end,
+        buttons = {
+            { label = function() return I18n.t("dialog.cancel") end,
+              onSelect = function() self.quitDialog:close() end },
+            { label = function() return I18n.t("dialog.quit.confirm") end,
+              danger = true,
+              onSelect = function()
+                  self.quitDialog:close()
+                  Audio.stopAll() -- drop any gameplay audio on the way out
+                  StateManager.fadeTo("mainMenu")
+              end },
+        },
+    }
+
+    -- The countdown is the whole point: if the new mode is unreadable, doing
+    -- nothing has to be the safe choice, so a timeout reverts.
+    self.revertDialog = UI.Dialog.new{
+        title = function() return I18n.t("dialog.revert.title") end,
+        message = function(dialog)
+            return I18n.t("dialog.revert.message",
+                { n = math.max(0, math.ceil(dialog.remaining or 0)) })
+        end,
+        timeout = REVERT_SECONDS,
+        onTimeout = function() self:revertGraphics() end,
+        onCancel = function() self:revertGraphics() end,
+        buttons = {
+            { label = function() return I18n.t("dialog.revert.revert") end,
+              onSelect = function() self:revertGraphics() end },
+            { label = function() return I18n.t("dialog.revert.keep") end,
+              onSelect = function() self:keepGraphics() end },
+        },
+    }
+
+    self.quitDialog:setFocusSound(blip)
+    self.revertDialog:setFocusSound(blip)
+end
+
+-- The modal currently showing, if any. Everything routes around this.
+function Options:activeDialog()
+    if self.quitDialog and self.quitDialog:isOpen() then return self.quitDialog end
+    if self.revertDialog and self.revertDialog:isOpen() then return self.revertDialog end
+    return nil
 end
 
 -- Rebuilds the focus list for the active tab: tab bar first, then the tab's
--- widgets, then the shared Back button.
+-- widgets, then the footer buttons. The list drives both focus order and the
+-- layout below, so the two can never disagree about what's on screen.
 function Options:selectTab(index)
     self.activeTab = index
     -- Keep the bar display in sync when switched programmatically (a direct
     -- field set never fires onChange, so no recursion).
     self.tabBar.index = index
 
-    self.widgets = { self.tabBar }
+    local widgets = { self.tabBar }
     for _, widget in ipairs(self.tabs[index].widgets) do
-        self.widgets[#self.widgets + 1] = widget
+        widgets[#widgets + 1] = widget
     end
-    self.widgets[#self.widgets + 1] = self.backButton
+    for _, button in ipairs(self:footerButtons()) do
+        widgets[#widgets + 1] = button
+    end
+    self.group:setWidgets(widgets)
 
-    self:setFocus(1)
+    -- A different tab means a different number of rows, so the panel resizes.
+    self:layout()
 end
 
-function Options:enter()
+-- Computes every rect this screen draws and hands each widget its bounds.
+-- Called on enter, on resize, and on tab switch — never from draw. Hit-testing
+-- reads these bounds, so laying out during draw meant input for a frame was
+-- answered against the *previous* frame's geometry.
+function Options:layout()
+    local w, h = love.graphics.getDimensions()
+    local m = UI.Theme.metrics
+    local pad = UI.Theme.px(PANEL_PAD)
+
+    local rows = #self.tabs[self.activeTab].widgets
+    local panelW = math.min(UI.Theme.px(PANEL_MAX_W), w * 0.72)
+    local panelH = pad * 2 + rows * m.rowHeight + (rows - 1) * m.rowGap
+    local panelX = (w - panelW) / 2
+    local panelY = h * PANEL_Y_RATIO
+
+    self.panel = { x = panelX, y = panelY, w = panelW, h = panelH }
+
+    -- Tab bar sits one row above the panel.
+    self.tabBar:setBounds(panelX, panelY - m.rowHeight - m.rowGap, panelW, m.rowHeight)
+
+    for i, widget in ipairs(self.tabs[self.activeTab].widgets) do
+        widget:setBounds(
+            panelX + pad,
+            panelY + pad + (i - 1) * (m.rowHeight + m.rowGap),
+            panelW - pad * 2,
+            m.rowHeight)
+    end
+
+    -- Footer stack below the panel, full panel width, one row apart.
+    local footer = self:footerButtons()
+    for i, button in ipairs(footer) do
+        button:setBounds(
+            panelX,
+            panelY + panelH + m.rowGap + (i - 1) * (m.rowHeight + m.rowGap),
+            panelW,
+            m.rowHeight)
+    end
+
+    -- Description line for the focused row, under the last footer button.
+    local footerBottom = panelY + panelH + m.rowGap + #footer * (m.rowHeight + m.rowGap)
+    self.descRect = { x = panelX, y = footerBottom, w = panelW }
+
+    if self.quitDialog then self.quitDialog:layout() end
+    if self.revertDialog then self.revertDialog:layout() end
+end
+
+function Options:resize()
+    self:layout()
+end
+
+-- Description key for the focused widget. The resolution row gets a different
+-- line when it's inert, because "greyed out with no reason given" is exactly
+-- the confusion this is here to fix.
+function Options:focusedDescription()
+    local widget = self.group:focused()
+    if not widget or not widget.descKey then return nil end
+    if widget == self.resolutionSelector and not widget.enabled then
+        return "options.desc.resolutionBorderless"
+    end
+    return widget.descKey
+end
+
+-- StateManager calls enter(previousName, ...), so `opts` is whatever the
+-- caller passed to switch(). An explicit opts.returnTo wins; otherwise we fall
+-- back to the state we actually came from. The guard stops Options from
+-- targeting itself if it's ever re-entered.
+function Options:enter(previousName, opts)
+    local returnTo = (type(opts) == "table" and opts.returnTo) or previousName
+    if not returnTo or returnTo == "options" then returnTo = "mainMenu" end
+    self.returnTo = returnTo
+
     -- Shared settings table, loaded and applied at boot by the loading state.
     self.settings = Assets.get("settings") or Settings.load()
+
+    -- Seeded from the real pointer so hover feedback is right on the first
+    -- frame, before the player moves the mouse again.
+    self.mouseX, self.mouseY = love.mouse.getPosition()
+
+    -- Owns focus order, keyboard navigation, and mouse routing (including the
+    -- drag capture that keeps a slider tracking off-widget).
+    if not self.group then
+        self.group = UI.FocusGroup.new()
+        -- Keyboard navigation used to be silent while every click blipped.
+        self.group.onFocusChanged = function()
+            Audio.play("sfx", Audios.clone("menuBlipSelect"), { volume = FOCUS_BLIP_VOLUME })
+        end
+    end
 
     local function persist()
         Settings.save(self.settings)
@@ -158,9 +360,11 @@ function Options:enter()
                 love.audio.setVolume(value)
             end,
             onRelease = function() -- final, fires when the change settles
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 persist()
             end,
         }
+        self.volumeSlider.descKey = 'options.desc.volume'
 
         self.musicVolumeSlider = UI.Slider.new{
             label = function() return I18n.t("options.musicVolume") end,
@@ -170,10 +374,11 @@ function Options:enter()
                 self.settings.musicVolume = value
                 Audio.setVolume("music", value)
             end,
-            onRelease = function()
-                persist()
-            end,
+            -- No blip: the music is already playing and retunes live, so it is
+            -- its own preview. An sfx click on top would demo the wrong channel.
+            onRelease = persist,
         }
+        self.musicVolumeSlider.descKey = 'options.desc.musicVolume'
 
         self.sfxVolumeSlider = UI.Slider.new{
             label = function() return I18n.t("options.sfxVolume") end,
@@ -184,9 +389,11 @@ function Options:enter()
                 Audio.setVolume("sfx", value)
             end,
             onRelease = function()
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 persist()
             end,
         }
+        self.sfxVolumeSlider.descKey = 'options.desc.sfxVolume'
 
         -- Language also applies live and persists immediately (General-tab
         -- behavior, like Volume). Options are the {code, name} locale entries.
@@ -195,11 +402,13 @@ function Options:enter()
             options = I18n.available(),
             format = function(entry) return entry.name end,
             onChange = function(entry)
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 self.settings.language = entry.code
                 I18n.setLanguage(entry.code)
                 persist()
             end,
         }
+        self.languageSelector.descKey = 'options.desc.language'
 
         -- Graphics tab: writes to pending only; Apply commits.
         self.resolutionSelector = UI.Selector.new{
@@ -207,53 +416,69 @@ function Options:enter()
             options = RESOLUTIONS,
             format = function(o) return o[1] .. "x" .. o[2] end,
             onChange = function(_, index)
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 self.pending.resIndex = index
                 self:syncEnabledStates()
             end,
         }
+        self.resolutionSelector.descKey = 'options.desc.resolution'
 
         self.windowModeSelector = UI.Selector.new{
             label = function() return I18n.t("options.displayMode") end,
             options = WINDOW_MODES,
             format = function(mode) return I18n.t("options.windowMode." .. mode) end,
             onChange = function(mode)
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 self.pending.windowMode = mode
                 self:syncEnabledStates()
             end,
         }
+        self.windowModeSelector.descKey = 'options.desc.displayMode'
 
         self.vsyncToggle = UI.Toggle.new{
             label = function() return I18n.t("options.vsync") end,
             onChange = function(value)
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 self.pending.vsync = value and 1 or 0
                 self:syncEnabledStates()
             end,
         }
+        self.vsyncToggle.descKey = 'options.desc.vsync'
 
         -- Label is a constant "Apply"; the button greys out (via
         -- syncEnabledStates -> enabled = isDirty) when there's nothing to apply.
         self.applyButton = UI.Button.new{
             label = function() return I18n.t("options.apply") end,
             onSelect = function()
+                Audio.play("sfx", Audios.clone("menuBlipSelect"))
                 self:applyPending()
             end,
         }
+        self.applyButton.descKey = 'options.desc.apply'
 
+        -- Both footer buttons are built once, like every other widget here,
+        -- and read self.returnTo when clicked rather than capturing it — this
+        -- block only runs on the first visit, so a captured value would pin
+        -- every later visit to wherever Options was opened from first.
         self.backButton = UI.Button.new{
             label = function() return I18n.t("options.back") end,
+            onSelect = function() self:goBack() end,
+        }
+        self.backButton.descKey = 'options.desc.back'
+
+        -- Shown only when returnTo == "game" (see footerButtons). Abandoning a
+        -- run is destructive and used to happen on a single click, so it now
+        -- goes through a confirmation.
+        self.quitButton = UI.Button.new{
+            label = function() return I18n.t("options.quit") end,
             onSelect = function()
-                StateManager.switch("mainMenu")
+                Audio.play("sfx", Audios.clone("menuBlipSelect"))
+                self.quitDialog:openDialog()
             end,
         }
+        self.quitButton.descKey = 'options.desc.quit'
 
-        -- Sliders need special mouse routing (see mousemoved/mousereleased):
-        -- a drag must keep tracking even if the cursor leaves the widget's
-        -- rect, and a release must reach whichever slider is mid-drag.
-        self.sliders = { self.volumeSlider, self.musicVolumeSlider, self.sfxVolumeSlider }
-        self.sliderSet = {}
-        for _, slider in ipairs(self.sliders) do
-            self.sliderSet[slider] = true
-        end
+        self:buildDialogs()
 
         self.tabs = {
             { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
@@ -268,10 +493,17 @@ function Options:enter()
                 function() return I18n.t("options.tab.graphics") end,
             },
             onChange = function(_, index)
+                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
                 self:selectTab(index)
             end,
         }
     end
+
+    -- Every exit path closes its own modal, but a modal left open would make
+    -- this screen unusable, so a fresh visit never inherits one.
+    self.quitDialog:close()
+    self.revertDialog:close()
+    self.revertTo = nil
 
     -- Fresh visit: discard any stale pending edits, re-sync live values.
     self.volumeSlider.value = self.settings.volume
@@ -282,77 +514,62 @@ function Options:enter()
     self:selectTab(self.tabBar.index)
 end
 
+-- A modal owns every input while it's up; the screen behind keeps drawing but
+-- stops responding.
 function Options:update(dt)
-    for _, widget in ipairs(self.widgets) do
-        widget:update(dt)
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:update(dt)
+        return
     end
+    self.group:update(dt)
 end
 
 function Options:keypressed(key)
-    if key == "escape" then
-        StateManager.switch("mainMenu")
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:keypressed(key)
         return
     end
-
-    local widget = self.widgets[self.focusIndex]
-    if key == "up" or key == "w" then
-        self:moveFocus(-1)
-    elseif key == "down" or key == "s" then
-        self:moveFocus(1)
-    elseif key == "left" or key == "a" then
-        if widget.adjust then widget:adjust(-1) end
-    elseif key == "right" or key == "d" then
-        if widget.adjust then widget:adjust(1) end
-    elseif key == "return" or key == "kpenter" or key == "space" then
-        if widget.activate then widget:activate() end
+    if key == "escape" then
+        self:goBack()
+        return
     end
+    self.group:keypressed(key)
 end
 
 function Options:mousemoved(x, y)
-    -- A drag in progress owns the mouse; don't steal focus mid-drag. Every
-    -- slider gets a chance to continue its drag even if the cursor has left
-    -- its rect (Slider:mousemoved no-ops unless it's the one dragging).
-    local dragging = false
-    for _, slider in ipairs(self.sliders) do
-        slider:mousemoved(x, y)
-        dragging = dragging or slider.dragging
+    self.mouseX, self.mouseY = x, y
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:mousemoved(x, y)
+        return
     end
-    if dragging then return end
-
-    -- Let widgets with hover feedback (chevrons, tab segments) track the cursor.
-    for _, widget in ipairs(self.widgets) do
-        if widget.mousemoved and not self.sliderSet[widget] then
-            widget:mousemoved(x, y)
-        end
-    end
-
-    for i, widget in ipairs(self.widgets) do
-        if widget.enabled ~= false and widget:contains(x, y) then
-            self:setFocus(i)
-            return
-        end
-    end
+    self.group:mousemoved(x, y)
 end
 
 function Options:mousepressed(x, y, button)
-    for i, widget in ipairs(self.widgets) do
-        if widget.enabled ~= false and widget:contains(x, y) then
-            self:setFocus(i)
-            widget:mousepressed(x, y, button)
-            return
-        end
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:mousepressed(x, y, button)
+        return
     end
+    self.group:mousepressed(x, y, button)
 end
 
 function Options:mousereleased(x, y, button)
-    for _, slider in ipairs(self.sliders) do
-        slider:mousereleased(x, y, button)
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:mousereleased(x, y, button)
+        return
     end
+    self.group:mousereleased(x, y, button)
 end
 
+-- Draw only. Every rect here was computed by Options:layout().
 function Options:draw()
-    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    local m = UI.Theme.metrics
+    local h = love.graphics.getHeight()
+    local panel = self.panel
 
     UI.Label.draw{
         text = I18n.t("options.title"),
@@ -360,40 +577,52 @@ function Options:draw()
         font = UI.Theme.font("heading"),
     }
 
-    -- Panel sized to the active tab's rows, centered horizontally, with the
-    -- tab bar sitting just above it and Back below it.
-    local rows = #self.tabs[self.activeTab].widgets
-    local panelW = math.min(560, w * 0.72)
-    local panelH = PANEL_PAD * 2 + rows * m.rowHeight + (rows - 1) * m.rowGap
-    local panelX = (w - panelW) / 2
-    local panelY = h * PANEL_Y_RATIO
-
-    self.tabBar.x = panelX
-    self.tabBar.y = panelY - m.rowHeight - m.rowGap
-    self.tabBar.w = panelW
+    -- The tab bar and footer buttons sit outside the panel, the tab's rows
+    -- inside it, so the widgets are drawn in three passes around it rather
+    -- than through the focus group's own draw.
     self.tabBar:draw()
 
-    UI.Theme.panel(panelX, panelY, panelW, panelH)
+    UI.Theme.panel(panel.x, panel.y, panel.w, panel.h)
 
-    for i, widget in ipairs(self.tabs[self.activeTab].widgets) do
-        widget.x = panelX + PANEL_PAD
-        widget.y = panelY + PANEL_PAD + (i - 1) * (m.rowHeight + m.rowGap)
-        widget.w = panelW - PANEL_PAD * 2
+    for _, widget in ipairs(self.tabs[self.activeTab].widgets) do
         widget:draw()
     end
+    for _, button in ipairs(self:footerButtons()) do
+        button:draw()
+    end
 
-    self.backButton.x = panelX
-    self.backButton.y = panelY + panelH + m.rowGap
-    self.backButton.w = panelW
-    self.backButton:draw()
+    -- What the focused row actually does. Also the only place the resolution
+    -- selector can explain why it greys out in Borderless.
+    local descKey = self:focusedDescription()
+    if descKey then
+        UI.Label.draw{
+            text = I18n.t(descKey),
+            x = self.descRect.x,
+            y = self.descRect.y,
+            width = self.descRect.w,
+            font = UI.Theme.font("small"),
+            color = UI.Theme.colors.textMuted,
+        }
+    end
 
     local hint = I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general")
     UI.Label.draw{
         text = hint,
-        y = h - 48,
+        y = h - UI.Theme.px(HINT_BOTTOM),
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
+
+    -- Modals paint over everything, including the hint.
+    local dialog = self:activeDialog()
+    if dialog then dialog:draw() end
+
+    -- Asked for every frame the cursor is over an enabled control (see
+    -- UI.Cursor for why this can't live in mousemoved).
+    local hoverTarget = dialog or self.group
+    if self.mouseX and hoverTarget:hovering(self.mouseX, self.mouseY) then
+        UI.Cursor.want("hand")
+    end
 end
 
 return Options

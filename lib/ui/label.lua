@@ -1,29 +1,40 @@
 -- lib/ui/label.lua
 -- Themed one-off text. Handles the setFont/setColor/restore dance so states
--- don't have to.
+-- don't have to, and renders through UI.Text's mesh cache so a static heading
+-- isn't laid out again on every frame.
 --
 --   Label.draw{ text = "OPTIONS", y = 100, font = Theme.font("heading") }
 --   Label.draw{ text = "hint", y = 500, color = Theme.colors.textDim,
 --               font = Theme.font("small") }
 
 local Theme = require "lib.ui.theme"
+local Text = require "lib.ui.text"
 
 local Label = {}
 
+-- Offset and opacity of the optional drop shadow. Small and soft: it exists to
+-- keep text legible over the starfield, not to look like a shadow.
+local SHADOW_OFFSET = 2
+local SHADOW_ALPHA = 0.75
+
 function Label.draw(opts)
     local font = opts.font or Theme.font("body")
-    local previousFont = love.graphics.getFont()
+    local width = opts.width or love.graphics.getWidth()
+    local mesh = Text.get(opts.text or "", font, width, opts.align or "center")
+    local x, y = opts.x or 0, opts.y or 0
+    local color = opts.color or Theme.colors.text
 
-    love.graphics.setFont(font)
-    love.graphics.setColor(opts.color or Theme.colors.text)
-    love.graphics.printf(
-        opts.text or "",
-        opts.x or 0,
-        opts.y or 0,
-        opts.width or love.graphics.getWidth(),
-        opts.align or "center")
+    -- Drawn from the same cached mesh, so the second pass is a draw call and
+    -- nothing else. Use over busy backgrounds (the menu's hint sits directly on
+    -- the stars, where dim text on a bright star all but disappears).
+    if opts.shadow then
+        local offset = Theme.px(SHADOW_OFFSET)
+        love.graphics.setColor(0, 0, 0, (color[4] or 1) * SHADOW_ALPHA)
+        love.graphics.draw(mesh, x + offset, y + offset)
+    end
 
-    love.graphics.setFont(previousFont)
+    love.graphics.setColor(color)
+    love.graphics.draw(mesh, x, y)
     love.graphics.setColor(1, 1, 1, 1)
 end
 

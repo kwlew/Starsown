@@ -12,42 +12,34 @@
 -- Sync the active tab without firing onChange by setting `bar.index` directly.
 
 local Theme = require "lib.ui.theme"
+local Widget = require "lib.ui.widget"
 
 local TabBar = {}
-TabBar.__index = TabBar
+Widget.extend(TabBar)
 
-local SEGMENT_GAP = 6
+TabBar.fontRole = "button"
+
+local SEGMENT_GAP = 6 -- design-space px, scaled through Theme.px at use
 
 function TabBar.new(config)
-    local index = config.index or 1
-    return setmetatable({
-        tabs = config.tabs or {},
-        index = index,
-        onChange = config.onChange,
-        font = config.font or Theme.font("body"),
-        x = config.x or 0,
-        y = config.y or 0,
-        w = config.w or 260,
-        h = config.h or Theme.metrics.rowHeight,
-        focused = false,
-        glow = 0,
-        highlight = index, -- eased continuous position of the active marker
-        hovered = nil,     -- segment index under the cursor, or nil
-        time = 0,
-    }, TabBar)
-end
-
-function TabBar:contains(px, py)
-    return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
+    local self = Widget.new(TabBar, config)
+    self.tabs = config.tabs or {}
+    self.index = config.index or 1
+    self.onChange = config.onChange
+    self.highlight = self.index -- eased continuous position of the active marker
+    self.hovered = nil          -- segment index under the cursor, or nil
+    return self
 end
 
 function TabBar:segmentRect(i)
     local count = #self.tabs
-    local segW = (self.w - SEGMENT_GAP * (count - 1)) / count
-    return self.x + (i - 1) * (segW + SEGMENT_GAP), self.y, segW, self.h
+    local gap = Theme.px(SEGMENT_GAP)
+    local segW = (self.w - gap * (count - 1)) / count
+    return self.x + (i - 1) * (segW + gap), self.y, segW, self.h
 end
 
 function TabBar:setIndex(index)
+    if not self:isInteractive() then return end
     local count = #self.tabs
     index = (index - 1) % count + 1
     if index == self.index then return end
@@ -67,19 +59,22 @@ function TabBar:activate()
     self:adjust(1)
 end
 
+-- Returns false: a tab bar has no drag, so it never captures the mouse.
 function TabBar:mousepressed(px, py, mouseButton)
-    if mouseButton ~= 1 then return end
+    if mouseButton ~= 1 or not self:isInteractive() then return false end
     for i = 1, #self.tabs do
         local sx, sy, sw, sh = self:segmentRect(i)
         if Theme.pointIn(px, py, sx, sy, sw, sh) then
             self:setIndex(i)
-            return
+            return false
         end
     end
+    return false
 end
 
 function TabBar:mousemoved(px, py)
     self.hovered = nil
+    if not self:isInteractive() then return end
     for i = 1, #self.tabs do
         local sx, sy, sw, sh = self:segmentRect(i)
         if Theme.pointIn(px, py, sx, sy, sw, sh) then
@@ -90,20 +85,21 @@ function TabBar:mousemoved(px, py)
 end
 
 function TabBar:update(dt)
-    self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, self.focused and 1 or 0, dt)
+    Widget.update(self, dt)
     self.highlight = Theme.approach(self.highlight, self.index, dt)
 end
 
 function TabBar:draw()
     local c, m = Theme.colors, Theme.metrics
+    -- Disabled bars render dimmed and never glow (update forces the glow to 0).
+    local alpha = self:alpha()
 
     -- Inactive segment backgrounds.
     for i = 1, #self.tabs do
         local sx, sy, sw, sh = self:segmentRect(i)
         love.graphics.setColor(c.panel)
         love.graphics.rectangle("fill", sx, sy, sw, sh, m.radius, m.radius, 8)
-        love.graphics.setColor(c.panelBorder)
+        love.graphics.setColor(c.panelBorder[1], c.panelBorder[2], c.panelBorder[3], alpha)
         love.graphics.rectangle("line", sx, sy, sw, sh, m.radius, m.radius, 8)
     end
 
@@ -118,25 +114,22 @@ function TabBar:draw()
     end
     love.graphics.setColor(c.accentDark)
     love.graphics.rectangle("fill", hx, self.y, segW, segH, m.radius, m.radius, 8)
-    love.graphics.setColor(c.accent)
+    love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
     love.graphics.rectangle("line", hx, self.y, segW, segH, m.radius, m.radius, 8)
 
     -- Labels on top.
-    local previousFont = love.graphics.getFont()
-    love.graphics.setFont(self.font)
-    local textY = Theme.centerY(self.y, self.h, self.font)
+    local font = self:getFont()
+    Theme.pushFont(font)
+    local textY = Theme.centerY(self.y, self.h, font)
     for i, name in ipairs(self.tabs) do
         local sx, _, sw = self:segmentRect(i)
-        if i == self.index or i == self.hovered then
-            love.graphics.setColor(c.text)
-        else
-            love.graphics.setColor(c.textDim)
-        end
+        local tint = (i == self.index or i == self.hovered) and c.text or c.textDim
+        love.graphics.setColor(tint[1], tint[2], tint[3], alpha)
         -- Tab entries may be plain strings or functions (for live-localized
         -- labels); resolve each at draw time.
         love.graphics.printf(Theme.resolveLabel(name, self), sx, textY, sw, "center")
     end
-    love.graphics.setFont(previousFont)
+    Theme.popFont()
 
     love.graphics.setColor(1, 1, 1, 1)
 end

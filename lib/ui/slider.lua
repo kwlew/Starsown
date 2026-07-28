@@ -6,52 +6,72 @@
 --   local s = Slider.new{ label = "Volume", value = 0.8, step = 0.1,
 --                         onChange = function(v) ... end,
 --                         onRelease = function(v) ... end }
+--
+-- Only the track grabs the mouse (see mousepressed), and a drag in progress
+-- captures it from the owning FocusGroup so it keeps tracking off-widget.
 
 local Theme = require "lib.ui.theme"
+local Widget = require "lib.ui.widget"
 
 local Slider = {}
-Slider.__index = Slider
+Widget.extend(Slider)
 
+-- Design-space px, scaled through Theme.px at use.
 local TRACK_H = 8
 local PERCENT_W = 52 -- reserved width for the "100%" readout
+-- Knob radius as a multiple of the track height, so it stays proportional at
+-- every UI scale.
+local KNOB_RATIO = 1.125
+-- Breathing room between the end of the track and the readout column. The knob
+-- is centered on the track, so at 100% half of it sits past the track's end —
+-- without this clearance it prints straight through the "100%".
+local KNOB_CLEARANCE = 4
+-- How far outside the track a press still starts a drag. Without it the track
+-- is an 8px-tall target in a 48px row; with it the whole middle band of the row
+-- grabs, while the label and the readout stay non-grabbing (see mousepressed).
+local GRAB_MARGIN = 12
 
 function Slider.new(config)
-    return setmetatable({
-        label = config.label or "",
-        value = config.value or 0,
-        step = config.step or 0.1, -- keyboard left/right increment
-        onChange = config.onChange,
-        onRelease = config.onRelease,
-        font = config.font or Theme.font("body"),
-        x = config.x or 0,
-        y = config.y or 0,
-        w = config.w or 260,
-        h = config.h or Theme.metrics.rowHeight,
-        focused = false,
-        dragging = false,
-        glow = 0,
-        time = 0,
-    }, Slider)
+    local self = Widget.new(Slider, config)
+    self.value = config.value or 0
+    self.step = config.step or 0.1 -- keyboard left/right increment
+    self.onChange = config.onChange
+    self.onRelease = config.onRelease
+    self.dragging = false
+    return self
 end
 
-function Slider:contains(px, py)
-    return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
+-- A slider also stays lit for the length of a drag, not only while focused.
+function Slider:isLit()
+    return self.focused or self.dragging
 end
 
-function Slider:labelText()
-    return Theme.resolveLabel(self.label, self)
-end
-
--- Track geometry: right-aligned, leaving room for label and percentage.
+-- Track geometry: right-aligned, leaving room for the label on the left and the
+-- readout (plus knob clearance) on the right.
 function Slider:trackRect()
     local m = Theme.metrics
+    local trackH = Theme.px(TRACK_H)
+    local gap = trackH * KNOB_RATIO + Theme.px(KNOB_CLEARANCE)
     local trackW = math.floor(self.w * 0.42)
-    local trackX = self.x + self.w - m.padding - PERCENT_W - trackW
-    local trackY = self.y + (self.h - TRACK_H) / 2
-    return trackX, trackY, trackW, TRACK_H
+    local trackX = self.x + self.w - m.padding - Theme.px(PERCENT_W) - gap - trackW
+    local trackY = self.y + (self.h - trackH) / 2
+    return trackX, trackY, trackW, trackH
+end
+
+-- The grab area: the track grown by GRAB_MARGIN on every side, clamped to the
+-- row so it can never reach into a neighbouring widget.
+function Slider:trackContains(px, py)
+    local trackX, trackY, trackW, trackH = self:trackRect()
+    local margin = Theme.px(GRAB_MARGIN)
+    local top = math.max(self.y, trackY - margin)
+    local bottom = math.min(self.y + self.h, trackY + trackH + margin)
+    return Theme.pointIn(px, py,
+        trackX - margin, top,
+        trackW + margin * 2, bottom - top)
 end
 
 function Slider:setValue(value)
+    if not self:isInteractive() then return end
     value = math.max(0, math.min(1, value))
     value = math.floor(value * 100 + 0.5) / 100 -- keep values (and saves) tidy
     if value == self.value then return end
@@ -63,6 +83,7 @@ end
 
 -- Keyboard left/right. Fires onRelease too, since the change is final.
 function Slider:adjust(direction)
+    if not self:isInteractive() then return end
     self:setValue(self.value + direction * self.step)
     if self.onRelease then
         self.onRelease(self.value)
@@ -74,11 +95,20 @@ local function valueFromX(self, px)
     return (px - trackX) / trackW
 end
 
+-- Only a press on the track (plus its grab margin) starts a drag. Hit-testing
+-- the whole row instead would make a click on the label — which sits far left
+-- of the track — compute a negative ratio and snap the value to 0, so clicking
+-- the words "Master Volume" would mute the game.
+--
+-- Returns true when a drag starts, which asks the owning FocusGroup to route
+-- every following move and the release here regardless of cursor position.
 function Slider:mousepressed(px, py, mouseButton)
-    if mouseButton == 1 and self:contains(px, py) then
-        self.dragging = true
-        self:setValue(valueFromX(self, px))
-    end
+    if mouseButton ~= 1 or not self:isInteractive() then return false end
+    if not self:trackContains(px, py) then return false end
+
+    self.dragging = true
+    self:setValue(valueFromX(self, px))
+    return true
 end
 
 function Slider:mousemoved(px, py)
@@ -96,43 +126,43 @@ function Slider:mousereleased(px, py, mouseButton)
     end
 end
 
-function Slider:update(dt)
-    self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, (self.focused or self.dragging) and 1 or 0, dt)
-end
-
 function Slider:draw()
     local c, m = Theme.colors, Theme.metrics
+    -- Disabled rows render dimmed and never glow (update forces the glow to 0).
+    local alpha = self:alpha()
+    local font = self:getFont()
 
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time)
+    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
 
-    local previousFont = love.graphics.getFont()
-    love.graphics.setFont(self.font)
+    Theme.pushFont(font)
 
     -- Label, left-aligned.
-    love.graphics.setColor(c.text)
-    love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, self.font))
+    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, font))
 
     -- Track, fill, knob. Explicit segment counts: at these small radii LÖVE's
     -- defaults produce visibly faceted "circles".
     local trackX, trackY, trackW, trackH = self:trackRect()
-    love.graphics.setColor(c.track)
+    love.graphics.setColor(c.track[1], c.track[2], c.track[3], alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW, trackH, trackH / 2, trackH / 2, 12)
-    love.graphics.setColor(c.accent)
+    love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW * self.value, trackH, trackH / 2, trackH / 2, 12)
-    love.graphics.setColor(c.text)
-    love.graphics.circle("fill", trackX + trackW * self.value, trackY + trackH / 2, 9, 4)
+    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    love.graphics.circle("fill", trackX + trackW * self.value, trackY + trackH / 2,
+        trackH * KNOB_RATIO, 4)
 
-    -- Percentage readout, right-aligned in the small font so it can't
-    -- overflow its reserved column.
+    -- Percentage readout, right-aligned in the small font so it can't overflow
+    -- its reserved column.
     local smallFont = Theme.font("small")
-    love.graphics.setFont(smallFont)
-    love.graphics.setColor(c.textDim)
-    local percent = math.floor(self.value * 100 + 0.5) .. "%"
-    local percentY = Theme.centerY(self.y, self.h, smallFont)
-    love.graphics.printf(percent, self.x + self.w - m.padding - PERCENT_W, percentY, PERCENT_W, "right")
+    local percentW = Theme.px(PERCENT_W)
+    Theme.pushFont(smallFont)
+    love.graphics.setColor(c.textDim[1], c.textDim[2], c.textDim[3], alpha)
+    love.graphics.printf(math.floor(self.value * 100 + 0.5) .. "%",
+        self.x + self.w - m.padding - percentW,
+        Theme.centerY(self.y, self.h, smallFont), percentW, "right")
+    Theme.popFont()
 
-    love.graphics.setFont(previousFont)
+    Theme.popFont()
     love.graphics.setColor(1, 1, 1, 1)
 end
 

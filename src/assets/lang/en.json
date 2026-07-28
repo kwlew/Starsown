@@ -1,18 +1,19 @@
 {
-  "language": { "name": "English", "code": "en" },
-
+  "language": {
+    "name": "English",
+    "code": "en"
+  },
   "menu": {
     "play": "Play",
     "options": "Options",
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select"
   },
-
   "options": {
     "title": "OPTIONS",
     "back": "Back",
+    "quit": "Quit to Menu",
     "apply": "Apply",
-    "applyDirty": "Apply Changes",
     "volume": "Master Volume",
     "musicVolume": "Music",
     "sfxVolume": "Sound Effects",
@@ -32,15 +33,43 @@
     "hint": {
       "general": "Arrows: adjust    Enter or Click: change    Esc: back",
       "graphics": "Graphics changes take effect when you press Apply    Esc: back"
+    },
+    "desc": {
+      "volume": "Overall loudness. Scales music and sound effects together.",
+      "musicVolume": "Background music only.",
+      "sfxVolume": "Menu clicks and in-game effects.",
+      "language": "Interface language. Applies immediately.",
+      "resolution": "Size of the game window.",
+      "resolutionBorderless": "Unavailable in Borderless — the game matches your desktop resolution.",
+      "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
+      "vsync": "Matches the frame rate to your monitor to stop tearing.",
+      "apply": "Applies the graphics changes above. You'll be asked to confirm.",
+      "back": "Returns to the previous screen.",
+      "quit": "Abandons the current run and returns to the main menu."
     }
   },
-
+  "dialog": {
+    "cancel": "Cancel",
+    "quit": {
+      "title": "Quit to Menu?",
+      "message": "Your current run will be lost.",
+      "confirm": "Quit Run"
+    },
+    "revert": {
+      "title": "Keep these settings?",
+      "message": "Reverting in {n}s if you don't confirm.",
+      "keep": "Keep",
+      "revert": "Revert"
+    }
+  },
   "loading": {
     "title": "Loading",
+    "failed": "{n} asset(s) failed to load — check the log",
     "task": {
       "interface": "Preparing interface",
       "settings": "Loading settings",
-      "warmup": "Warming up"
+      "world": "Preparing the night sky",
+      "audio": "Loading audio"
     }
   }
 }

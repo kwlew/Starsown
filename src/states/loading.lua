@@ -1,8 +1,17 @@
 -- src/states/loading.lua
--- First state shown on launch. Runs a queue of load tasks (one per frame so
--- the progress bar animates), applies saved settings, then switches to the
--- main menu. Real projects put actual asset creation (images, audio, fonts)
--- inside each task's `run`.
+-- First state shown on launch. Runs a weighted queue of load tasks, then hands
+-- off to the main menu.
+--
+-- Two things make the hand-off read as continuous rather than as a cut:
+--   * the night sky is built here, drawn behind this screen, and passed to the
+--     menu through Assets, so the background never pops in;
+--   * the game title is drawn here too and eased into the menu's exact pose
+--     during the outro, so the switch lands on an identical frame.
+--
+-- Tasks are coroutines. A task that calls yield() gives the frame back, so a
+-- heavy one (five audio files to decode) moves the bar *while* it works instead
+-- of stalling and then jumping. Weights make the bar reflect cost rather than
+-- how many entries have been dequeued.
 
 local StateManager = require "lib.stateManager"
 local Assets = require "lib.assets"
@@ -10,68 +19,230 @@ local Settings = require "lib.settings"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
+local Audios = require "lib.utils.audios"
+local Particles = require "lib.particles"
+local GameTitle = require "gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
+local OUTRO_TIME = 0.75  -- length of the hand-off animation
+-- The real work finishes in a handful of frames on any modern machine, so an
+-- honest bar would flash 0 -> 100% and then sit full while a minimum-duration
+-- timer ran out — the dead air this screen used to have. Pacing the bar's
+-- *target* instead keeps it moving for the whole time the screen is up: it
+-- fills over this long, or slower when the work genuinely takes longer. This is
+-- the only floor on how long the screen stays up; the outro gates on the bar.
+local MIN_FILL_TIME = 1.0
+-- Fraction of the outro spent fading the bar block out. Shorter than the whole
+-- outro so the title finishes travelling against a clean screen.
+local FURNITURE_FADE = 0.45
+local STAR_FADE_SPEED = 1.5 -- how fast the sky fades up, in alpha per second
+
+-- Loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1.
+local TITLE_SCALE = 0.62
+local TITLE_Y_RATIO = 0.30
+
+-- Vertical anchors for the loading furniture, as fractions of window height.
+local HEADING_Y_RATIO = 0.52
+local BAR_Y_RATIO = 0.64
+local BAR_W_RATIO = 0.5
+local BAR_H = 26 -- design-space px
 
 local Loading = {}
 
--- Runs a task's work, isolating failures so one bad asset doesn't abort the
--- whole boot — the error is logged and loading continues.
-local function runTask(task)
-    if not task.run then return end
-    local ok, err = pcall(task.run)
-    if not ok then
-        print(("[loading] task '%s' failed: %s"):format(tostring(task.label), tostring(err)))
-    end
+local function easeOutCubic(t)
+    return 1 - (1 - t) ^ 3
+end
+
+-- The audio the game needs before the menu can make a sound. Music streams
+-- (long, one at a time); sfx are static so they're already decoded when a star
+-- pops mid-frame.
+local CLIPS = {
+    { "assets/audio/bg/ambientmain_0.ogg", "mainMenuBG", "stream" },
+    { "assets/audio/sfx/explosions/star_explosion.wav", "starExplosion" },
+    { "assets/audio/sfx/explosions/golden_star_explosion.wav", "goldenStarExplosion" },
+    { "assets/audio/sfx/menu/blipSelect.wav", "menuBlipSelect" },
+    { "assets/audio/sfx/menu/blipSelect2.wav", "menuBlipSelect2" },
+}
+
+-- Each task gets (yield, warn):
+--   yield(fraction) -- optional 0..1 progress within this task; ends the frame
+--   warn(detail)    -- a non-fatal problem worth telling the player about
+function Loading:buildTasks()
+    return {
+        {
+            label = I18n.t("loading.task.interface"),
+            weight = 2,
+            run = function(yield)
+                -- Warm the theme's font cache so later screens don't hitch.
+                -- Driven off the theme's own role list so adding a weight there
+                -- doesn't leave a font to be built mid-game.
+                local roles = UI.Theme.fontRoles()
+                for i, role in ipairs(roles) do
+                    UI.Theme.font(role)
+                    yield(i / #roles)
+                end
+            end,
+        },
+        {
+            label = I18n.t("loading.task.settings"),
+            weight = 1,
+            run = function()
+                local settings = Settings.load()
+                Settings.apply(settings)
+                Assets.set("settings", settings)
+            end,
+        },
+        {
+            label = I18n.t("loading.task.world"),
+            weight = 2,
+            run = function(yield)
+                -- Built here, not in the menu, and shared through Assets: this
+                -- screen fades it in behind the bar and the menu then inherits
+                -- the identical sky, so nothing changes across the hand-off.
+                local stars = Particles.Stars.new{ alpha = 0 }
+                stars:spawnStars()
+                Assets.set("stars", stars)
+                self.stars = stars
+                yield(1)
+            end,
+        },
+        {
+            label = I18n.t("loading.task.audio"),
+            weight = 5,
+            run = function(yield, warn)
+                for i, clip in ipairs(CLIPS) do
+                    -- preload is best-effort and returns nil on failure; a
+                    -- missing clip shouldn't take the boot down, but the player
+                    -- deserves to know the game will be partly silent.
+                    if not Audios.preload(clip[1], clip[2], clip[3]) then
+                        warn(clip[2])
+                    end
+                    yield(i / #CLIPS)
+                end
+            end,
+        },
+    }
 end
 
 function Loading:enter()
     love.graphics.setBackgroundColor(UI.Theme.colors.bg)
 
-    self.tasks = {
-        { label = I18n.t("loading.task.interface"), run = function()
-            -- Warm the theme's font cache so later screens don't hitch.
-            UI.Theme.font("title")
-            UI.Theme.font("heading")
-            UI.Theme.font("body")
-            UI.Theme.font("small")
-        end },
-        { label = I18n.t("loading.task.settings"), run = function()
-            local settings = Settings.load()
-            Settings.apply(settings)
-            Assets.set("settings", settings)
-        end },
-        { label = I18n.t("loading.task.warmup"), run = function() end },
-    }
+    self.tasks = self:buildTasks()
+    self.totalWeight = 0
+    for _, task in ipairs(self.tasks) do
+        self.totalWeight = self.totalWeight + (task.weight or 1)
+    end
 
-    self.bar = UI.ProgressBar.new{}
-    self.index = 0
-    self.elapsed = 0
-    self.minDuration = 1.2 -- keep the screen up at least this long
-    self.finished = false
+    self.index = 1
+    self.doneWeight = 0
+    self.partial = 0
+    self.coroutine = nil
     self.label = nil
+    self.failures = {}
+
+    self.phase = "loading"
+    self.elapsed = 0
+    self.outro = 0
+
+    -- The target is already paced (see MIN_FILL_TIME), so the bar's own ease is
+    -- only here to smooth the steps between tasks; a slow one would fight the
+    -- pacing and leave a visible tail after the work is done.
+    self.bar = UI.ProgressBar.new{ showPercent = false, fillSpeed = 12 }
+    self.title = GameTitle.build()
+    self.stars = nil
 
     self.dotTimer = 0
     self.dotCount = 0
+
+    -- Passed into every task; captured once so each coroutine gets the same
+    -- pair rather than allocating a closure per resume.
+    self.yield = function(fraction) return coroutine.yield(fraction) end
+    self.warn = function(detail) self:recordFailure(self.label, detail) end
+end
+
+function Loading:resize()
+    -- The title's wrap width is baked in at construction and is what keeps it
+    -- centered, so a resize has to rebuild it.
+    self.title = GameTitle.build()
+end
+
+function Loading:recordFailure(label, detail)
+    self.failures[#self.failures + 1] = detail
+    print(("[loading] task '%s' failed: %s"):format(tostring(label), tostring(detail)))
+end
+
+-- Fraction of the total work done, weighted, including partial progress inside
+-- the task currently running.
+function Loading:progress()
+    if self.totalWeight == 0 then return 1 end
+    local task = self.tasks[self.index]
+    local partial = task and (task.weight or 1) * self.partial or 0
+    return (self.doneWeight + partial) / self.totalWeight
+end
+
+function Loading:isLoaded()
+    return self.index > #self.tasks
+end
+
+-- Advances the running task by one resume. coroutine.resume already isolates
+-- errors the way the old per-task pcall did, so a task that throws is recorded
+-- and the queue moves on.
+function Loading:step()
+    local task = self.tasks[self.index]
+    if not task then return end
+
+    if not self.coroutine then
+        self.label = task.label
+        self.partial = 0
+        self.coroutine = coroutine.create(task.run)
+    end
+
+    local ok, value = coroutine.resume(self.coroutine, self.yield, self.warn)
+    if not ok then
+        self:recordFailure(task.label, value)
+    elseif type(value) == "number" then
+        self.partial = math.max(0, math.min(1, value))
+    end
+
+    if coroutine.status(self.coroutine) == "dead" then
+        self.doneWeight = self.doneWeight + (task.weight or 1)
+        self.index = self.index + 1
+        self.coroutine = nil
+        self.partial = 0
+    end
 end
 
 function Loading:update(dt)
-    -- Clamp dt so a single stalled frame (a heavy task, a window-mode
-    -- change) can't fast-forward past minDuration and skip the screen.
+    -- Clamp dt so a single stalled frame (a heavy task, a window-mode change)
+    -- can't fast-forward past MIN_DURATION and skip the screen.
     dt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
 
-    -- Advance one task per frame so each step is visible. Swap to a
-    -- time-budgeted loop here for genuinely heavy loads.
-    if self.index < #self.tasks then
-        self.index = self.index + 1
-        local task = self.tasks[self.index]
-        self.label = task.label
-        runTask(task)
+    if self.phase == "loading" then
+        self:step()
+        -- Whichever is further behind: the work actually done, or the paced
+        -- fill. The bar can run ahead of neither.
+        self.bar:setProgress(math.min(self:progress(), self.elapsed / MIN_FILL_TIME))
+
+        -- Leave once every task is done and the bar has visually filled.
+        if self:isLoaded() and self.bar:isComplete() then
+            self.phase = "outro"
+        end
+    else
+        self.outro = self.outro + dt
+        if self.outro >= OUTRO_TIME then
+            Audio.stopAll() -- stop any loading music before the menu starts
+            StateManager.switch("mainMenu")
+            return
+        end
     end
 
-    self.bar:setProgress(self.index / #self.tasks)
     self.bar:update(dt)
+
+    if self.stars then
+        self.stars:update(dt)
+        self.stars.alpha = math.min(1, self.stars.alpha + dt * STAR_FADE_SPEED)
+    end
 
     -- Animated trailing dots on the heading.
     self.dotTimer = self.dotTimer + dt
@@ -79,43 +250,76 @@ function Loading:update(dt)
         self.dotTimer = self.dotTimer - DOT_INTERVAL
         self.dotCount = (self.dotCount + 1) % 4
     end
+end
 
-    -- Leave only once every task is done, the bar has visually filled, and
-    -- the minimum on-screen time has elapsed.
-    if not self.finished and self.bar:isComplete() and self.elapsed >= self.minDuration then
-        self.finished = true
-        -- Audio.play needs a real Source, not a path string; "stream" avoids
-        -- decoding the whole track into memory up front for background music.
-        -- Volume comes from the music channel (see lib/audio.lua), not an
-        -- opts.volume — Audio.play has no such option.
-        local ok, source = pcall(love.audio.newSource, "assets/audio/bg/ambientmain_0.ogg", "stream")
-        if ok then
-            Audio.play("music", source, { loop = true })
-        else
-            print("[loading] failed to load background music: " .. tostring(source))
-        end
-        StateManager.switch("mainMenu")
-    end
+-- 0 while loading, ramping to 1 across the outro.
+function Loading:outroProgress()
+    if self.phase ~= "outro" then return 0 end
+    return math.min(1, self.outro / OUTRO_TIME)
+end
+
+-- Heading: "Loading" stays put and the dots grow to its right. Drawn as two
+-- pieces because centering the whole string re-centers it on every dot, which
+-- makes the word itself twitch left and right a few px per step.
+local function drawHeading(text, dots, y, alpha)
+    local font = UI.Theme.font("heading")
+    local width = font:getWidth(text)
+    local x = (love.graphics.getWidth() - width) / 2
+    local color = UI.Theme.colors.text
+
+    UI.Label.draw{ text = text, x = x, y = y, width = width, align = "left",
+                   font = font, color = { color[1], color[2], color[3], alpha } }
+    UI.Label.draw{ text = dots, x = x + width, y = y, width = font:getWidth("..."),
+                   align = "left", font = font,
+                   color = { color[1], color[2], color[3], alpha } }
 end
 
 function Loading:draw()
-    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+    local w, h = love.graphics.getDimensions()
+    local outro = self:outroProgress()
+    -- The furniture clears out first so the title finishes its travel against
+    -- an otherwise empty screen.
+    local alpha = 1 - math.min(1, outro / FURNITURE_FADE)
 
-    UI.Label.draw{
-        text = I18n.t("loading.title") .. string.rep(".", self.dotCount),
-        y = h * 0.38,
-        font = UI.Theme.font("heading"),
-    }
+    if self.stars then self.stars:draw() end
 
-    local barW, barH = w * 0.5, 26
-    self.bar:draw((w - barW) / 2, h * 0.52, barW, barH)
+    -- Title, easing from its own smaller pose into the menu's exact one.
+    local ease = easeOutCubic(outro)
+    local titleY = h * TITLE_Y_RATIO + (h * GameTitle.MENU_Y_RATIO - h * TITLE_Y_RATIO) * ease
+    GameTitle.drawScaled(self.title, titleY, TITLE_SCALE + (1 - TITLE_SCALE) * ease)
 
-    if self.label then
+    if alpha <= 0 then return end
+
+    drawHeading(I18n.t("loading.title"), string.rep(".", self.dotCount), h * HEADING_Y_RATIO, alpha)
+
+    local barW = w * BAR_W_RATIO
+    local barH = UI.Theme.px(BAR_H)
+    local barX, barY = (w - barW) / 2, h * BAR_Y_RATIO
+
+    -- Task label on the left, percentage on the right, both just above the bar:
+    -- the readout reads as a caption on the bar rather than as text floating
+    -- inside it, and the label no longer sits orphaned underneath.
+    local font = UI.Theme.font("small")
+    local captionY = barY - font:getHeight() - UI.Theme.px(8)
+    UI.Theme.pushFont(font)
+    local dim = UI.Theme.colors.textDim
+    love.graphics.setColor(dim[1], dim[2], dim[3], alpha)
+    love.graphics.printf(self.label or "", barX, captionY, barW, "left")
+    love.graphics.printf(math.floor(self.bar.shown * 100 + 0.5) .. "%", barX, captionY, barW, "right")
+    UI.Theme.popFont()
+
+    self.bar.alpha = alpha
+    self.bar:draw(barX, barY, barW, barH)
+
+    -- Non-fatal load failures: the game still boots, but silently missing audio
+    -- would otherwise look like a bug in the game rather than in its install.
+    if #self.failures > 0 then
+        local warn = UI.Theme.colors.warning
         UI.Label.draw{
-            text = self.label,
-            y = h * 0.52 + barH + 16,
-            font = UI.Theme.font("small"),
-            color = UI.Theme.colors.textDim,
+            text = I18n.t("loading.failed", { n = #self.failures }),
+            y = barY + barH + UI.Theme.px(14),
+            font = font,
+            color = { warn[1], warn[2], warn[3], alpha },
         }
     end
 end

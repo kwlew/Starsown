@@ -24,6 +24,9 @@ function ProgressBar.new(config)
         fillSpeed = config.fillSpeed or 6,
         pulseSpeed = config.pulseSpeed or 4,
         showPercent = config.showPercent ~= false,
+        -- Global opacity, so an owning screen can fade the bar out as part of
+        -- a transition. Set the field directly before drawing.
+        alpha = config.alpha or 1,
         time = 0,
     }, ProgressBar)
 end
@@ -32,9 +35,13 @@ function ProgressBar:setProgress(t)
     self.target = math.max(0, math.min(1, t))
 end
 
--- True once the bar has visually reached a full target.
+-- True once the bar has visually reached a full target. The threshold is the
+-- point where the fill is indistinguishable from full (a fraction of a pixel at
+-- any real bar width), not where the ease has fully converged: an exponential
+-- follower approaches 1 asymptotically, so waiting for 0.999 spends an extra
+-- half-second on a bar the player already reads as finished.
 function ProgressBar:isComplete()
-    return self.target >= 1 and self.shown >= 0.999
+    return self.target >= 1 and self.shown >= 0.995
 end
 
 function ProgressBar:update(dt)
@@ -48,32 +55,33 @@ function ProgressBar:draw(x, y, w, h)
 
     local c, m = Theme.colors, Theme.metrics
     local radius = m.radius
+    local alpha = self.alpha
+    if alpha <= 0 then return end
 
     -- Track.
-    love.graphics.setColor(c.track)
+    love.graphics.setColor(c.track[1], c.track[2], c.track[3], alpha)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
 
     -- Filled portion with a pulsing glow.
     local fillW = self.w * self.shown
     if fillW > 0 then
         local pulse = 0.6 + 0.4 * math.sin(self.time * self.pulseSpeed)
-        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse)
-        love.graphics.setColor(c.accent)
+        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha)
+        love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)
     end
 
     -- Outline.
-    love.graphics.setColor(c.panelBorder)
+    love.graphics.setColor(c.panelBorder[1], c.panelBorder[2], c.panelBorder[3], alpha)
     love.graphics.rectangle("line", self.x, self.y, self.w, self.h, radius, radius)
 
     if self.showPercent then
-        local previousFont = love.graphics.getFont()
         local font = Theme.font("small")
-        love.graphics.setFont(font)
-        love.graphics.setColor(c.text)
-        local percent = math.floor(self.shown * 100 + 0.5) .. "%"
-        love.graphics.printf(percent, self.x, self.y + (self.h - font:getHeight()) / 2, self.w, "center")
-        love.graphics.setFont(previousFont)
+        Theme.pushFont(font)
+        love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+        love.graphics.printf(math.floor(self.shown * 100 + 0.5) .. "%",
+            self.x, Theme.centerY(self.y, self.h, font), self.w, "center")
+        Theme.popFont()
     end
 
     love.graphics.setColor(1, 1, 1, 1)

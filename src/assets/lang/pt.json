@@ -1,18 +1,19 @@
 {
-  "language": { "name": "Português", "code": "pt" },
-
+  "language": {
+    "name": "Português",
+    "code": "pt"
+  },
   "menu": {
     "play": "Jogar",
     "options": "Opções",
     "quit": "Sair",
     "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar"
   },
-
   "options": {
     "title": "OPÇÕES",
     "back": "Voltar",
+    "quit": "Sair para o Menu",
     "apply": "Aplicar",
-    "applyDirty": "Aplicar Alterações",
     "volume": "Volume Principal",
     "musicVolume": "Música",
     "sfxVolume": "Efeitos Sonoros",
@@ -32,15 +33,43 @@
     "hint": {
       "general": "Setas: ajustar    Enter ou Clique: alterar    Esc: voltar",
       "graphics": "As alterações gráficas são aplicadas ao pressionar Aplicar    Esc: voltar"
+    },
+    "desc": {
+      "volume": "Volume geral. Ajusta música e efeitos ao mesmo tempo.",
+      "musicVolume": "Apenas a música de fundo.",
+      "sfxVolume": "Cliques do menu e efeitos do jogo.",
+      "language": "Idioma da interface. Aplica imediatamente.",
+      "resolution": "Tamanho da janela do jogo.",
+      "resolutionBorderless": "Indisponível em Sem bordas — o jogo usa a resolução da sua área de trabalho.",
+      "displayMode": "Em janela, tela cheia sem bordas ou tela cheia exclusiva.",
+      "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
+      "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
+      "back": "Volta para a tela anterior.",
+      "quit": "Abandona a partida atual e volta ao menu principal."
     }
   },
-
+  "dialog": {
+    "cancel": "Cancelar",
+    "quit": {
+      "title": "Sair para o menu?",
+      "message": "A partida atual será perdida.",
+      "confirm": "Abandonar"
+    },
+    "revert": {
+      "title": "Manter estas configurações?",
+      "message": "Revertendo em {n}s se você não confirmar.",
+      "keep": "Manter",
+      "revert": "Reverter"
+    }
+  },
   "loading": {
     "title": "Carregando",
+    "failed": "Falha ao carregar {n} recurso(s) — verifique o log",
     "task": {
       "interface": "Preparando a interface",
       "settings": "Carregando configurações",
-      "warmup": "Aquecendo"
+      "world": "Preparando o céu noturno",
+      "audio": "Carregando áudio"
     }
   }
 }

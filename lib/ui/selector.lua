@@ -15,34 +15,30 @@
 -- Sync its display without firing onChange by setting `s.index` directly.
 
 local Theme = require "lib.ui.theme"
+local Widget = require "lib.ui.widget"
 
 local Selector = {}
-Selector.__index = Selector
+Widget.extend(Selector)
 
-local ARROW_W = 28  -- hit/draw width of each chevron
-local ARROW_H = 8   -- half-height of the chevron triangle
+-- Design-space px, scaled through Theme.px at use.
+local ARROW_W = 28    -- hit/draw width of each chevron
+local ARROW_H = 8     -- half-height of the chevron triangle
+local ARROW_BACK = 5  -- chevron's flat edge, from its center
+local ARROW_TIP = 6   -- chevron's point, from its center
+local VALUE_PAD = 16  -- breathing room either side of the widest value
+local LABEL_MIN_W = 120 -- label space the value column may never eat into
 
 function Selector.new(config)
-    return setmetatable({
-        label = config.label or "",
-        options = config.options or {},
-        index = config.index or 1,
-        format = config.format or tostring, -- option -> display string
-        onChange = config.onChange,
-        wrap = config.wrap ~= false,        -- cycle past the ends (default true)
-        enabled = config.enabled ~= false,  -- disabled = greyed out and inert
-        valueWidth = config.valueWidth or 190, -- fits "1920x1080" at the body font
-        font = config.font or Theme.font("body"),
-        x = config.x or 0,
-        y = config.y or 0,
-        w = config.w or 260,
-        h = config.h or Theme.metrics.rowHeight,
-        focused = false,
-        glow = 0,
-        time = 0,
-        hoverLeft = false,
-        hoverRight = false,
-    }, Selector)
+    local self = Widget.new(Selector, config)
+    self.options = config.options or {}
+    self.index = config.index or 1
+    self.format = config.format or tostring -- option -> display string
+    self.onChange = config.onChange
+    self.wrap = config.wrap ~= false        -- cycle past the ends (default true)
+    self.valueWidth = config.valueWidth or 190 -- fits "1920x1080" at the body font
+    self.hoverLeft = false
+    self.hoverRight = false
+    return self
 end
 
 function Selector:selected()
@@ -55,28 +51,40 @@ function Selector:displayText()
     return self.format(option)
 end
 
-function Selector:contains(px, py)
-    return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
-end
-
-function Selector:labelText()
-    return Theme.resolveLabel(self.label, self)
+-- Width of the value column: `valueWidth` as a floor, grown to fit the widest
+-- option once formatted, and capped so the label always keeps LABEL_MIN_W.
+--
+-- Sizing to the content is what keeps a long translation ("Pantalla Completa")
+-- at the same size as a short one. Falling back to a fixed column and scaling
+-- the text down to fit meant neighbouring rows rendered their values at visibly
+-- different sizes; the down-scale in draw is now only a last resort for a row
+-- too narrow to satisfy even this.
+function Selector:valueColumnWidth(font)
+    local m = Theme.metrics
+    local width = Theme.px(self.valueWidth)
+    for _, option in ipairs(self.options) do
+        width = math.max(width, font:getWidth(self.format(option)) + Theme.px(VALUE_PAD))
+    end
+    local available = self.w - m.padding * 2 - Theme.px(ARROW_W) * 2 - Theme.px(LABEL_MIN_W)
+    return math.max(0, math.min(width, available))
 end
 
 -- Left chevron, value area, and right chevron rects (right-aligned in the row).
 function Selector:controlRects()
     local m = Theme.metrics
-    local rightArrowX = self.x + self.w - m.padding - ARROW_W
-    local valueX = rightArrowX - self.valueWidth
-    local leftArrowX = valueX - ARROW_W
+    local arrowW = Theme.px(ARROW_W)
+    local valueW = self:valueColumnWidth(self:getFont())
+    local rightArrowX = self.x + self.w - m.padding - arrowW
+    local valueX = rightArrowX - valueW
+    local leftArrowX = valueX - arrowW
     return
-        { x = leftArrowX,  y = self.y, w = ARROW_W,         h = self.h },
-        { x = valueX,      y = self.y, w = self.valueWidth, h = self.h },
-        { x = rightArrowX, y = self.y, w = ARROW_W,         h = self.h }
+        { x = leftArrowX,  y = self.y, w = arrowW, h = self.h },
+        { x = valueX,      y = self.y, w = valueW, h = self.h },
+        { x = rightArrowX, y = self.y, w = arrowW, h = self.h }
 end
 
 function Selector:setIndex(index)
-    if not self.enabled then return end
+    if not self:isInteractive() then return end
     local count = #self.options
     if count == 0 then return end
     if self.wrap then
@@ -101,8 +109,9 @@ function Selector:activate()
     self:adjust(1)
 end
 
+-- Returns false: a selector has no drag, so it never captures the mouse.
 function Selector:mousepressed(px, py, mouseButton)
-    if mouseButton ~= 1 then return end
+    if mouseButton ~= 1 then return false end
     local left, value, right = self:controlRects()
     if Theme.pointIn(px, py, left.x, left.y, left.w, left.h) then
         self:adjust(-1)
@@ -111,10 +120,11 @@ function Selector:mousepressed(px, py, mouseButton)
     elseif Theme.pointIn(px, py, value.x, value.y, value.w, value.h) then
         self:adjust(1)
     end
+    return false
 end
 
 function Selector:mousemoved(px, py)
-    if not self.enabled then
+    if not self:isInteractive() then
         self.hoverLeft, self.hoverRight = false, false
         return
     end
@@ -123,21 +133,18 @@ function Selector:mousemoved(px, py)
     self.hoverRight = Theme.pointIn(px, py, right.x, right.y, right.w, right.h)
 end
 
-function Selector:update(dt)
-    self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, (self.focused and self.enabled) and 1 or 0, dt)
-end
-
 -- Draws a chevron centered in `rect`, pointing left (dir -1) or right (dir 1).
 local function drawChevron(rect, dir, active, alpha)
     local cx = rect.x + rect.w / 2
     local cy = rect.y + rect.h / 2
+    local half = Theme.px(ARROW_H)
+    local back, tip = Theme.px(ARROW_BACK), Theme.px(ARROW_TIP)
     local c = active and Theme.colors.accent or Theme.colors.textDim
     love.graphics.setColor(c[1], c[2], c[3], alpha)
     if dir < 0 then
-        love.graphics.polygon("fill", cx + 5, cy - ARROW_H, cx + 5, cy + ARROW_H, cx - 6, cy)
+        love.graphics.polygon("fill", cx + back, cy - half, cx + back, cy + half, cx - tip, cy)
     else
-        love.graphics.polygon("fill", cx - 5, cy - ARROW_H, cx - 5, cy + ARROW_H, cx + 6, cy)
+        love.graphics.polygon("fill", cx - back, cy - half, cx - back, cy + half, cx + tip, cy)
     end
 end
 
@@ -145,13 +152,13 @@ function Selector:draw()
     local c, m = Theme.colors, Theme.metrics
     -- Disabled rows render at reduced alpha and never glow (update forces the
     -- glow to 0 when disabled); rowChrome fades only the border by `alpha`.
-    local alpha = self.enabled and 1 or 0.4
+    local alpha = self:alpha()
+    local font = self:getFont()
 
     Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
 
-    local previousFont = love.graphics.getFont()
-    love.graphics.setFont(self.font)
-    local textY = Theme.centerY(self.y, self.h, self.font)
+    Theme.pushFont(font)
+    local textY = Theme.centerY(self.y, self.h, font)
 
     -- Label, left-aligned.
     love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
@@ -159,20 +166,21 @@ function Selector:draw()
 
     -- Right-side control: chevron, value, chevron.
     local left, value, right = self:controlRects()
-    drawChevron(left, -1, self.enabled and (self.hoverLeft or self.focused), alpha)
-    drawChevron(right, 1, self.enabled and (self.hoverRight or self.focused), alpha)
+    local live = self:isInteractive()
+    drawChevron(left, -1, live and (self.hoverLeft or self.focused), alpha)
+    drawChevron(right, 1, live and (self.hoverRight or self.focused), alpha)
     love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
     -- Draw the value on a single line, scaled down to fit the fixed value
     -- column when a translated string is wider than it (e.g. Spanish
     -- "Pantalla Completa") — printf would wrap it onto two lines instead.
     local vtext = self:displayText()
-    local vw = self.font:getWidth(vtext)
+    local vw = font:getWidth(vtext)
     local scale = vw > 0 and math.min(1, value.w / vw) or 1
     local vx = value.x + (value.w - vw * scale) / 2
-    local vy = self.y + (self.h - self.font:getHeight() * scale) / 2
+    local vy = self.y + (self.h - font:getHeight() * scale) / 2
     love.graphics.print(vtext, vx, vy, 0, scale, scale)
 
-    love.graphics.setFont(previousFont)
+    Theme.popFont()
     love.graphics.setColor(1, 1, 1, 1)
 end
 

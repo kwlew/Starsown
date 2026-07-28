@@ -1,15 +1,20 @@
 local Theme = require "lib.ui.theme"
 
-local Debug = {}
+-- A singleton, not a class: main.lua drives the one overlay directly. (An
+-- unused Debug:new constructor lived here and implied otherwise.)
+--
+-- Hidden by default and toggled with F3. It used to draw unconditionally, which
+-- meant FPS/memory/latency sat over every screen including in a release build.
+local Debug = {
+    fps = 0,
+    memory = 0,
+    latency = 0,
+    visible = false,
+}
 
-function Debug:new()
-    local obj = {
-        fps = 0,
-        memory = 0,
-        latency = 0
-    }
-    setmetatable(obj, { __index = self })
-    return obj
+function Debug.toggle()
+    Debug.visible = not Debug.visible
+    return Debug.visible
 end
 
 function Debug.getFPS()
@@ -29,14 +34,17 @@ function Debug.error(message)
 end
 
 function Debug:update()
+    if not Debug.visible then return end
     Debug.getFPS()
     Debug.getMemory()
     Debug.getLatency()
 end
 
 function Debug:draw()
+    if not Debug.visible then return end
+
     local previousFont = love.graphics.getFont()
-    local font = Theme.font("small")
+    local font = Theme.font("debug")
     local lineHeight = font:getHeight() + 2
 
     love.graphics.setFont(font)

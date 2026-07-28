@@ -8,7 +8,7 @@ function love.conf(t)
     -- t.window.icon = "assets/icon.png"
     t.window.width = 1280
     t.window.height = 720
-    t.window.resizable = true
+    t.window.resizable = false
     t.window.vsync = 0            -- 0 = off, 1 = on, -1 = adaptive
     t.window.msaa = 0               -- multisample antialiasing samples (smooths circles/rounded corners)
     t.window.fullscreen = false

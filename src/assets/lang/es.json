@@ -1,18 +1,19 @@
 {
-  "language": { "name": "Español", "code": "es" },
-
+  "language": {
+    "name": "Español",
+    "code": "es"
+  },
   "menu": {
     "play": "Jugar",
     "options": "Opciones",
     "quit": "Salir",
     "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar"
   },
-
   "options": {
     "title": "OPCIONES",
     "back": "Volver",
+    "quit": "Salir al Menú",
     "apply": "Aplicar",
-    "applyDirty": "Aplicar Cambios",
     "volume": "Volumen Principal",
     "musicVolume": "Música",
     "sfxVolume": "Efectos de Sonido",
@@ -32,15 +33,43 @@
     "hint": {
       "general": "Flechas: ajustar    Enter o Clic: cambiar    Esc: volver",
       "graphics": "Los cambios gráficos se aplican al pulsar Aplicar    Esc: volver"
+    },
+    "desc": {
+      "volume": "Volumen general. Escala la música y los efectos a la vez.",
+      "musicVolume": "Solo la música de fondo.",
+      "sfxVolume": "Clics del menú y efectos del juego.",
+      "language": "Idioma de la interfaz. Se aplica de inmediato.",
+      "resolution": "Tamaño de la ventana del juego.",
+      "resolutionBorderless": "No disponible en Sin bordes: el juego usa la resolución de tu escritorio.",
+      "displayMode": "En ventana, pantalla completa sin bordes o pantalla completa exclusiva.",
+      "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el desgarro.",
+      "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
+      "back": "Vuelve a la pantalla anterior.",
+      "quit": "Abandona la partida actual y vuelve al menú principal."
     }
   },
-
+  "dialog": {
+    "cancel": "Cancelar",
+    "quit": {
+      "title": "¿Salir al menú?",
+      "message": "Se perderá la partida actual.",
+      "confirm": "Abandonar"
+    },
+    "revert": {
+      "title": "¿Mantener esta configuración?",
+      "message": "Se revertirá en {n}s si no confirmas.",
+      "keep": "Mantener",
+      "revert": "Revertir"
+    }
+  },
   "loading": {
     "title": "Cargando",
+    "failed": "No se pudieron cargar {n} recurso(s) — revisa el registro",
     "task": {
       "interface": "Preparando la interfaz",
       "settings": "Cargando configuración",
-      "warmup": "Calentando"
+      "world": "Preparando el cielo nocturno",
+      "audio": "Cargando audio"
     }
   }
 }

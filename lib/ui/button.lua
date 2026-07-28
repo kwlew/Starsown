@@ -3,72 +3,53 @@
 -- `focused` flag; the visual eases toward the accent look with a soft glow.
 --
 --   local b = Button.new{ label = "Play", onSelect = function() ... end }
---   -- layout owner sets b.x/y/w/h, then: b:update(dt)  b:draw()
---   -- input: b:contains(x, y), b:activate(), b:mousepressed(x, y, button)
+--   -- a FocusGroup (or the owning layout) sets b's bounds and routes input
 --
 -- Set b.enabled = false to grey it out and make it inert (ignores clicks and
--- Enter, never glows). The layout owner is responsible for skipping disabled
--- buttons in its own focus/hover routing (see Options).
+-- Enter, never glows); a FocusGroup skips it when moving focus.
 
 local Theme = require "lib.ui.theme"
+local Widget = require "lib.ui.widget"
 
 local Button = {}
-Button.__index = Button
+Widget.extend(Button)
+
+Button.fontRole = "button"
 
 function Button.new(config)
-    return setmetatable({
-        label = config.label or "",   -- string, or function(self) -> string
-        onSelect = config.onSelect,
-        enabled = config.enabled ~= false, -- disabled = greyed out and inert
-        font = config.font or Theme.font("body"),
-        x = config.x or 0,
-        y = config.y or 0,
-        w = config.w or 260,
-        h = config.h or Theme.metrics.rowHeight,
-        focused = false,
-        glow = 0, -- eased 0..1 toward `focused`
-        time = 0, -- drives the focused pulse
-    }, Button)
-end
-
-function Button:labelText()
-    return Theme.resolveLabel(self.label, self)
-end
-
-function Button:contains(px, py)
-    return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
+    local self = Widget.new(Button, config)
+    self.onSelect = config.onSelect
+    return self
 end
 
 function Button:activate()
-    if not self.enabled then return end
+    if not self:isInteractive() then return end
     if self.onSelect then
         self.onSelect(self)
     end
 end
 
+-- Returns false: a button has no drag, so it never captures the mouse.
 function Button:mousepressed(px, py, mouseButton)
     if mouseButton == 1 and self:contains(px, py) then
         self:activate()
     end
-end
-
-function Button:update(dt)
-    self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, (self.focused and self.enabled) and 1 or 0, dt)
+    return false
 end
 
 function Button:draw()
     local c = Theme.colors
     -- Disabled buttons render dimmed and never glow (update forces glow to 0).
-    local alpha = self.enabled and 1 or 0.4
+    local alpha = self:alpha()
+    local font = self:getFont()
 
     Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
 
-    Theme.withFont(self.font, function()
-        love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
-        local textY = Theme.centerY(self.y, self.h, self.font)
-        love.graphics.printf(self:labelText(), self.x, textY, self.w, "center")
-    end)
+    Theme.pushFont(font)
+    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    love.graphics.printf(self:labelText(), self.x,
+        Theme.centerY(self.y, self.h, font), self.w, "center")
+    Theme.popFont()
 
     love.graphics.setColor(1, 1, 1, 1)
 end

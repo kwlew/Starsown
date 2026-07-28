@@ -3,51 +3,25 @@ local StateManager = require "lib.stateManager"
 local RPC = require "lib.discordRPC"
 local Settings = require "lib.settings"
 local I18n = require "lib.i18n"
+local UI = require "lib.ui"
 
 -- Concrete game screens (live under src/, loaded via LÖVE's filesystem).
 local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
 local optionsState = require "states.options"
-
-function love.run()
-    if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
-
-    love.timer.step()
-
-    local dt = 0
-
-    return function()
-        if love.event then
-            love.event.pump()
-            for name, a,b,c,d,e,f in love.event.poll() do
-                if name == "quit" then
-                    if not love.quit or not love.quit() then
-                        return a or 0
-                    end
-                end
-                love.handlers[name](a,b,c,d,e,f)
-            end
-        end
-
-        dt = love.timer.step()
-
-        if love.update then love.update(dt) end
-
-        if love.graphics and love.graphics.isActive() then
-            love.graphics.origin()
-            love.graphics.clear(love.graphics.getBackgroundColor())
-            if love.draw then love.draw() end
-            love.graphics.present()
-        end
-
-        -- Only sleep if vsync is off AND you want a manual cap.
-        -- Comment this out entirely for a true uncapped loop.
-        love.timer.sleep(0.001)
-    end
-end
+local gameState = require "states.game"
 
 function love.load()
     love.window.setTitle("Game")
+
+    -- Size the UI to this window before anything asks the theme for a font or a
+    -- metric — the loading screen warms the font cache on its very first task.
+    UI.Theme.rescale()
+
+    -- LÖVE seeds its own love.math RNG but not the stdlib math.random, so
+    -- without this every "random" layout (stars, constellations, shooting
+    -- stars) would be identical on every launch.
+    math.randomseed(os.time())
 
     -- Load translations and select the saved language before any screen draws,
     -- so even the loading screen's own text is localized.
@@ -58,6 +32,7 @@ function love.load()
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)
     StateManager.register("options", optionsState)
+    StateManager.register("game", gameState)
 
     StateManager.switch("loading")
 
@@ -67,20 +42,42 @@ end
 function love.update(dt)
     StateManager.update(dt)
     Debug:update()
-    RPC.update()
+    -- dt matters: RPC.update runs the reconnect backoff off it, so calling it
+    -- bare freezes the retry timer and the first failed connect is permanent.
+    RPC.update(dt)
 end
 
 function love.draw()
     StateManager.draw()
     Debug:draw()
+    -- After every screen has had its say: the last UI.Cursor.want of the frame
+    -- wins, and a frame where nobody asked resets to the arrow.
+    UI.Cursor.commit()
 end
 
--- Route input to whichever state is active.
-love.keypressed    = StateManager.keypressed
+-- The window only resizes when Options applies a new resolution or display
+-- mode (conf.lua keeps it non-resizable), so this is where the UI scale is
+-- recomputed. Fonts and metrics update globally; the active state is told to
+-- relay out only when the scale actually moved.
+function love.resize(w, h)
+    local rescaled = UI.Theme.rescale(h)
+    StateManager.resize(w, h, rescaled)
+end
+
+-- F3 is global: the dev overlay belongs to the game, not to any one screen, and
+-- it must stay reachable even while a state is mid-transition.
+function love.keypressed(key, scancode, isrepeat)
+    if key == "f3" then
+        Debug.toggle()
+        return
+    end
+    StateManager.keypressed(key, scancode, isrepeat)
+end
+
+-- Route the rest of the input to whichever state is active.
 love.keyreleased   = StateManager.keyreleased
 love.textinput     = StateManager.textinput
 love.mousepressed  = StateManager.mousepressed
 love.mousereleased = StateManager.mousereleased
 love.mousemoved    = StateManager.mousemoved
 love.wheelmoved    = StateManager.wheelmoved
-love.resize        = StateManager.resize

@@ -2,43 +2,29 @@
 -- Labeled ON/OFF switch row: label on the left, sliding pill on the right.
 -- Enter/click flips it; left/right arrows set it explicitly (left = off).
 --
---   local t = Toggle.new{ label = "Fullscreen", value = false,
+--   local t = Toggle.new{ label = "VSync", value = false,
 --                         onChange = function(v) ... end }
 
 local Theme = require "lib.ui.theme"
+local Widget = require "lib.ui.widget"
 
 local Toggle = {}
-Toggle.__index = Toggle
+Widget.extend(Toggle)
 
+-- Design-space px, scaled through Theme.px at use.
 local PILL_W, PILL_H = 58, 26
+local KNOB_INSET = 3
 
 function Toggle.new(config)
-    local value = config.value or false
-    return setmetatable({
-        label = config.label or "",
-        value = value,
-        onChange = config.onChange,
-        font = config.font or Theme.font("body"),
-        x = config.x or 0,
-        y = config.y or 0,
-        w = config.w or 260,
-        h = config.h or Theme.metrics.rowHeight,
-        focused = false,
-        glow = 0,
-        knob = value and 1 or 0, -- eased 0..1 knob position
-        time = 0,
-    }, Toggle)
-end
-
-function Toggle:contains(px, py)
-    return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
-end
-
-function Toggle:labelText()
-    return Theme.resolveLabel(self.label, self)
+    local self = Widget.new(Toggle, config)
+    self.value = config.value or false
+    self.onChange = config.onChange
+    self.knob = self.value and 1 or 0 -- eased 0..1 knob position
+    return self
 end
 
 function Toggle:set(value)
+    if not self:isInteractive() then return end
     if value == self.value then return end
     self.value = value
     if self.onChange then
@@ -55,42 +41,48 @@ function Toggle:adjust(direction)
     self:set(direction > 0)
 end
 
+-- Returns false: a toggle has no drag, so it never captures the mouse.
 function Toggle:mousepressed(px, py, mouseButton)
     if mouseButton == 1 and self:contains(px, py) then
         self:activate()
     end
+    return false
 end
 
 function Toggle:update(dt)
-    self.time = self.time + dt
-    self.glow = Theme.approach(self.glow, self.focused and 1 or 0, dt)
+    Widget.update(self, dt)
     self.knob = Theme.approach(self.knob, self.value and 1 or 0, dt)
 end
 
 function Toggle:draw()
     local c, m = Theme.colors, Theme.metrics
+    -- Disabled rows render dimmed and never glow (update forces the glow to 0).
+    local alpha = self:alpha()
+    local font = self:getFont()
 
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time)
+    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
 
     -- Label, left-aligned.
-    Theme.withFont(self.font, function()
-        love.graphics.setColor(c.text)
-        love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, self.font))
-    end)
+    Theme.pushFont(font)
+    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, font))
+    Theme.popFont()
 
     -- Pill track, right-aligned; fills toward accent as the knob slides on.
     -- Explicit segment counts: at these small radii LÖVE's defaults produce
     -- visibly faceted "circles".
-    local pillX = self.x + self.w - m.padding - PILL_W
-    local pillY = self.y + (self.h - PILL_H) / 2
-    love.graphics.setColor(Theme.lerp(c.track, c.accent, self.knob))
-    love.graphics.rectangle("fill", pillX, pillY, PILL_W, PILL_H, PILL_H / 2, PILL_H / 2, 16)
+    local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
+    local pillX = self.x + self.w - m.padding - pillW
+    local pillY = self.y + (self.h - pillH) / 2
+    local tr, tg, tb = Theme.lerp(c.track, c.accent, self.knob)
+    love.graphics.setColor(tr, tg, tb, alpha)
+    love.graphics.rectangle("fill", pillX, pillY, pillW, pillH, pillH / 2, pillH / 2, 64)
 
     -- Knob.
-    local knobR = PILL_H / 2 - 3
-    local knobX = pillX + PILL_H / 2 + (PILL_W - PILL_H) * self.knob
-    love.graphics.setColor(c.text)
-    love.graphics.circle("fill", knobX, pillY + PILL_H / 2, knobR, 32)
+    local knobR = pillH / 2 - Theme.px(KNOB_INSET)
+    local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
+    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 32)
 
     love.graphics.setColor(1, 1, 1, 1)
 end

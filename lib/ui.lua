@@ -10,6 +10,11 @@
 
 return {
     Theme       = require "lib.ui.theme",
+    Cursor      = require "lib.ui.cursor",
+    Text        = require "lib.ui.text",
+    Widget      = require "lib.ui.widget",
+    FocusGroup  = require "lib.ui.focusGroup",
+    Dialog      = require "lib.ui.dialog",
     Button      = require "lib.ui.button",
     Toggle      = require "lib.ui.toggle",
     Slider      = require "lib.ui.slider",
