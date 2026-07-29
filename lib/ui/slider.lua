@@ -12,6 +12,7 @@
 
 local Theme = require "lib.ui.theme"
 local Widget = require "lib.ui.widget"
+local Math = require "lib.utils.math"
 
 local Slider = {}
 Widget.extend(Slider)
@@ -72,8 +73,7 @@ end
 
 function Slider:setValue(value)
     if not self:isInteractive() then return end
-    value = math.max(0, math.min(1, value))
-    value = math.floor(value * 100 + 0.5) / 100 -- keep values (and saves) tidy
+    value = Math.round(Math.clamp01(value) * 100) / 100 -- keep values (and saves) tidy
     if value == self.value then return end
     self.value = value
     if self.onChange then
@@ -128,26 +128,20 @@ end
 
 function Slider:draw()
     local c, m = Theme.colors, Theme.metrics
-    -- Disabled rows render dimmed and never glow (update forces the glow to 0).
-    local alpha = self:alpha()
-    local font = self:getFont()
-
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
+    local alpha, font = self:alpha(), self:getFont()
+    self:drawRow(alpha)
 
     Theme.pushFont(font)
-
-    -- Label, left-aligned.
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
-    love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, font))
+    self:drawLabel(font, alpha)
 
     -- Track, fill, knob. Explicit segment counts: at these small radii LÖVE's
     -- defaults produce visibly faceted "circles".
     local trackX, trackY, trackW, trackH = self:trackRect()
-    love.graphics.setColor(c.track[1], c.track[2], c.track[3], alpha)
+    Theme.setColor(c.track, alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW, trackH, trackH / 2, trackH / 2, 12)
-    love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
+    Theme.setColor(c.accent, alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW * self.value, trackH, trackH / 2, trackH / 2, 12)
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    Theme.setColor(c.text, alpha)
     love.graphics.circle("fill", trackX + trackW * self.value, trackY + trackH / 2,
         trackH * KNOB_RATIO, 4)
 
@@ -156,8 +150,8 @@ function Slider:draw()
     local smallFont = Theme.font("small")
     local percentW = Theme.px(PERCENT_W)
     Theme.pushFont(smallFont)
-    love.graphics.setColor(c.textDim[1], c.textDim[2], c.textDim[3], alpha)
-    love.graphics.printf(math.floor(self.value * 100 + 0.5) .. "%",
+    Theme.setColor(c.textDim, alpha)
+    love.graphics.printf(Math.round(self.value * 100) .. "%",
         self.x + self.w - m.padding - percentW,
         Theme.centerY(self.y, self.h, smallFont), percentW, "right")
     Theme.popFont()

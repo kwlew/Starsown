@@ -47,9 +47,8 @@ local function prune(category)
     end
 end
 
--- Sets a category's volume and immediately re-applies it to every source
--- currently tracked in that category, so a live options-menu drag retunes
--- music that's already playing instead of waiting for the next track.
+-- Re-applies to every tracked source, so a live options drag retunes music
+-- that's already playing instead of waiting for the next track.
 function Audio.setVolume(category, value)
     assertCategory(category)
     volumes[category] = value
@@ -86,15 +85,11 @@ function Audio.play(category, source, opts)
     return source
 end
 
--- Permanently stops audio and drops it from tracking, so later setVolume calls
--- no longer touch it. With `source`, stops only that one; without, stops every
--- source currently playing in the category (e.g. Audio.stop("music") to kill
--- menu music on the way into gameplay — the caller doesn't need to have kept
--- the Source that Audio.play returned).
+-- With `source`, stops only that one; without, stops the whole category, so a
+-- caller that never kept the Source Audio.play returned can still kill it.
 --
--- LÖVE's Source:stop rewinds to the start, so playing a stopped source again
--- restarts the track rather than resuming it. Harmless to call on a source
--- that already finished or was never playing.
+-- LÖVE's Source:stop rewinds, so playing a stopped source again restarts the
+-- track rather than resuming it.
 function Audio.stop(category, source)
     assertCategory(category)
 

@@ -41,14 +41,6 @@ function Toggle:adjust(direction)
     self:set(direction > 0)
 end
 
--- Returns false: a toggle has no drag, so it never captures the mouse.
-function Toggle:mousepressed(px, py, mouseButton)
-    if mouseButton == 1 and self:contains(px, py) then
-        self:activate()
-    end
-    return false
-end
-
 function Toggle:update(dt)
     Widget.update(self, dt)
     self.knob = Theme.approach(self.knob, self.value and 1 or 0, dt)
@@ -56,16 +48,11 @@ end
 
 function Toggle:draw()
     local c, m = Theme.colors, Theme.metrics
-    -- Disabled rows render dimmed and never glow (update forces the glow to 0).
-    local alpha = self:alpha()
-    local font = self:getFont()
+    local alpha, font = self:alpha(), self:getFont()
+    self:drawRow(alpha)
 
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
-
-    -- Label, left-aligned.
     Theme.pushFont(font)
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
-    love.graphics.print(self:labelText(), self.x + m.padding, Theme.centerY(self.y, self.h, font))
+    self:drawLabel(font, alpha)
     Theme.popFont()
 
     -- Pill track, right-aligned; fills toward accent as the knob slides on.
@@ -81,7 +68,7 @@ function Toggle:draw()
     -- Knob.
     local knobR = pillH / 2 - Theme.px(KNOB_INSET)
     local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    Theme.setColor(c.text, alpha)
     love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 32)
 
     love.graphics.setColor(1, 1, 1, 1)

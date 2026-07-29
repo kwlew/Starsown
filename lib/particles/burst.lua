@@ -35,10 +35,8 @@ end
 function Burst:spawn(x, y, color, scale)
     color = color or { 1, 1, 1 }
     scale = scale or 1
-    local count = math.floor(Math.randRange(self.countMin, self.countMax + 1))
-
-    for _ = 1, count do
-        local angle = Math.randRange(0, 2 * math.pi)
+    for _ = 1, Math.randInt(self.countMin, self.countMax) do
+        local angle = Math.randAngle()
         local speed = Math.randRange(self.speedMin, self.speedMax) * scale
         self.particles[#self.particles + 1] = {
             x = x, y = y,

@@ -29,24 +29,13 @@ function Button:activate()
     end
 end
 
--- Returns false: a button has no drag, so it never captures the mouse.
-function Button:mousepressed(px, py, mouseButton)
-    if mouseButton == 1 and self:contains(px, py) then
-        self:activate()
-    end
-    return false
-end
-
 function Button:draw()
-    local c = Theme.colors
-    -- Disabled buttons render dimmed and never glow (update forces glow to 0).
-    local alpha = self:alpha()
-    local font = self:getFont()
+    local alpha, font = self:alpha(), self:getFont()
+    self:drawRow(alpha)
 
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
-
+    -- Centered rather than left-aligned, so this doesn't use Widget:drawLabel.
     Theme.pushFont(font)
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    Theme.setColor(Theme.colors.text, alpha)
     love.graphics.printf(self:labelText(), self.x,
         Theme.centerY(self.y, self.h, font), self.w, "center")
     Theme.popFont()

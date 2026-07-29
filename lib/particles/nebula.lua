@@ -129,11 +129,11 @@ function Nebula.new(config)
         -- Dark lanes carved back out after the gas is laid down. Each is a
         -- short chain of stamps rather than one long one; laneTurn is how far
         -- the chain may swing per link, in radians.
-        lanesPerCloud = config.lanesPerCloud or 1,
+        lanesPerCloud = config.lanesPerCloud or 2,
         laneSegments = config.laneSegments or 3,
         laneTurn = config.laneTurn or 0.35,
-        laneAlphaMin = config.laneAlphaMin or 0.045,
-        laneAlphaMax = config.laneAlphaMax or 0.10,
+        laneAlphaMin = config.laneAlphaMin or 0.001,
+        laneAlphaMax = config.laneAlphaMax or 0.005,
 
         -- Each stamp's color is picked between two palette entries, so a cloud
         -- has a core tint and a rim tint rather than one flat hue.
@@ -151,7 +151,7 @@ end
 
 -- One cloud's parameters, in design-space coordinates.
 function Nebula:buildCloud()
-    local angle = Math.randRange(0, 2 * math.pi)
+    local angle = Math.randAngle()
     local ring = Math.randRange(self.centerHole, self.edgeReach)
     local palette = self.colors
     return {
@@ -162,7 +162,7 @@ function Nebula:buildCloud()
         aspect = Math.randRange(self.aspectMin, self.aspectMax),
         core = palette[math.random(#palette)],
         rim = palette[math.random(#palette)],
-        stamps = math.floor(Math.randRange(self.stampsMin, self.stampsMax + 1)),
+        stamps = Math.randInt(self.stampsMin, self.stampsMax),
     }
 end
 
@@ -180,7 +180,7 @@ function Nebula:stampCloud(image, cloud)
 
         -- Distance from the core drives both the fade and the tint, so the
         -- cloud dims and shifts hue outward in one pass.
-        local dist = math.min(1, math.sqrt(ox * ox + oy * oy) / cloud.radius)
+        local dist = math.min(1, Math.length(ox, oy) / cloud.radius)
         local alpha = Math.randRange(self.stampAlphaMin, self.stampAlphaMax) * (0.35 + 0.65 * (1 - dist))
         local r, g, b = Theme.lerp(cloud.core, cloud.rim, dist)
 
@@ -191,7 +191,7 @@ function Nebula:stampCloud(image, cloud)
 
         love.graphics.setColor(r, g, b, alpha)
         love.graphics.draw(image, cloud.x + dx, cloud.y + dy,
-            Math.randRange(0, 2 * math.pi), sx, sy, origin, origin)
+            Math.randAngle(), sx, sy, origin, origin)
     end
 end
 
@@ -238,8 +238,8 @@ function Nebula:bake()
     if self.seed then math.randomseed(self.seed) end
 
     local image = getBlob()
-    local canvasW = math.floor((DESIGN_W + SLACK_X) * CANVAS_SCALE + 0.5)
-    local canvasH = math.floor((DESIGN_H + SLACK_Y) * CANVAS_SCALE + 0.5)
+    local canvasW = Math.round((DESIGN_W + SLACK_X) * CANVAS_SCALE)
+    local canvasH = Math.round((DESIGN_H + SLACK_Y) * CANVAS_SCALE)
     -- Restored rather than cleared to nil: bake() runs from a loading task, and
     -- assuming it owns the render target would break the moment anything else
     -- baked into a canvas of its own around it.
@@ -259,7 +259,7 @@ function Nebula:bake()
         love.graphics.translate(SLACK_X / 2, SLACK_Y / 2)
 
         local clouds = {}
-        for _ = 1, math.floor(Math.randRange(self.cloudsMin, self.cloudsMax + 1)) do
+        for _ = 1, Math.randInt(self.cloudsMin, self.cloudsMax) do
             clouds[#clouds + 1] = self:buildCloud()
         end
 
@@ -285,9 +285,9 @@ function Nebula:bake()
             -- a line the eye can follow back and forth.
             driftRateX = Math.randRange(self.driftRateMin, self.driftRateMax),
             driftRateY = Math.randRange(self.driftRateMin, self.driftRateMax),
-            phaseX = Math.randRange(0, 2 * math.pi),
-            phaseY = Math.randRange(0, 2 * math.pi),
-            breathePhase = Math.randRange(0, 2 * math.pi),
+            phaseX = Math.randAngle(),
+            phaseY = Math.randAngle(),
+            breathePhase = Math.randAngle(),
         }
     end
 
@@ -323,7 +323,7 @@ function Nebula:draw()
 
         local a = self.alpha * layer.alpha
             * (1 + self.breatheAmount * math.sin(self.time * self.breatheRate + layer.breathePhase))
-        a = math.max(0, math.min(1, a))
+        a = Math.clamp01(a)
         -- Premultiplied: the vertex color's alpha channel does not fade the
         -- canvas' RGB (the blend takes the source color as-is), so a fade has
         -- to be written into all four channels. setColor(1, 1, 1, a) here would

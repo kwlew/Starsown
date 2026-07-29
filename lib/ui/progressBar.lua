@@ -8,6 +8,7 @@
 --   bar:draw(x, y, w, h)   -- geometry can also be set once via fields
 
 local Theme = require "lib.ui.theme"
+local Math = require "lib.utils.math"
 
 local ProgressBar = {}
 ProgressBar.__index = ProgressBar
@@ -32,7 +33,7 @@ function ProgressBar.new(config)
 end
 
 function ProgressBar:setProgress(t)
-    self.target = math.max(0, math.min(1, t))
+    self.target = Math.clamp01(t)
 end
 
 -- True once the bar has visually reached a full target. The threshold is the
@@ -46,7 +47,7 @@ end
 
 function ProgressBar:update(dt)
     self.time = self.time + dt
-    self.shown = self.shown + (self.target - self.shown) * math.min(dt * self.fillSpeed, 1)
+    self.shown = Theme.approach(self.shown, self.target, dt, self.fillSpeed)
 end
 
 function ProgressBar:draw(x, y, w, h)
@@ -59,7 +60,7 @@ function ProgressBar:draw(x, y, w, h)
     if alpha <= 0 then return end
 
     -- Track.
-    love.graphics.setColor(c.track[1], c.track[2], c.track[3], alpha)
+    Theme.setColor(c.track, alpha)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
 
     -- Filled portion with a pulsing glow.
@@ -67,19 +68,19 @@ function ProgressBar:draw(x, y, w, h)
     if fillW > 0 then
         local pulse = 0.6 + 0.4 * math.sin(self.time * self.pulseSpeed)
         Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha)
-        love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
+        Theme.setColor(c.accent, alpha)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)
     end
 
     -- Outline.
-    love.graphics.setColor(c.panelBorder[1], c.panelBorder[2], c.panelBorder[3], alpha)
+    Theme.setColor(c.panelBorder, alpha)
     love.graphics.rectangle("line", self.x, self.y, self.w, self.h, radius, radius)
 
     if self.showPercent then
         local font = Theme.font("small")
         Theme.pushFont(font)
-        love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
-        love.graphics.printf(math.floor(self.shown * 100 + 0.5) .. "%",
+        Theme.setColor(c.text, alpha)
+        love.graphics.printf(Math.round(self.shown * 100) .. "%",
             self.x, Theme.centerY(self.y, self.h, font), self.w, "center")
         Theme.popFont()
     end

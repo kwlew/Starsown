@@ -4,7 +4,7 @@
 
 local StateManager = require "lib.stateManager"
 local Assets = require "lib.assets"
-local RPC = require "lib.discordRPC"
+local Presence = require "lib.presence"
 local Menu = require "lib.menu"
 local TextFactory = require "lib.textFactory"
 local UI = require "lib.ui"
@@ -26,27 +26,6 @@ local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
 -- around the bottom-corner furniture. Design-space px (see Theme.px).
 local GITHUB_ICON_SIZE = 26
 local CORNER_PAD = 12
-local HINT_BOTTOM = 48 -- distance from the bottom edge to the hint line
-
--- The focus-move blip fires on every arrow press, so it sits well under a
--- selection: at full volume, holding a direction reads as a rattle.
-local FOCUS_BLIP_VOLUME = 0.35
-
--- Set once at load so the presence "elapsed" clock reflects the whole session
--- rather than restarting every time we return to the menu.
-local SESSION_START = os.time()
-
-local MENU_PRESENCE = {
-    details = "Main Menu",
-    state = "Getting ready",
-    timestamps = { start = SESSION_START },
-    assets = {
-        large_image = "game_logo",
-        large_text = "TD Idle",
-        small_image = "playing_icon",
-        small_text = "In the menu",
-    },
-}
 
 local MainMenu = {}
 
@@ -65,6 +44,17 @@ local function buildVersionLabel()
     }
 end
 
+-- A background layer is built by the loading screen and handed over through
+-- Assets, so it's already on screen behind the boot sequence and never pops in
+-- here; `build` is the fallback for entering the menu without having come
+-- through loading. Either way what we already have is kept: re-entering the menu
+-- (e.g. back from Options) must not reshuffle the whole night sky.
+local function inheritSky(existing, name, build)
+    local layer = existing or Assets.get(name) or build()
+    layer.alpha = 1 -- loading may have handed it over mid-fade
+    return layer
+end
+
 -- Starts the preloaded menu track. enter() runs again every time we come back
 -- here (from Options, from the game), so this checks the shared Source before
 -- replaying it — otherwise a round trip through Options would stack a second
@@ -73,16 +63,6 @@ local function menuMusic()
     local source = Audios.get("mainMenuBG")
     if not source or source:isPlaying() then return end
     Audio.play("music", source, { loop = true })
-end
-
--- Pushes the menu presence once the RPC connection is actually ready. Called
--- repeatedly from update until it succeeds, because the connection comes up
--- asynchronously a moment after launch.
-function MainMenu:pushPresence()
-    if self.presenceSent then return end
-    if RPC.isReady() and RPC.setActivity(MENU_PRESENCE) then
-        self.presenceSent = true
-    end
 end
 
 function MainMenu:enter()
@@ -95,26 +75,14 @@ function MainMenu:enter()
     -- frame back from Options, before the player moves the mouse again.
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Particles.Starfield.new{}
-    -- The sky is spawned by the loading screen and handed over through Assets,
-    -- so it's already on screen behind the boot sequence and doesn't pop in
-    -- here. Spawning our own is the fallback for entering the menu without
-    -- having come through loading. Either way it's kept: re-entering the menu
-    -- (e.g. back from Options) must not reshuffle the whole night sky.
-    self.stars = self.stars or Assets.get("stars")
-    if not self.stars then
-        self.stars = Particles.Stars.new{}
-        self.stars:spawnStars()
-    end
-    self.stars.alpha = 1 -- loading may have handed it over mid-fade
-
-    -- Same hand-off, same fallback: the nebula is baked by the loading screen
-    -- and inherited here, and re-entering the menu keeps the one we already
-    -- have rather than baking a different set of clouds.
-    self.nebula = self.nebula or Assets.get("nebula")
-    if not self.nebula then
-        self.nebula = Particles.Nebula.new{}:bake()
-    end
-    self.nebula.alpha = 1
+    self.stars = inheritSky(self.stars, "stars", function()
+        local stars = Particles.Stars.new{}
+        stars:spawnStars()
+        return stars
+    end)
+    self.nebula = inheritSky(self.nebula, "nebula", function()
+        return Particles.Nebula.new{}:bake()
+    end)
 
     -- The menu itself is stateless between visits, so build it just once.
     -- Labels are functions so they re-read the active language every draw; a
@@ -123,28 +91,27 @@ function MainMenu:enter()
         self.menu = Menu.new({
             { label = function() return I18n.t("menu.play") end, onSelect = function()
                 Audio.stopAll() -- stop the menu music before the game starts
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
-                StateManager.fadeTo("game", { time = SESSION_START })
+                UI.Sfx.select()
+                -- Stamped here rather than in Game:enter so the run clock starts
+                -- when Play was pressed, not when the fade finishes.
+                StateManager.fadeTo("game", { startedAt = os.time() })
             end },
             { label = function() return I18n.t("menu.options") end, onSelect = function()
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
             end },
             { label = function() return I18n.t("menu.quit") end, onSelect = function()
                 love.event.quit()
             end },
         })
-        -- Keyboard navigation used to be silent while the mouse blipped on
-        -- every click. Quieter than a selection so holding an arrow key doesn't
-        -- turn into a rattle.
-        self.menu:onFocusChanged(function()
-            Audio.play("sfx", Audios.clone("menuBlipSelect"), { volume = FOCUS_BLIP_VOLUME })
-        end)
+        self.menu:onFocusChanged(UI.Sfx.focus)
     end
 
-    -- Re-assert menu presence every time we land here (e.g. back from options).
-    self.presenceSent = false
-    self:pushPresence()
+    -- Re-asserted every time we land here (e.g. back from options). No
+    -- startedAt: the menu's clock covers the whole session, so returning to it
+    -- must not restart the count.
+    Presence.set{ details = "Main Menu", state = "Getting ready",
+                  smallText = "In the menu" }
 
     -- Options may have changed the resolution or the language while we were
     -- away, and both move things here (menu width is driven by label widths).
@@ -174,7 +141,6 @@ function MainMenu:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)
     self.menu:update(dt)
-    self:pushPresence()
 end
 
 -- Widgets resolve their fonts per draw, but TextFactory caches a glyph mesh
@@ -214,7 +180,7 @@ function MainMenu:mousepressed(x, y, button)
     if self.menu:mousepressed(x, y, button) then return end
     if button == 1 and self:githubContains(x, y) then
         self.githubPressed = true
-        Audio.play("sfx", Audios.clone("menuBlipSelect"))
+        UI.Sfx.press()
         return
     end
     self.starfield:mousepressed(x, y, button)
@@ -234,8 +200,6 @@ end
 
 -- Draw only. Every rect here was computed by MainMenu:layout().
 function MainMenu:draw()
-    local h = love.graphics.getHeight()
-
     -- Back to front: gas, then the fixed sky on top of it, then the shooting
     -- stars in front of both.
     self.nebula:draw()
@@ -261,13 +225,7 @@ function MainMenu:draw()
 
     -- Shadowed: this sits directly on the starfield, where dim grey text
     -- crossing a bright star or a constellation line stops being readable.
-    UI.Label.draw{
-        text = I18n.t("menu.hint"),
-        y = h - UI.Theme.px(HINT_BOTTOM),
-        font = UI.Theme.font("small"),
-        color = UI.Theme.colors.textDim,
-        shadow = true,
-    }
+    UI.Label.hint(I18n.t("menu.hint"), true)
 
     -- Asked for every frame the cursor is over something clickable (see
     -- UI.Cursor for why this can't live in mousemoved).

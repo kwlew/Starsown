@@ -1,6 +1,6 @@
 local Debug = require "lib.debug"
 local StateManager = require "lib.stateManager"
-local RPC = require "lib.discordRPC"
+local Presence = require "lib.presence"
 local Settings = require "lib.settings"
 local I18n = require "lib.i18n"
 local UI = require "lib.ui"
@@ -36,15 +36,22 @@ function love.load()
 
     StateManager.switch("loading")
 
-    RPC.initialize("1528201797863473362")
+    Presence.initialize()
 end
 
 function love.update(dt)
     StateManager.update(dt)
     Debug:update()
-    -- dt matters: RPC.update runs the reconnect backoff off it, so calling it
-    -- bare freezes the retry timer and the first failed connect is permanent.
-    RPC.update(dt)
+    -- After StateManager, so a presence set during a state change is delivered
+    -- in the same frame rather than the next one.
+    Presence.update(dt)
+end
+
+-- Closes the Discord IPC connection on the way out so the presence clears
+-- immediately instead of waiting for Discord to notice the process died.
+-- Must not return a truthy value: that would abort the quit.
+function love.quit()
+    Presence.shutdown()
 end
 
 function love.draw()

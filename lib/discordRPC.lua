@@ -24,34 +24,17 @@
       Discord responds with opcode 1 containing a DISPATCH/READY event.
       After that, opcode 1 frames carry commands like SET_ACTIVITY.
 
-    USAGE (in your game):
+    USAGE: nothing in the game talks to this directly — lib/presence.lua owns
+    the connection, the payload shape and the retry, and is what screens call.
+    This module's surface is:
 
-        local RPC = require("discordrpc")
-
-        function love.load()
-            RPC.initialize("YOUR_DISCORD_APPLICATION_ID")
-        end
-
-        function love.update(dt)
-            RPC.update(dt)
-        end
-
-        -- whenever your game state changes:
-        RPC.setActivity({
-            details = "Exploring the Rescue Maze",
-            state = "In a match",
-            timestamps = { start = os.time() },
-            assets = {
-                large_image = "game_logo",
-                large_text = "My Awesome Game",
-                small_image = "playing_icon",
-                small_text = "Playing",
-            },
-        })
-
-        function love.quit()
-            RPC.shutdown()
-        end
+        RPC.initialize(applicationId)  -- once, at load
+        RPC.update(dt)                 -- every frame; drives connect + retry
+        RPC.isReady()                  -- true once Discord has sent READY
+        RPC.setActivity(activity)      -- details/state/timestamps/assets
+        RPC.clearActivity()
+        RPC.shutdown()                 -- on quit, so the presence clears now
+        RPC.getLastError()
 
     CAVEATS (read before shipping):
       - This only implements local Rich Presence (details/state/images/

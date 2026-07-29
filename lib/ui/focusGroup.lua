@@ -23,6 +23,8 @@
 -- The input methods return true when the event was consumed, so a screen can
 -- act on the ones the group ignored (Esc, a click on empty background).
 
+local Math = require "lib.utils.math"
+
 local FocusGroup = {}
 FocusGroup.__index = FocusGroup
 
@@ -84,7 +86,7 @@ function FocusGroup:moveFocus(delta)
 
     local index = self.index
     for _ = 1, count do
-        index = (index - 1 + delta) % count + 1
+        index = Math.wrapIndex(index + delta, count)
         if self.widgets[index]:isInteractive() then
             self:setFocus(index)
             return
@@ -138,7 +140,7 @@ function FocusGroup:mousemoved(x, y)
     -- Hover feedback for widgets that track the cursor (selector chevrons, tab
     -- segments). Widgets without hover state simply don't implement this.
     for _, widget in ipairs(self.widgets) do
-        if widget.visible and widget.mousemoved then widget:mousemoved(x, y) end
+        if widget.mousemoved then widget:mousemoved(x, y) end
     end
 
     for i, widget in ipairs(self.widgets) do
@@ -150,14 +152,14 @@ function FocusGroup:mousemoved(x, y)
     return false
 end
 
--- A press on a visible-but-disabled widget is still consumed: it's an inert
--- control, not a hole through to whatever is behind the screen.
+-- A press on a disabled widget is still consumed: it's an inert control, not a
+-- hole through to whatever is behind the screen.
 function FocusGroup:mousepressed(x, y, button)
     for i, widget in ipairs(self.widgets) do
-        if widget.visible and widget:contains(x, y) then
+        if widget:contains(x, y) then
             if widget:isInteractive() then
                 self:setFocus(i)
-                if widget.mousepressed and widget:mousepressed(x, y, button) then
+                if widget:mousepressed(x, y, button) then
                     self.capture = widget -- asked to own the mouse until release
                 end
             end
@@ -188,7 +190,7 @@ end
 
 function FocusGroup:update(dt)
     for _, widget in ipairs(self.widgets) do
-        if widget.visible then widget:update(dt) end
+        widget:update(dt)
     end
 end
 
@@ -197,7 +199,7 @@ end
 -- widgets themselves; the group is about focus and routing, not painting.
 function FocusGroup:draw()
     for _, widget in ipairs(self.widgets) do
-        if widget.visible then widget:draw() end
+        widget:draw()
     end
 end
 

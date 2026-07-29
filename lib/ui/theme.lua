@@ -7,6 +7,8 @@
 -- Theme.scale (see Theme.rescale), so the UI keeps its proportions from 768p up
 -- to 1080p instead of shrinking into the middle of a big screen.
 
+local Math = require "lib.utils.math"
+
 local Theme = {}
 
 -- Where the UI font family lives. Each role below picks its own weight from it:
@@ -25,10 +27,6 @@ Theme.colors = {
     accent      = { 0.30, 0.70, 1.00 }, -- the neon blue: focus, fills, glow
     accentDark  = { 0.13, 0.30, 0.45 }, -- focused-widget background
     accentAlt   = { 0.62, 0.40, 1.00 }, -- violet partner for gradients
-    -- Status colors. Nothing consumes these yet; they exist so that anything
-    -- needing to signal state has somewhere to get its color from instead of
-    -- inventing one at the call site.
-    success     = { 0.35, 0.85, 0.55 },
     warning     = { 1.00, 0.75, 0.25 },
     danger      = { 0.95, 0.35, 0.35 },
 }
@@ -75,9 +73,8 @@ local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.85, 1.6, 0.05
 local fontCache = {}
 
 local function scaleForHeight(height)
-    local s = height / DESIGN_HEIGHT
-    s = math.max(SCALE_MIN, math.min(SCALE_MAX, s))
-    return math.floor(s / SCALE_STEP + 0.5) * SCALE_STEP
+    local s = Math.clamp(height / DESIGN_HEIGHT, SCALE_MIN, SCALE_MAX)
+    return Math.round(s / SCALE_STEP) * SCALE_STEP
 end
 
 -- Recomputes the scale from the window height, rebuilding metrics and dropping
@@ -95,7 +92,7 @@ function Theme.rescale(height)
 
     -- Mutated in place: widgets and states hold references to this table.
     for key, value in pairs(baseMetrics) do
-        Theme.metrics[key] = math.floor(value * s + 0.5)
+        Theme.metrics[key] = Math.round(value * s)
     end
     for key, value in pairs(constantMetrics) do
         Theme.metrics[key] = value
@@ -108,14 +105,14 @@ end
 -- Scales a caller's own design-space pixel constant (a widget's track height, a
 -- screen's panel padding). Use for any literal px value outside Theme.metrics.
 function Theme.px(value)
-    return math.floor(value * Theme.scale + 0.5)
+    return Math.round(value * Theme.scale)
 end
 
 function Theme.font(name)
     local role = fontRoles[name]
     assert(role, "Theme.font: unknown font '" .. tostring(name) .. "'")
     if not fontCache[name] then
-        local size = math.max(1, math.floor(role.size * Theme.scale + 0.5))
+        local size = math.max(1, Math.round(role.size * Theme.scale))
         -- Fall back to LÖVE's default font if the .ttf can't be opened, so a
         -- missing/renamed font file degrades gracefully instead of crashing
         -- (also lets headless tests run without the assets dir mounted).
@@ -147,6 +144,12 @@ function Theme.fontFor(font, defaultRole)
     return Theme.font(type(font) == "string" and font or defaultRole)
 end
 
+-- setColor for a theme color table, with an optional alpha override. Replaces
+-- the c[1], c[2], c[3], alpha splat every widget was writing out by hand.
+function Theme.setColor(color, alpha)
+    love.graphics.setColor(color[1], color[2], color[3], alpha or color[4] or 1)
+end
+
 -- Component-wise lerp between two colors; returns r, g, b for setColor.
 function Theme.lerp(a, b, t)
     return a[1] + (b[1] - a[1]) * t,
@@ -159,9 +162,10 @@ function Theme.pointIn(px, py, x, y, w, h)
 end
 
 -- Frame-rate-independent eased step of `current` toward `target` (the widgets'
--- shared glow/knob/highlight animation). Returns the new value.
-function Theme.approach(current, target, dt)
-    return current + (target - current) * math.min(dt * Theme.metrics.focusSpeed, 1)
+-- shared glow/knob/highlight animation). `speed` defaults to the shared focus
+-- rate; pass one for a follower that needs its own pace.
+function Theme.approach(current, target, dt, speed)
+    return current + (target - current) * math.min(dt * (speed or Theme.metrics.focusSpeed), 1)
 end
 
 -- The shared 0.5..1 breathing pulse used by every focused glow, driven by a
@@ -176,9 +180,9 @@ function Theme.centerY(y, h, font)
     return y + (h - font:getHeight()) / 2
 end
 
--- Font stack, replacing the getFont/setFont/restore boilerplate that every
--- widget draw repeated. A callback form was tried first, but it allocated a
--- fresh closure per widget per frame purely to scope two lines of drawing.
+-- Font stack, so a widget draw doesn't repeat the getFont/setFont/restore
+-- dance. Deliberately not a callback form: that allocates a fresh closure per
+-- widget per frame purely to scope two lines of drawing.
 --
 --   Theme.pushFont(font)
 --   ...draw...

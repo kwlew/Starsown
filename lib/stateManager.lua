@@ -1,24 +1,32 @@
 -- lib/stateManager.lua
--- Lightweight finite state machine for LÖVE screens/scenes (menu, options,
--- gameplay, ...). A "state" is just a table that may implement any of:
---
---   state:enter(previousStateName, ...)  -- becomes the active state
---   state:leave()                        -- is replaced by another state
---   state:update(dt)
---   state:draw()
---   ...plus any LÖVE input callback it cares about (keypressed, mousepressed…)
---
--- Every method is optional. Register states once, then call
--- StateManager.switch(name) to change screens.
+-- Finite state machine for screens. A state is a table that may implement any
+-- of enter(previousStateName, ...), update(dt), draw(), and any LÖVE input
+-- callback (keypressed, mousepressed, resize, ...). Every method is optional.
 --
 --   StateManager.register("mainMenu", require "states.mainMenu")
 --   StateManager.switch("mainMenu")
+--   StateManager.fadeTo("options", { returnTo = "mainMenu" })
+--
+-- There is no leave() hook: cleanup here is destination-dependent (menu -> game
+-- stops the music, menu -> options must not), which a leave() can't express
+-- because it doesn't know where you're going. The arriving state gets
+-- previousName and decides.
 
 local StateManager = {
-    states = {},       -- name -> state table
-    current = nil,     -- active state table
-    currentName = nil, -- active state name
+    states = {},
+    current = nil,
+    currentName = nil,
 }
+
+-- Fade-through-black transition. A true crossfade would need both states alive
+-- and drawn simultaneously; fading through black needs only one at a time and
+-- reads the same at this duration, so the manager stays a plain swap.
+--
+-- Declared above switch() because switch() assigns to it. A local declared
+-- further down the file is not in scope inside a function defined above it, so
+-- the assignment would silently create a global and do nothing.
+local FADE_HALF = 0.14 -- seconds for each of out and in
+local fade = nil       -- { phase = "out" | "in", t, name, args }
 
 function StateManager.register(name, state)
     assert(type(name) == "string", "StateManager.register: name must be a string")
@@ -27,16 +35,15 @@ function StateManager.register(name, state)
     return state
 end
 
--- Switches to a registered state. Extra arguments are forwarded to the new
--- state's enter(), so callers can pass data between screens.
+-- Extra arguments are forwarded to the new state's enter().
 function StateManager.switch(name, ...)
     local nextState = StateManager.states[name]
     assert(nextState, "StateManager.switch: no state registered named '" .. tostring(name) .. "'")
 
-    local current = StateManager.current
-    if current and current.leave then
-        current:leave()
-    end
+    -- A switch supersedes any transition in flight. Leaving the fade running
+    -- would tick it down and switch a second time, to wherever it was headed,
+    -- while painting black over the state we just entered.
+    fade = nil
 
     local previousName = StateManager.currentName
     StateManager.current = nextState
@@ -47,23 +54,9 @@ function StateManager.switch(name, ...)
     end
 end
 
--- Fade-through-black transition. A true crossfade would need both states alive
--- and drawn simultaneously; fading through black needs only one at a time and
--- reads the same at this duration, so the manager stays a plain swap.
---
---   StateManager.fadeTo("options", { returnTo = "mainMenu" })
---
--- Loading -> menu deliberately still uses the instant switch: that hand-off has
--- its own scripted outro, and a fade would just wash it out.
-local FADE_HALF = 0.14 -- seconds for each of out and in
-local fade = nil       -- { phase = "out" | "in", t, name, args }
-
-function StateManager.isTransitioning()
-    return fade ~= nil
-end
-
--- Like switch, but fades out, swaps, and fades back in. Extra arguments reach
--- the new state's enter() exactly as with switch.
+-- Like switch, but fades out, swaps, and fades back in. Loading -> menu
+-- deliberately still uses the instant switch: that hand-off has its own scripted
+-- outro, and a fade would just wash it out.
 function StateManager.fadeTo(name, ...)
     assert(StateManager.states[name], "StateManager.fadeTo: no state named '" .. tostring(name) .. "'")
     if fade then return end -- already going somewhere; ignore the second request
@@ -73,6 +66,10 @@ function StateManager.fadeTo(name, ...)
         name = name,
         args = { n = select("#", ...), ... },
     }
+end
+
+function StateManager.isTransitioning()
+    return fade ~= nil
 end
 
 -- 0 = fully visible, 1 = fully black.
@@ -88,9 +85,10 @@ function StateManager.update(dt)
         if fade.t >= FADE_HALF then
             if fade.phase == "out" then
                 local pending = fade
-                fade = nil -- switch() must not see a transition in flight
                 StateManager.switch(pending.name, unpack(pending.args, 1, pending.args.n))
-                fade = { phase = "in", t = 0 }
+                -- switch() cleared the fade; only start the fade-in if the state
+                -- we just entered didn't start a transition of its own.
+                if not fade then fade = { phase = "in", t = 0 } end
             else
                 fade = nil
             end
@@ -126,8 +124,6 @@ local blockedWhileFading = {
     mousepressed = true, mousereleased = true, wheelmoved = true,
 }
 
--- Forward the remaining LÖVE callbacks to whichever state is active, but only
--- if that state actually implements the callback.
 local callbacks = {
     "keypressed", "keyreleased", "textinput",
     "mousepressed", "mousereleased", "mousemoved", "wheelmoved",

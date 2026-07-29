@@ -5,11 +5,14 @@
 -- the concave silhouette (unlike love.graphics.polygon, whose ear-clipping can
 -- throw on near-collinear bezier points).
 
+local Math = require "lib.utils.math"
+
 local GithubMark = {}
 
--- Halo tuning: how many stamps, how far each grows (as a fraction of the mark's
--- size), and the per-layer alpha. Mirrors Theme.metrics' glow* values, but in
--- glyph-relative units so the halo scales with the icon.
+-- Halo tuning: how many stamps, how far each grows, and the per-layer alpha.
+-- Independent of Theme.metrics' glow* values, which are absolute px tuned for
+-- rectangles; the spread here is a fraction of the mark's size, so the halo
+-- scales with the icon.
 local GLOW_LAYERS = 4
 local GLOW_SPREAD = 0.09
 local GLOW_ALPHA = 0.30
@@ -180,7 +183,7 @@ end
 -- busy background. Restores draw color and blend mode after.
 function GithubMark.draw(x, y, size, color, glow)
     glow = glow or 0
-    size = math.floor(size + 0.5) -- integral, so the cache key is stable
+    size = Math.round(size) -- integral, so the cache key is stable
 
     local key = string.format("%d|%.3f,%.3f,%.3f|%.3f",
         size, color[1], color[2], color[3], glow)

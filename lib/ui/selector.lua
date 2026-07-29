@@ -16,6 +16,7 @@
 
 local Theme = require "lib.ui.theme"
 local Widget = require "lib.ui.widget"
+local Math = require "lib.utils.math"
 
 local Selector = {}
 Widget.extend(Selector)
@@ -66,7 +67,7 @@ function Selector:valueColumnWidth(font)
         width = math.max(width, font:getWidth(self.format(option)) + Theme.px(VALUE_PAD))
     end
     local available = self.w - m.padding * 2 - Theme.px(ARROW_W) * 2 - Theme.px(LABEL_MIN_W)
-    return math.max(0, math.min(width, available))
+    return Math.clamp(width, 0, available)
 end
 
 -- Left chevron, value area, and right chevron rects (right-aligned in the row).
@@ -87,11 +88,7 @@ function Selector:setIndex(index)
     if not self:isInteractive() then return end
     local count = #self.options
     if count == 0 then return end
-    if self.wrap then
-        index = (index - 1) % count + 1
-    else
-        index = math.max(1, math.min(count, index))
-    end
+    index = self.wrap and Math.wrapIndex(index, count) or Math.clamp(index, 1, count)
     if index == self.index then return end
     self.index = index
     if self.onChange then
@@ -139,8 +136,7 @@ local function drawChevron(rect, dir, active, alpha)
     local cy = rect.y + rect.h / 2
     local half = Theme.px(ARROW_H)
     local back, tip = Theme.px(ARROW_BACK), Theme.px(ARROW_TIP)
-    local c = active and Theme.colors.accent or Theme.colors.textDim
-    love.graphics.setColor(c[1], c[2], c[3], alpha)
+    Theme.setColor(active and Theme.colors.accent or Theme.colors.textDim, alpha)
     if dir < 0 then
         love.graphics.polygon("fill", cx + back, cy - half, cx + back, cy + half, cx - tip, cy)
     else
@@ -149,27 +145,18 @@ local function drawChevron(rect, dir, active, alpha)
 end
 
 function Selector:draw()
-    local c, m = Theme.colors, Theme.metrics
-    -- Disabled rows render at reduced alpha and never glow (update forces the
-    -- glow to 0 when disabled); rowChrome fades only the border by `alpha`.
-    local alpha = self:alpha()
-    local font = self:getFont()
-
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time, alpha)
+    local alpha, font = self:alpha(), self:getFont()
+    self:drawRow(alpha)
 
     Theme.pushFont(font)
-    local textY = Theme.centerY(self.y, self.h, font)
-
-    -- Label, left-aligned.
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
-    love.graphics.print(self:labelText(), self.x + m.padding, textY)
+    self:drawLabel(font, alpha)
 
     -- Right-side control: chevron, value, chevron.
     local left, value, right = self:controlRects()
     local live = self:isInteractive()
     drawChevron(left, -1, live and (self.hoverLeft or self.focused), alpha)
     drawChevron(right, 1, live and (self.hoverRight or self.focused), alpha)
-    love.graphics.setColor(c.text[1], c.text[2], c.text[3], alpha)
+    Theme.setColor(Theme.colors.text, alpha)
     -- Draw the value on a single line, scaled down to fit the fixed value
     -- column when a translated string is wider than it (e.g. Spanish
     -- "Pantalla Completa") — printf would wrap it onto two lines instead.

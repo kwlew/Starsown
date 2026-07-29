@@ -37,7 +37,7 @@ local function systemCursor(name)
     return cache[name] or nil
 end
 
--- Requests a system cursor ("hand", "ibeam", "sizewe", ...) for this frame.
+-- name is a love.mouse system cursor: "hand", "ibeam", "sizewe", ...
 function Cursor.want(name)
     wanted = name
 end

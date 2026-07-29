@@ -218,8 +218,7 @@ function Dialog:draw()
         -- The destructive choice gets a danger-tinted border on top of the
         -- normal row chrome, so it reads as different before it's read at all.
         if button.danger then
-            local d = c.danger
-            love.graphics.setColor(d[1], d[2], d[3], 0.55 + 0.45 * button.glow)
+            Theme.setColor(c.danger, 0.55 + 0.45 * button.glow)
             love.graphics.rectangle("line", button.x, button.y, button.w, button.h,
                 m.radius, m.radius, 10)
         end

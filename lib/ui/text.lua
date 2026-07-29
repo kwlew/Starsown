@@ -21,10 +21,7 @@ local MAX_ENTRIES = 64
 local cache = {}
 local count = 0
 
--- Drops every cached mesh. Call when something invalidates text globally that
--- the key can't see — a language change, since the same key now has to render
--- different glyphs only if the caller reuses the old string (it doesn't), and
--- more usefully to release GPU memory on demand.
+-- Drops every cached mesh, to release GPU memory on demand.
 function Text.clear()
     cache = {}
     count = 0

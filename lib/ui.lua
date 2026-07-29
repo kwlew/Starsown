@@ -5,14 +5,13 @@
 --   UI.Theme.colors.accent
 --   UI.Button.new{ label = "Play", onSelect = ... }
 --
--- (This lives at lib/ui.lua rather than lib/ui/init.lua because these modules
--- resolve through plain package.path, which may not include ?/init.lua.)
+-- (A .lua file rather than lib/ui/init.lua because these modules resolve
+-- through plain package.path, which may not include ?/init.lua.)
 
 return {
     Theme       = require "lib.ui.theme",
     Cursor      = require "lib.ui.cursor",
-    Text        = require "lib.ui.text",
-    Widget      = require "lib.ui.widget",
+    Sfx         = require "lib.ui.sfx",
     FocusGroup  = require "lib.ui.focusGroup",
     Dialog      = require "lib.ui.dialog",
     Button      = require "lib.ui.button",

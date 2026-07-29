@@ -91,7 +91,6 @@ end
 
 function TabBar:draw()
     local c, m = Theme.colors, Theme.metrics
-    -- Disabled bars render dimmed and never glow (update forces the glow to 0).
     local alpha = self:alpha()
 
     -- Inactive segment backgrounds.
@@ -99,7 +98,7 @@ function TabBar:draw()
         local sx, sy, sw, sh = self:segmentRect(i)
         love.graphics.setColor(c.panel)
         love.graphics.rectangle("fill", sx, sy, sw, sh, m.radius, m.radius, 8)
-        love.graphics.setColor(c.panelBorder[1], c.panelBorder[2], c.panelBorder[3], alpha)
+        Theme.setColor(c.panelBorder, alpha)
         love.graphics.rectangle("line", sx, sy, sw, sh, m.radius, m.radius, 8)
     end
 
@@ -114,7 +113,7 @@ function TabBar:draw()
     end
     love.graphics.setColor(c.accentDark)
     love.graphics.rectangle("fill", hx, self.y, segW, segH, m.radius, m.radius, 8)
-    love.graphics.setColor(c.accent[1], c.accent[2], c.accent[3], alpha)
+    Theme.setColor(c.accent, alpha)
     love.graphics.rectangle("line", hx, self.y, segW, segH, m.radius, m.radius, 8)
 
     -- Labels on top.
@@ -123,8 +122,7 @@ function TabBar:draw()
     local textY = Theme.centerY(self.y, self.h, font)
     for i, name in ipairs(self.tabs) do
         local sx, _, sw = self:segmentRect(i)
-        local tint = (i == self.index or i == self.hovered) and c.text or c.textDim
-        love.graphics.setColor(tint[1], tint[2], tint[3], alpha)
+        Theme.setColor((i == self.index or i == self.hovered) and c.text or c.textDim, alpha)
         -- Tab entries may be plain strings or functions (for live-localized
         -- labels); resolve each at draw time.
         love.graphics.printf(Theme.resolveLabel(name, self), sx, textY, sw, "center")

@@ -16,7 +16,7 @@
 --
 -- The contract a widget presents to a FocusGroup:
 --
---   required : contains(x, y)  update(dt)  draw()  enabled  visible
+--   required : contains(x, y)  update(dt)  draw()  enabled
 --   optional : activate()      -- Enter / click
 --              adjust(dir)     -- Left/Right, dir is -1 or 1
 --              mousepressed(x, y, button) -> true to capture the mouse
@@ -48,7 +48,6 @@ function Widget.new(class, config)
     return setmetatable({
         label   = config.label or "",      -- string, or function(self) -> string
         enabled = config.enabled ~= false, -- disabled = greyed out and inert
-        visible = config.visible ~= false, -- hidden = not drawn, not hit-tested
         -- Stored unresolved (nil, a role name, or a Font); see Widget:getFont.
         font = config.font,
         x = config.x or 0,
@@ -72,7 +71,7 @@ end
 
 -- Can this widget take focus and respond to input right now?
 function Widget:isInteractive()
-    return self.enabled and self.visible
+    return self.enabled
 end
 
 function Widget:labelText()
@@ -94,6 +93,33 @@ end
 -- reason to glow — a Slider stays lit for the length of a drag.
 function Widget:isLit()
     return self.focused
+end
+
+-- Default click handling: a left-click inside the row activates it. Returns
+-- false — only a widget with a drag (Slider) captures the mouse. Overridden by
+-- widgets that route the click to a sub-control (Selector's chevrons, TabBar's
+-- segments) or need a drag.
+function Widget:mousepressed(px, py, mouseButton)
+    if mouseButton == 1 and self:contains(px, py) and self.activate then
+        self:activate()
+    end
+    return false
+end
+
+-- The standard interactive-row background. Every row widget opens its draw with
+-- this. Disabled rows render dimmed and never glow (update forces glow to 0).
+function Widget:drawRow(alpha)
+    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
+        alpha or self:alpha())
+end
+
+-- Left-aligned row label at the standard padding, vertically centered. The
+-- caller owns the font stack, since most rows reuse the pushed font for a value
+-- column afterwards.
+function Widget:drawLabel(font, alpha)
+    Theme.setColor(Theme.colors.text, alpha)
+    love.graphics.print(self:labelText(), self.x + Theme.metrics.padding,
+        Theme.centerY(self.y, self.h, font))
 end
 
 function Widget:update(dt)

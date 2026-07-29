@@ -1,8 +1,10 @@
 -- conf.lua
 function love.conf(t)
     t.identity = "my-game"          -- save-directory name (love.filesystem writes here)
-    t.version = "11.5"              -- LÖVE version this game targets
-    t.console = true              -- Windows: opens a console window for print()
+    t.version = "11.5"
+    -- Windows: opens a console for print(). Note this also *redirects* stdout to
+    -- it, so piping love's output to a file captures nothing while it's on.
+    t.console = true
 
     t.window.title = "TD Idle"
     -- t.window.icon = "assets/icon.png"
@@ -42,7 +44,6 @@ function love.conf(t)
         end
     end
 
-    -- Disable modules you don't use — saves startup time and memory
     t.modules.joystick = false
     t.modules.physics = false
 end

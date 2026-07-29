@@ -21,16 +21,17 @@ local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
 local Audios = require "lib.utils.audios"
 local Particles = require "lib.particles"
+local Math = require "lib.utils.math"
 local GameTitle = require "gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.75  -- length of the hand-off animation
 -- The real work finishes in a handful of frames on any modern machine, so an
 -- honest bar would flash 0 -> 100% and then sit full while a minimum-duration
--- timer ran out — the dead air this screen used to have. Pacing the bar's
--- *target* instead keeps it moving for the whole time the screen is up: it
--- fills over this long, or slower when the work genuinely takes longer. This is
--- the only floor on how long the screen stays up; the outro gates on the bar.
+-- timer ran out. Pacing the bar's *target* instead keeps it moving for the whole
+-- time the screen is up: it fills over this long, or slower when the work
+-- genuinely takes longer. This is the only floor on how long the screen stays
+-- up; the outro gates on the bar.
 local MIN_FILL_TIME = 1.0
 -- Fraction of the outro spent fading the bar block out. Shorter than the whole
 -- outro so the title finishes travelling against a clean screen.
@@ -51,6 +52,14 @@ local Loading = {}
 
 local function easeOutCubic(t)
     return 1 - (1 - t) ^ 3
+end
+
+-- Ticks a background layer and eases its opacity up. nil until the task that
+-- builds it has run, so both callers can fire from the first frame.
+local function fadeInSky(layer, dt)
+    if not layer then return end
+    layer:update(dt)
+    layer.alpha = Math.clamp01(layer.alpha + dt * SKY_FADE_SPEED)
 end
 
 -- The audio the game needs before the menu can make a sound. Music streams
@@ -194,9 +203,8 @@ function Loading:isLoaded()
     return self.index > #self.tasks
 end
 
--- Advances the running task by one resume. coroutine.resume already isolates
--- errors the way the old per-task pcall did, so a task that throws is recorded
--- and the queue moves on.
+-- Advances the running task by one resume. coroutine.resume isolates errors, so
+-- a task that throws is recorded and the queue moves on.
 function Loading:step()
     local task = self.tasks[self.index]
     if not task then return end
@@ -211,7 +219,7 @@ function Loading:step()
     if not ok then
         self:recordFailure(task.label, value)
     elseif type(value) == "number" then
-        self.partial = math.max(0, math.min(1, value))
+        self.partial = Math.clamp01(value)
     end
 
     if coroutine.status(self.coroutine) == "dead" then
@@ -224,7 +232,7 @@ end
 
 function Loading:update(dt)
     -- Clamp dt so a single stalled frame (a heavy task, a window-mode change)
-    -- can't fast-forward past MIN_DURATION and skip the screen.
+    -- can't fast-forward past MIN_FILL_TIME and skip the screen.
     dt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
 
@@ -249,15 +257,8 @@ function Loading:update(dt)
 
     self.bar:update(dt)
 
-    if self.nebula then
-        self.nebula:update(dt)
-        self.nebula.alpha = math.min(1, self.nebula.alpha + dt * SKY_FADE_SPEED)
-    end
-
-    if self.stars then
-        self.stars:update(dt)
-        self.stars.alpha = math.min(1, self.stars.alpha + dt * SKY_FADE_SPEED)
-    end
+    fadeInSky(self.nebula, dt)
+    fadeInSky(self.stars, dt)
 
     -- Animated trailing dots on the heading.
     self.dotTimer = self.dotTimer + dt
@@ -280,13 +281,11 @@ local function drawHeading(text, dots, y, alpha)
     local font = UI.Theme.font("heading")
     local width = font:getWidth(text)
     local x = (love.graphics.getWidth() - width) / 2
-    local color = UI.Theme.colors.text
 
     UI.Label.draw{ text = text, x = x, y = y, width = width, align = "left",
-                   font = font, color = { color[1], color[2], color[3], alpha } }
+                   font = font, alpha = alpha }
     UI.Label.draw{ text = dots, x = x + width, y = y, width = font:getWidth("..."),
-                   align = "left", font = font,
-                   color = { color[1], color[2], color[3], alpha } }
+                   align = "left", font = font, alpha = alpha }
 end
 
 function Loading:draw()
@@ -313,16 +312,14 @@ function Loading:draw()
     local barH = UI.Theme.px(BAR_H)
     local barX, barY = (w - barW) / 2, h * BAR_Y_RATIO
 
-    -- Task label on the left, percentage on the right, both just above the bar:
-    -- the readout reads as a caption on the bar rather than as text floating
-    -- inside it, and the label no longer sits orphaned underneath.
+    -- Task label on the left, percentage on the right, both just above the bar,
+    -- so the readout reads as a caption rather than text floating inside it.
     local font = UI.Theme.font("small")
     local captionY = barY - font:getHeight() - UI.Theme.px(8)
     UI.Theme.pushFont(font)
-    local dim = UI.Theme.colors.textDim
-    love.graphics.setColor(dim[1], dim[2], dim[3], alpha)
+    UI.Theme.setColor(UI.Theme.colors.textDim, alpha)
     love.graphics.printf(self.label or "", barX, captionY, barW, "left")
-    love.graphics.printf(math.floor(self.bar.shown * 100 + 0.5) .. "%", barX, captionY, barW, "right")
+    love.graphics.printf(Math.round(self.bar.shown * 100) .. "%", barX, captionY, barW, "right")
     UI.Theme.popFont()
 
     self.bar.alpha = alpha
@@ -331,12 +328,12 @@ function Loading:draw()
     -- Non-fatal load failures: the game still boots, but silently missing audio
     -- would otherwise look like a bug in the game rather than in its install.
     if #self.failures > 0 then
-        local warn = UI.Theme.colors.warning
         UI.Label.draw{
             text = I18n.t("loading.failed", { n = #self.failures }),
             y = barY + barH + UI.Theme.px(14),
             font = font,
-            color = { warn[1], warn[2], warn[3], alpha },
+            color = UI.Theme.colors.warning,
+            alpha = alpha,
         }
     end
 end

@@ -16,21 +16,15 @@
 local StateManager = require "lib.stateManager"
 local Assets = require "lib.assets"
 local Settings = require "lib.settings"
-local RPC = require "lib.discordRPC"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
-local Audios = require "lib.utils.audios"
 
 local HEADING_Y_RATIO = 0.12
 local PANEL_Y_RATIO   = 0.32
 -- Design-space px, scaled through Theme.px at use.
 local PANEL_PAD       = 20
 local PANEL_MAX_W     = 560
-local HINT_BOTTOM     = 48 -- distance from the bottom edge to the hint line
-
--- See mainMenu.lua: the focus blip fires on every arrow press.
-local FOCUS_BLIP_VOLUME = 0.35
 
 -- How long the player has to confirm a graphics change before it reverts on its
 -- own. A resolution or fullscreen mode the monitor can't display leaves them
@@ -46,30 +40,29 @@ local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
 
 local Options = {}
 
--- Index of a language code within the available-locales list (1 if not found),
--- used to sync the Language selector's display to the saved setting.
-local function languageIndexFor(code)
-    for i, entry in ipairs(I18n.available()) do
-        if entry.code == code then return i end
+-- Index of the first entry `matches` accepts, or 1 when nothing does. Every
+-- selector here has to point at the saved value, and a saved value no longer on
+-- offer (a resolution the monitor lost) falls back to the first option rather
+-- than to nothing.
+local function indexWhere(list, matches)
+    for i, entry in ipairs(list) do
+        if matches(entry) then return i end
     end
     return 1
 end
 
--- Index into RESOLUTIONS matching the saved settings (1 if not found).
+local function languageIndexFor(code)
+    return indexWhere(I18n.available(), function(e) return e.code == code end)
+end
+
 local function resolutionIndexFor(settings)
-    for i, res in ipairs(RESOLUTIONS) do
-        if res[1] == settings.res_x and res[2] == settings.res_y then
-            return i
-        end
-    end
-    return 1
+    return indexWhere(RESOLUTIONS, function(r)
+        return r[1] == settings.res_x and r[2] == settings.res_y
+    end)
 end
 
 local function windowModeIndexFor(mode)
-    for i, name in ipairs(WINDOW_MODES) do
-        if name == mode then return i end
-    end
-    return 1
+    return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
 
 -- Keeps derived enabled-states in sync with the pending graphics changes.
@@ -171,15 +164,36 @@ end
 -- Leaves for whichever state opened this screen. Pending graphics edits are
 -- simply dropped (resetPending on the next visit).
 function Options:goBack()
-    Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+    UI.Sfx.select()
     StateManager.fadeTo(self.returnTo)
+end
+
+-- One of the three volume rows. They differ only in how the value reaches the
+-- audio system and whether the release blips: Music passes blip = false because
+-- it retunes live and is already its own preview, so an sfx click on top would
+-- demo the wrong channel. The i18n key, description key and settings field are
+-- all `key` by construction.
+function Options:buildVolumeSlider(key, apply, blip)
+    local slider = UI.Slider.new{
+        label = function() return I18n.t("options." .. key) end,
+        value = self.settings[key],
+        step = 0.1,
+        onChange = function(value) -- live, fires throughout a drag
+            self.settings[key] = value
+            apply(value)
+        end,
+        onRelease = function() -- final, fires when the change settles
+            if blip then UI.Sfx.select() end
+            Settings.save(self.settings)
+        end,
+    }
+    slider.descKey = "options.desc." .. key
+    return slider
 end
 
 -- The two modals this screen owns. Built once with the widgets.
 function Options:buildDialogs()
-    local function blip()
-        Audio.play("sfx", Audios.clone("menuBlipSelect"), { volume = FOCUS_BLIP_VOLUME })
-    end
+    local blip = UI.Sfx.focus
 
     self.quitDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.quit.title") end,
@@ -332,10 +346,7 @@ function Options:enter(previousName, opts)
     -- drag capture that keeps a slider tracking off-widget).
     if not self.group then
         self.group = UI.FocusGroup.new()
-        -- Keyboard navigation used to be silent while every click blipped.
-        self.group.onFocusChanged = function()
-            Audio.play("sfx", Audios.clone("menuBlipSelect"), { volume = FOCUS_BLIP_VOLUME })
-        end
+        self.group.onFocusChanged = UI.Sfx.focus
     end
 
     local function persist()
@@ -351,49 +362,11 @@ function Options:enter(previousName, opts)
         -- immediately. Master scales every channel via love.audio.setVolume;
         -- Music/SFX are independent channels (see lib/audio.lua) so lowering
         -- one doesn't affect the other.
-        self.volumeSlider = UI.Slider.new{
-            label = function() return I18n.t("options.volume") end,
-            value = self.settings.volume,
-            step = 0.1,
-            onChange = function(value) -- live, fires throughout a drag
-                self.settings.volume = value
-                love.audio.setVolume(value)
-            end,
-            onRelease = function() -- final, fires when the change settles
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
-                persist()
-            end,
-        }
-        self.volumeSlider.descKey = 'options.desc.volume'
-
-        self.musicVolumeSlider = UI.Slider.new{
-            label = function() return I18n.t("options.musicVolume") end,
-            value = self.settings.musicVolume,
-            step = 0.1,
-            onChange = function(value)
-                self.settings.musicVolume = value
-                Audio.setVolume("music", value)
-            end,
-            -- No blip: the music is already playing and retunes live, so it is
-            -- its own preview. An sfx click on top would demo the wrong channel.
-            onRelease = persist,
-        }
-        self.musicVolumeSlider.descKey = 'options.desc.musicVolume'
-
-        self.sfxVolumeSlider = UI.Slider.new{
-            label = function() return I18n.t("options.sfxVolume") end,
-            value = self.settings.sfxVolume,
-            step = 0.1,
-            onChange = function(value)
-                self.settings.sfxVolume = value
-                Audio.setVolume("sfx", value)
-            end,
-            onRelease = function()
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
-                persist()
-            end,
-        }
-        self.sfxVolumeSlider.descKey = 'options.desc.sfxVolume'
+        self.volumeSlider = self:buildVolumeSlider("volume", love.audio.setVolume, true)
+        self.musicVolumeSlider = self:buildVolumeSlider("musicVolume",
+            function(v) Audio.setVolume("music", v) end, false)
+        self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
+            function(v) Audio.setVolume("sfx", v) end, true)
 
         -- Language also applies live and persists immediately (General-tab
         -- behavior, like Volume). Options are the {code, name} locale entries.
@@ -402,7 +375,7 @@ function Options:enter(previousName, opts)
             options = I18n.available(),
             format = function(entry) return entry.name end,
             onChange = function(entry)
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 self.settings.language = entry.code
                 I18n.setLanguage(entry.code)
                 persist()
@@ -416,7 +389,7 @@ function Options:enter(previousName, opts)
             options = RESOLUTIONS,
             format = function(o) return o[1] .. "x" .. o[2] end,
             onChange = function(_, index)
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 self.pending.resIndex = index
                 self:syncEnabledStates()
             end,
@@ -428,7 +401,7 @@ function Options:enter(previousName, opts)
             options = WINDOW_MODES,
             format = function(mode) return I18n.t("options.windowMode." .. mode) end,
             onChange = function(mode)
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 self.pending.windowMode = mode
                 self:syncEnabledStates()
             end,
@@ -438,7 +411,7 @@ function Options:enter(previousName, opts)
         self.vsyncToggle = UI.Toggle.new{
             label = function() return I18n.t("options.vsync") end,
             onChange = function(value)
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 self.pending.vsync = value and 1 or 0
                 self:syncEnabledStates()
             end,
@@ -450,7 +423,7 @@ function Options:enter(previousName, opts)
         self.applyButton = UI.Button.new{
             label = function() return I18n.t("options.apply") end,
             onSelect = function()
-                Audio.play("sfx", Audios.clone("menuBlipSelect"))
+                UI.Sfx.press()
                 self:applyPending()
             end,
         }
@@ -467,12 +440,11 @@ function Options:enter(previousName, opts)
         self.backButton.descKey = 'options.desc.back'
 
         -- Shown only when returnTo == "game" (see footerButtons). Abandoning a
-        -- run is destructive and used to happen on a single click, so it now
-        -- goes through a confirmation.
+        -- run is destructive, so it goes through a confirmation.
         self.quitButton = UI.Button.new{
             label = function() return I18n.t("options.quit") end,
             onSelect = function()
-                Audio.play("sfx", Audios.clone("menuBlipSelect"))
+                UI.Sfx.press()
                 self.quitDialog:openDialog()
             end,
         }
@@ -493,7 +465,7 @@ function Options:enter(previousName, opts)
                 function() return I18n.t("options.tab.graphics") end,
             },
             onChange = function(_, index)
-                Audio.play("sfx", Audios.clone("menuBlipSelect2"))
+                UI.Sfx.select()
                 self:selectTab(index)
             end,
         }
@@ -515,55 +487,28 @@ function Options:enter(previousName, opts)
 end
 
 -- A modal owns every input while it's up; the screen behind keeps drawing but
--- stops responding.
-function Options:update(dt)
-    local dialog = self:activeDialog()
-    if dialog then
-        dialog:update(dt)
-        return
-    end
-    self.group:update(dt)
+-- stops responding. Dialog presents the same verbs a FocusGroup does, so routing
+-- is a choice of receiver rather than a branch per verb.
+function Options:inputTarget()
+    return self:activeDialog() or self.group
 end
 
-function Options:keypressed(key)
-    local dialog = self:activeDialog()
-    if dialog then
-        dialog:keypressed(key)
-        return
-    end
-    if key == "escape" then
-        self:goBack()
-        return
-    end
-    self.group:keypressed(key)
-end
+function Options:update(dt)            self:inputTarget():update(dt)            end
+function Options:mousepressed(x, y, b) self:inputTarget():mousepressed(x, y, b) end
+function Options:mousereleased(x, y, b) self:inputTarget():mousereleased(x, y, b) end
 
 function Options:mousemoved(x, y)
     self.mouseX, self.mouseY = x, y
-    local dialog = self:activeDialog()
-    if dialog then
-        dialog:mousemoved(x, y)
-        return
-    end
-    self.group:mousemoved(x, y)
+    self:inputTarget():mousemoved(x, y)
 end
 
-function Options:mousepressed(x, y, button)
+-- Written out rather than routed, because Esc sits between the two receivers: a
+-- modal's own Esc cancels the modal, and only an unmodal screen leaves.
+function Options:keypressed(key)
     local dialog = self:activeDialog()
-    if dialog then
-        dialog:mousepressed(x, y, button)
-        return
-    end
-    self.group:mousepressed(x, y, button)
-end
-
-function Options:mousereleased(x, y, button)
-    local dialog = self:activeDialog()
-    if dialog then
-        dialog:mousereleased(x, y, button)
-        return
-    end
-    self.group:mousereleased(x, y, button)
+    if dialog then return dialog:keypressed(key) end
+    if key == "escape" then return self:goBack() end
+    return self.group:keypressed(key)
 end
 
 -- Draw only. Every rect here was computed by Options:layout().
@@ -605,13 +550,7 @@ function Options:draw()
         }
     end
 
-    local hint = I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general")
-    UI.Label.draw{
-        text = hint,
-        y = h - UI.Theme.px(HINT_BOTTOM),
-        font = UI.Theme.font("small"),
-        color = UI.Theme.colors.textDim,
-    }
+    UI.Label.hint(I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general"))
 
     -- Modals paint over everything, including the hint.
     local dialog = self:activeDialog()
@@ -619,8 +558,7 @@ function Options:draw()
 
     -- Asked for every frame the cursor is over an enabled control (see
     -- UI.Cursor for why this can't live in mousemoved).
-    local hoverTarget = dialog or self.group
-    if self.mouseX and hoverTarget:hovering(self.mouseX, self.mouseY) then
+    if self.mouseX and self:inputTarget():hovering(self.mouseX, self.mouseY) then
         UI.Cursor.want("hand")
     end
 end
