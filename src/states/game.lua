@@ -18,7 +18,7 @@ function Game:buildPresence()
         timestamps = { start = self.runStartedAt },
         assets = {
             large_image = "game_logo",
-            large_text = "Game",
+            large_text = "TD Idle",
             small_image = "playing_icon",
             small_text = "In game",
         },

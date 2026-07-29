@@ -161,7 +161,7 @@ function Stars:draw()
     love.graphics.setPointSize(2)
     -- White: per-point colours are multiplied by the current draw colour, which
     -- the constellation pass above left tinted.
-    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setColor(0.65, 0.75, 1, 1)
     love.graphics.points(points)
     love.graphics.setPointSize(prevSize)
 end

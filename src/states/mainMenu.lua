@@ -42,7 +42,7 @@ local MENU_PRESENCE = {
     timestamps = { start = SESSION_START },
     assets = {
         large_image = "game_logo",
-        large_text = "Game",
+        large_text = "TD Idle",
         small_image = "playing_icon",
         small_text = "In the menu",
     },
@@ -107,6 +107,15 @@ function MainMenu:enter()
     end
     self.stars.alpha = 1 -- loading may have handed it over mid-fade
 
+    -- Same hand-off, same fallback: the nebula is baked by the loading screen
+    -- and inherited here, and re-entering the menu keeps the one we already
+    -- have rather than baking a different set of clouds.
+    self.nebula = self.nebula or Assets.get("nebula")
+    if not self.nebula then
+        self.nebula = Particles.Nebula.new{}:bake()
+    end
+    self.nebula.alpha = 1
+
     -- The menu itself is stateless between visits, so build it just once.
     -- Labels are functions so they re-read the active language every draw; a
     -- language change from Options updates the menu with no rebuild.
@@ -160,6 +169,7 @@ function MainMenu:layout()
 end
 
 function MainMenu:update(dt)
+    self.nebula:update(dt)
     self.stars:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)
@@ -225,6 +235,10 @@ end
 -- Draw only. Every rect here was computed by MainMenu:layout().
 function MainMenu:draw()
     local h = love.graphics.getHeight()
+
+    -- Back to front: gas, then the fixed sky on top of it, then the shooting
+    -- stars in front of both.
+    self.nebula:draw()
 
     self.stars:draw()
 

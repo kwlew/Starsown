@@ -1,16 +1,21 @@
+-- Starfield.lua
+-- TODO: Make a meteor shower mode.
+-- spawnMin = config.spawnMin or 0.4,
+-- spawnMax = config.spawnMax or 0.7,
+-- Spawns for the meteor shower.
+
 local Theme = require "lib.ui.theme"
 local Math = require "lib.utils.math"
 local Burst = require "lib.particles.burst"
 local Audio = require "lib.audio"
 local Audios = require "lib.utils.audios"
 
--- Star palette, as (streak colour, colour it flares to on the way out).
--- Ordinary stars run white and burn out through a warm red. The rare golden one
--- stays in golds and ambers the whole way instead, so it never stops looking
--- like the one worth chasing -- including while it dies, which is exactly when
--- a player is most likely to still be reaching for it.
+-- Star palette
+-- Normal
 local WHITE       = { 1, 1, 1 }
-local WHITE_FLARE = { 0.95, 0.2, 0.15 }
+local WHITE_FLARE = { 1, 0.2, 0.15 }
+
+-- Golden
 local GOLD        = { 1, 0.82, 0.35 }
 local GOLD_FLARE  = { 1, 0.6, 0.12 }
 
@@ -25,17 +30,17 @@ function Starfield.new(config)
         -- Click radius: how far from a star's center a click can be and still hit it. The
         clickRadius = config.clickRadius or 20,
         timer = 0,
-        spawnMin = config.spawnMin or 1.5,
-        spawnMax = config.spawnMax or 2.5,
+        spawnMin = config.spawnMin or 0.8,
+        spawnMax = config.spawnMax or 1.3,
         speedMin = config.speedMin or 100,
         speedMax = config.speedMax or 450,
-        lengthMin = config.lengthMin or 200,
+        lengthMin = config.lengthMin or 120,
         lengthMax = config.lengthMax or 500,
         lifeMin = config.lifeMin or 1.5,
         lifeMax = config.lifeMax or 5.2,
         dyingThreshold = config.dyingThreshold or 0.5,
         -- GoldenStar configurations.
-        goldenChance = config.goldenChance or 0.01,
+        goldenChance = config.goldenChance or 0.003,
         goldenSpeedMin = config.goldenSpeedMin or 70,
         goldenSpeedMax = config.goldenSpeedMax or 110,
         goldenLifeMin = config.goldenLifeMin or 9,
@@ -54,8 +59,8 @@ function Starfield:spawnStar()
         lifeMin, lifeMax = self.goldenLifeMin, self.goldenLifeMax
     end
 
-    local x = Math.randRange(-0.05 * w, 0.35 * w)
-    local y = Math.randRange(-0.05 * h, 0.35 * h)
+    local x = Math.randRange(-0.05 * w, 0.65 * w)
+    local y = Math.randRange(-0.05 * h, 0.03 * h)
     local angle = math.rad(Math.randRange(42, 48))
     local speed = Math.randRange(speedMin, speedMax)
     self.stars[#self.stars + 1] = {
@@ -75,9 +80,7 @@ function Starfield:spawnStar()
     }
 end
 
--- How far into its "dying" phase a star is: 0 before dyingThreshold of its
--- lifetime, ramping to 1 right as it expires. Drives both the slowdown and
--- the white -> red color shift so the two land together as one beat.
+-- How dead the star is.
 local function dyingFactor(s, threshold)
     local lifeRatio = s.life / s.maxLife
     if lifeRatio <= threshold then return 0 end
@@ -92,13 +95,7 @@ local POP_FADE = 0.7
 -- while any part of its halo could still be showing.
 local CULL_MARGIN = 64
 
--- Has the whole streak — head and tail — left the window on the same side?
--- Stars spawn upper-left and travel down-right, so in practice this is the
--- bottom/right edges, but the general test costs nothing and can't be wrong if
--- the spawn arc is ever retuned.
---
--- Without this a slow star runs out its full maxLife off-screen, rebuilding a
--- 100-vertex trail mesh every frame the whole time.
+-- Culling for stars off-screen.
 local function fullyOffScreen(s)
     local w, h = love.graphics.getDimensions()
     local speed = math.sqrt(s.vx * s.vx + s.vy * s.vy)
@@ -129,10 +126,7 @@ function Starfield:update(dt)
         local s = self.stars[i]
 
         if s.popped then
-            -- Already exploded: the head left with the burst and only the
-            -- streak remains, holding still while it fades. Its life is frozen
-            -- rather than left to age on, so it keeps the exact color and
-            -- opacity it had at the moment of the click.
+            -- If popped wait for it to fade and then remove.
             s.popped = s.popped + dt
             if s.popped >= POP_FADE then
                 table.remove(self.stars, i)
@@ -144,7 +138,7 @@ function Starfield:update(dt)
             -- speed. Computed fresh from the life ratio each frame (not applied
             -- by shrinking s.vx in place), so the curve is frame-rate independent.
             local dying = dyingFactor(s, self.dyingThreshold)
-            local speedScale = 1 - dying * 0.85
+            local speedScale = 1 - dying * 0.95
 
             s.x = s.x + s.vx * speedScale * dt
             s.y = s.y + s.vy * speedScale * dt
@@ -162,19 +156,10 @@ end
 -- FLARE_FRAC is the fraction of that window where the glow surge peaks.
 local FLARE_FRAC = 0.35
 
--- Peak additive-glow multiplier at the top of the flare. Kept close to 1 so a
--- dying star brightens noticeably without blooming into a blob that dominates
--- the menu behind it. Note this has to be cut further than it looks: the softer
--- flare colours are closer to white, so they are *brighter* in luminance than
--- the saturated red they replaced and give back some of what this takes away.
+-- Additive glow modifier.
 local FLARE_GLOW = 1.3
 
--- Fraction of the dying window spent shifting from a star's colour to its flare
--- colour. Deliberately much shorter than the glow's surge: the halo is additive,
--- so it saturates the strongest channel first and then keeps pushing the others.
--- A core still part white while the glow peaks therefore washes out to white
--- rather than reading as its flare colour, even though the trail behind it is
--- the intended one.
+-- Fraction of the dying window spent shifting colors to dead color.
 local COLOR_FRAC = 0.12
 
 -- For a star `dying` (0..1) into its dying window, returns head/core opacity,
@@ -207,20 +192,10 @@ local function isGolden(s)
     return s.golden
 end
 
--- Trail geometry. conf.lua runs with msaa = 0, so nothing smooths polygon edges
--- for us: a hard-edged quad tapering to a sub-pixel sliver stair-steps badly,
--- and worst on slow stars, whose streak creeps outward only a pixel or two per
--- frame so the jaggies hold still long enough to read. The streak is therefore
--- built as a feathered strip — a solid core flanked by fully transparent edge
--- columns — which fades the silhouette out over TRAIL_FEATHER px and does the
--- anti-aliasing in vertex alpha, independent of MSAA.
+-- Trail geometry
 local TRAIL_SEGMENTS = 24  -- lengthwise subdivisions; more = smoother falloff
 local TRAIL_CORE_W   = 2.5 -- half-width of the solid core at the head, px
 local TRAIL_FEATHER  = 1.5 -- soft edge on each side of the core, px
--- A streak still growing toward its full length stays proportionally narrow, so
--- a 10px stub reads as a thin scratch rather than a wedge nearly as wide as it
--- is long — which is what the old fixed 3px half-width drew, for seconds on end
--- on a slow star that never travels far enough to earn a full streak.
 local TRAIL_WIDTH_RAMP = 60
 
 -- One reused mesh for every star's trail: a (TRAIL_SEGMENTS + 1) x 4 grid of
@@ -265,12 +240,7 @@ local function drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
     -- s.scale widens the streak for golden stars to match their heavier head.
     local scale = math.min(1, length / TRAIL_WIDTH_RAMP) * (s.scale or 1)
     local coreW = TRAIL_CORE_W * scale
-    -- A short cone reaching ahead of the head, so the leading edge comes to a
-    -- soft point rather than a flat hard cap. Measured in px, and given a
-    -- vertex column of its own instead of a slice of the even spacing below:
-    -- spaced evenly it stretched across a whole segment, so the streak stayed
-    -- thin and dim for ~17px behind the star and the head's halo looked like it
-    -- was running ahead of its own trail.
+    -- A short cone reaching ahead of the head.
     local nose = math.min(coreW + TRAIL_FEATHER, length)
 
     for i = 0, TRAIL_SEGMENTS do
@@ -335,17 +305,7 @@ local function drawStar(s, dyingThreshold)
         return
     end
 
-    -- Halo, THEN streak, THEN core dot. The order carries the whole effect: the
-    -- halo is additive and spans ~40px, so drawn on top it brightened and
-    -- hue-shifted the first stretch of trail it covered, making that stretch
-    -- read as a different colour from the rest of an otherwise uniform streak.
-    -- Underneath, it only shows where the streak isn't — so the trail keeps one
-    -- consistent colour end to end and the halo reads as light around the star.
-    --
-    -- Once the star is dying the halo is tinted with the flare colour rather
-    -- than the core's current one. Being additive it can only ever add to a
-    -- channel, so tinting it with a part-white core drags green and blue up and
-    -- blows the head out to white.
+    -- Order of drawing.
     local hs = 4 * (s.scale or 1)
     local headR = (2 + math.max(0, glowI - 1)) * (s.scale or 1)
     local glowColor = colorMix > 0 and s.flare or { r, g, b }

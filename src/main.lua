@@ -12,7 +12,7 @@ local optionsState = require "states.options"
 local gameState = require "states.game"
 
 function love.load()
-    love.window.setTitle("Game")
+    love.window.setTitle("TD Idle")
 
     -- Size the UI to this window before anything asks the theme for a font or a
     -- metric — the loading screen warms the font cache on its very first task.

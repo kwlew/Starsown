@@ -35,7 +35,7 @@ local MIN_FILL_TIME = 1.0
 -- Fraction of the outro spent fading the bar block out. Shorter than the whole
 -- outro so the title finishes travelling against a clean screen.
 local FURNITURE_FADE = 0.45
-local STAR_FADE_SPEED = 1.5 -- how fast the sky fades up, in alpha per second
+local SKY_FADE_SPEED = 1.5 -- how fast the sky (nebula + stars) fades up, in alpha per second
 
 -- Loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1.
 local TITLE_SCALE = 0.62
@@ -94,7 +94,7 @@ function Loading:buildTasks()
         },
         {
             label = I18n.t("loading.task.world"),
-            weight = 2,
+            weight = 3,
             run = function(yield)
                 -- Built here, not in the menu, and shared through Assets: this
                 -- screen fades it in behind the bar and the menu then inherits
@@ -103,6 +103,15 @@ function Loading:buildTasks()
                 stars:spawnStars()
                 Assets.set("stars", stars)
                 self.stars = stars
+                yield(0.5)
+
+                -- The nebula bakes its canvases here for the same reason, and
+                -- because baking is the one genuinely expensive thing this
+                -- screen does — doing it in the menu would hitch the hand-off.
+                local nebula = Particles.Nebula.new{ alpha = 0 }
+                nebula:bake()
+                Assets.set("nebula", nebula)
+                self.nebula = nebula
                 yield(1)
             end,
         },
@@ -150,6 +159,7 @@ function Loading:enter()
     self.bar = UI.ProgressBar.new{ showPercent = false, fillSpeed = 12 }
     self.title = GameTitle.build()
     self.stars = nil
+    self.nebula = nil
 
     self.dotTimer = 0
     self.dotCount = 0
@@ -239,9 +249,14 @@ function Loading:update(dt)
 
     self.bar:update(dt)
 
+    if self.nebula then
+        self.nebula:update(dt)
+        self.nebula.alpha = math.min(1, self.nebula.alpha + dt * SKY_FADE_SPEED)
+    end
+
     if self.stars then
         self.stars:update(dt)
-        self.stars.alpha = math.min(1, self.stars.alpha + dt * STAR_FADE_SPEED)
+        self.stars.alpha = math.min(1, self.stars.alpha + dt * SKY_FADE_SPEED)
     end
 
     -- Animated trailing dots on the heading.
@@ -281,6 +296,8 @@ function Loading:draw()
     -- an otherwise empty screen.
     local alpha = 1 - math.min(1, outro / FURNITURE_FADE)
 
+    -- Gas first: the stars are in front of it, not behind it.
+    if self.nebula then self.nebula:draw() end
     if self.stars then self.stars:draw() end
 
     -- Title, easing from its own smaller pose into the menu's exact one.

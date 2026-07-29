@@ -10,5 +10,6 @@
 return {
     Stars = require "lib.particles.stars",
     Starfield = require "lib.particles.starfield",
+    Nebula = require "lib.particles.nebula",
     Burst = require "lib.particles.burst",
 }
