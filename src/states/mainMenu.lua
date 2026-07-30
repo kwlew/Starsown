@@ -2,18 +2,19 @@
 -- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
 -- themed buttons.
 
-local StateManager = require "lib.stateManager"
-local Assets = require "lib.assets"
-local Presence = require "lib.presence"
-local Menu = require "lib.menu"
-local TextFactory = require "lib.textFactory"
-local UI = require "lib.ui"
-local I18n = require "lib.i18n"
-local Particles = require "lib.particles"
-local GithubMark = require "lib.ui.githubMark"
-local GameTitle = require "gameTitle"
-local Audio = require "lib.audio"
-local Audios = require "lib.utils.audios"
+local StateManager  = require "lib.stateManager"
+local Assets        = require "lib.assets"
+local Presence      = require "lib.presence"
+local Menu          = require "lib.menu"
+local TextFactory   = require "lib.textFactory"
+local UI            = require "lib.ui"
+local I18n          = require "lib.i18n"
+local Particles     = require "lib.particles"
+local GithubMark    = require "lib.ui.githubMark"
+local GameTitle     = require "gameTitle"
+local Audio         = require "lib.audio"
+local Audios        = require "lib.utils.audios"
+local Globals       = require "globals"
 
 -- Layout is expressed as fractions of the window so it survives resizing and
 -- runs at any resolution, instead of hardcoded pixel offsets. The title's ratio
@@ -38,7 +39,7 @@ local buildTitle = GameTitle.build
 -- baked in here so it can track window resizes).
 local function buildVersionLabel()
     return TextFactory:new{
-        text = "v" .. "0.1.0",
+        text = "v" .. Globals.game.version,
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
@@ -94,7 +95,7 @@ function MainMenu:enter()
                 UI.Sfx.select()
                 -- Stamped here rather than in Game:enter so the run clock starts
                 -- when Play was pressed, not when the fade finishes.
-                StateManager.fadeTo("game", { startedAt = os.time() })
+                StateManager.fadeTo("game")
             end },
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()

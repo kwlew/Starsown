@@ -8,10 +8,11 @@
 
 local TextFactory = require "lib.textFactory"
 local UI = require "lib.ui"
+local Globals = require "globals"
 
 local GameTitle = {}
 
-GameTitle.TEXT = "TD Idle"
+GameTitle.TEXT = Globals.game.name
 
 -- Vertical position on the main menu, as a fraction of the window height.
 -- The loading screen's outro targets exactly this.

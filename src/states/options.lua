@@ -19,6 +19,8 @@ local Settings = require "lib.settings"
 local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
+local Presence = require "lib.presence"
+local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
 local PANEL_Y_RATIO   = 0.32
@@ -331,6 +333,8 @@ end
 -- back to the state we actually came from. The guard stops Options from
 -- targeting itself if it's ever re-entered.
 function Options:enter(previousName, opts)
+    Presence.set{ details = "Options", state = "Changing settings",
+                    smallText = "Options", startedAt = Globals.game.startedAt }
     local returnTo = (type(opts) == "table" and opts.returnTo) or previousName
     if not returnTo or returnTo == "options" then returnTo = "mainMenu" end
     self.returnTo = returnTo

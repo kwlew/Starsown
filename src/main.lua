@@ -10,18 +10,16 @@ local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
 local optionsState = require "states.options"
 local gameState = require "states.game"
+local Globals = require "globals"
 
 function love.load()
-    love.window.setTitle("TD Idle")
+    love.window.setTitle(Globals.game.name)
 
     -- Size the UI to this window before anything asks the theme for a font or a
     -- metric — the loading screen warms the font cache on its very first task.
     UI.Theme.rescale()
 
-    -- LÖVE seeds its own love.math RNG but not the stdlib math.random, so
-    -- without this every "random" layout (stars, constellations, shooting
-    -- stars) would be identical on every launch.
-    math.randomseed(os.time())
+    Globals.init()
 
     -- Load translations and select the saved language before any screen draws,
     -- so even the loading screen's own text is localized.
@@ -47,9 +45,7 @@ function love.update(dt)
     Presence.update(dt)
 end
 
--- Closes the Discord IPC connection on the way out so the presence clears
--- immediately instead of waiting for Discord to notice the process died.
--- Must not return a truthy value: that would abort the quit.
+-- Closes the Discord IPC connection.
 function love.quit()
     Presence.shutdown()
 end

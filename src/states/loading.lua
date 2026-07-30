@@ -62,6 +62,14 @@ local function fadeInSky(layer, dt)
     layer.alpha = Math.clamp01(layer.alpha + dt * SKY_FADE_SPEED)
 end
 
+local function buildVersionLabel()
+    return TextFactory:new{
+        text = "v" .. Globals.game.version,
+        font = UI.Theme.font("small"),
+        color = UI.Theme.colors.textDim,
+    }
+end
+
 -- The audio the game needs before the menu can make a sound. Music streams
 -- (long, one at a time); sfx are static so they're already decoded when a star
 -- pops mid-frame.
