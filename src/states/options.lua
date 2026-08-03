@@ -35,6 +35,11 @@ local REVERT_SECONDS = 10
 
 local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
 
+-- Owned by Settings, not this screen: conf.lua has to validate against the same
+-- list at boot (see the comment there). A driver may grant fewer samples than
+-- asked for — Settings.applyGraphics writes back what it actually got.
+local MSAA = Settings.MSAA_LEVELS
+
 -- Window modes in selector order. Display names come from the active locale
 -- (options.windowMode.<mode>): "Borderless" is desktop-type fullscreen,
 -- "Fullscreen" is exclusive.
@@ -63,6 +68,10 @@ local function resolutionIndexFor(settings)
     end)
 end
 
+local function msaaIndexFor(settings)
+    return indexWhere(MSAA, function(s) return s == settings.msaa end)
+end
+
 local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
@@ -84,6 +93,7 @@ end
 -- True when the graphics widgets differ from what's actually in effect.
 function Options:isDirty()
     return self.pending.resIndex ~= resolutionIndexFor(self.settings)
+        or self.pending.msaa ~= self.settings.msaa
         or self.pending.windowMode ~= self.settings.windowMode
         or self.pending.vsync ~= self.settings.vsync
 end
@@ -91,12 +101,24 @@ end
 -- Resets pending graphics changes back to the live settings and syncs the
 -- widget displays (setting fields directly never fires onChange).
 function Options:resetPending()
+    -- Both the pending value and the selector's position come from the same
+    -- index, so they can never disagree. That matters for a saved msaa we don't
+    -- offer (an older build wrote an index here, and a driver can grant an
+    -- off-list count): the row falls back to the first option and Apply lights
+    -- up, which is the player's way out, rather than displaying one thing while
+    -- pending holds another.
+    local msaaIndex = msaaIndexFor(self.settings)
     self.pending = {
         resIndex = resolutionIndexFor(self.settings),
+        -- The sample count itself, not an index — like windowMode and vsync,
+        -- and unlike resIndex, which has to stay an index because a resolution
+        -- is a pair.
+        msaa = MSAA[msaaIndex],
         windowMode = self.settings.windowMode,
         vsync = self.settings.vsync,
     }
     self.resolutionSelector.index = self.pending.resIndex
+    self.msaaSelector.index = msaaIndex
     self.windowModeSelector.index = windowModeIndexFor(self.pending.windowMode)
     self.vsyncToggle.value = self.pending.vsync == 1
     self:syncEnabledStates()
@@ -107,6 +129,7 @@ function Options:graphicsSnapshot()
     return {
         res_x = self.settings.res_x,
         res_y = self.settings.res_y,
+        msaa = self.settings.msaa,
         windowMode = self.settings.windowMode,
         vsync = self.settings.vsync,
     }
@@ -122,11 +145,16 @@ function Options:applyPending()
 
     local res = RESOLUTIONS[self.pending.resIndex]
     self.settings.res_x, self.settings.res_y = res[1], res[2]
+    self.settings.msaa = self.pending.msaa
     self.settings.windowMode = self.pending.windowMode
     self.settings.vsync = self.pending.vsync
 
     Settings.applyGraphics(self.settings)
-    self:syncEnabledStates() -- nothing left to apply -> grey the button out
+    -- Re-read rather than just re-checking dirtiness: applyGraphics writes back
+    -- the msaa the driver actually granted, which can be lower than what was
+    -- asked for. Without this the selector would keep showing the request, and
+    -- Apply would stay lit forever because pending never matches settings.
+    self:resetPending()
     self.revertDialog:openDialog()
 end
 
@@ -400,6 +428,21 @@ function Options:enter(previousName, opts)
         }
         self.resolutionSelector.descKey = 'options.desc.resolution'
 
+        self.msaaSelector = UI.Selector.new{
+            label = function() return I18n.t("options.msaa") end,
+            options = MSAA,
+            format = function(samples)
+                if samples == 0 then return I18n.t("options.msaaOff") end
+                return samples .. "x"
+            end,
+            onChange = function(samples)
+                UI.Sfx.select()
+                self.pending.msaa = samples
+                self:syncEnabledStates()
+            end,
+        }
+        self.msaaSelector.descKey = 'options.desc.msaa'
+
         self.windowModeSelector = UI.Selector.new{
             label = function() return I18n.t("options.displayMode") end,
             options = WINDOW_MODES,
@@ -459,8 +502,8 @@ function Options:enter(previousName, opts)
         self.tabs = {
             { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
                                              self.sfxVolumeSlider, self.languageSelector } },
-            { name = "graphics", widgets = { self.resolutionSelector, self.windowModeSelector,
-                                             self.vsyncToggle, self.applyButton } },
+            { name = "graphics", widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
+                                             self.vsyncToggle, self.applyButton, } },
         }
 
         self.tabBar = UI.TabBar.new{

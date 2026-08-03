@@ -13,6 +13,7 @@ Settings.FILENAME = "settings.lua"
 Settings.defaults = {
     windowMode = "windowed", -- "windowed" | "borderless" | "exclusive"
     vsync = 0,
+    msaa = 4,          -- multisample antialiasing samples (smooths circles/rounded corners)
     volume = 0.8,      -- master: applied via love.audio.setVolume, scales every channel
     musicVolume = 0.8, -- channel volume, see lib/audio.lua
     sfxVolume = 0.8,   -- channel volume, see lib/audio.lua
@@ -24,6 +25,19 @@ Settings.defaults = {
 -- Allowed values for string settings; anything else in the file falls back
 -- to the default (a bare type check isn't enough for enums).
 local VALID_WINDOW_MODES = { windowed = true, borderless = true, exclusive = true }
+
+-- Multisample counts the game offers, in ascending order. Lives here rather
+-- than in the Options screen because conf.lua feeds settings.msaa straight into
+-- window creation at boot, long before any UI exists: a value off this list can
+-- produce a broken framebuffer (a 6 here renders the whole window white), and
+-- then there is no way for the player to reach Options and correct it. Load
+-- must be the thing that guarantees a usable value.
+--
+-- No 1: LÖVE treats 0 and 1 alike, so it would duplicate "off".
+Settings.MSAA_LEVELS = { 0, 2, 4, 8, 16 }
+
+local VALID_MSAA = {}
+for _, samples in ipairs(Settings.MSAA_LEVELS) do VALID_MSAA[samples] = true end
 
 local function serializeValue(v)
     local t = type(v)
@@ -82,6 +96,12 @@ function Settings.load()
                     settings.windowMode = Settings.defaults.windowMode
                 end
 
+                -- An older build wrote the selector's *index* here rather than
+                -- the sample count, so files in the wild hold values like 6.
+                if not VALID_MSAA[settings.msaa] then
+                    settings.msaa = Settings.defaults.msaa
+                end
+
                 -- Language is validated for shape only here; I18n does the
                 -- authoritative check against the locale files it discovered
                 -- (unknown codes fall back to English at setLanguage time).
@@ -119,6 +139,7 @@ function Settings.applyGraphics(settings)
     local changed = flags.fullscreen ~= fullscreen
         or (fullscreen and flags.fullscreentype ~= fullscreenType)
         or flags.vsync ~= settings.vsync
+        or flags.msaa ~= settings.msaa
         -- In borderless fullscreen, getMode reports the desktop size, so the
         -- stored resolution only matters (and is only compared) outside it.
         or (settings.windowMode ~= "borderless" and (w ~= settings.res_x or h ~= settings.res_y))
@@ -127,6 +148,7 @@ function Settings.applyGraphics(settings)
     flags.fullscreen = fullscreen
     flags.fullscreentype = fullscreenType
     flags.vsync = settings.vsync
+    flags.msaa = settings.msaa
 
     -- Center the window whenever the target is windowed: carrying over the
     -- x/y captured while fullscreen (0,0) would park the title bar off the
@@ -136,6 +158,14 @@ function Settings.applyGraphics(settings)
     end
 
     love.window.setMode(settings.res_x, settings.res_y, flags)
+
+    -- A driver can grant fewer samples than were asked for (16x is commonly
+    -- capped to 8x or 4x). Store what we actually got: otherwise the comparison
+    -- above never settles, so every later call recreates the window, and the
+    -- request rather than the reality is what gets written to the save file.
+    local _, _, granted = love.window.getMode()
+    settings.msaa = granted.msaa or settings.msaa
+
     love.mouse.setVisible(true)
 end
 

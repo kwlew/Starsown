@@ -2,9 +2,7 @@
 function love.conf(t)
     t.identity = "my-game"          -- save-directory name (love.filesystem writes here)
     t.version = "11.5"
-    -- Windows: opens a console for print(). Note this also *redirects* stdout to
-    -- it, so piping love's output to a file captures nothing while it's on.
-    t.console = true
+    t.console = false
 
     t.window.title = "TD Idle"
     -- t.window.icon = "assets/icon.png"
@@ -12,7 +10,7 @@ function love.conf(t)
     t.window.height = 720
     t.window.resizable = false
     t.window.vsync = 0            -- 0 = off, 1 = on, -1 = adaptive
-    t.window.msaa = 4            -- multisample antialiasing samples (smooths circles/rounded corners)
+    t.window.msaa = 4     -- multisample antialiasing samples (smooths circles/rounded corners)
     t.window.fullscreen = false
     t.window.highdpi = true         -- retina/hidpi support
 
@@ -30,6 +28,7 @@ function love.conf(t)
     end)
     if ok and settings then
         t.window.vsync = settings.vsync
+        t.window.msaa = settings.msaa
         if settings.windowMode == "borderless" then
             t.window.fullscreen = true
             t.window.fullscreentype = "desktop"
