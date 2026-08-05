@@ -75,7 +75,7 @@ function MainMenu:enter()
     -- Seeded from the real pointer so hover feedback is right on the first
     -- frame back from Options, before the player moves the mouse again.
     self.mouseX, self.mouseY = love.mouse.getPosition()
-    self.starfield = self.starfield or Particles.Starfield.new{}
+    self.starfield = self.starfield or Globals.menu.Particles.starfield
     self.stars = inheritSky(self.stars, "stars", function()
         local stars = Particles.Stars.new{}
         stars:spawnStars()

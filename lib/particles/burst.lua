@@ -71,6 +71,12 @@ function Burst:update(dt)
 end
 
 function Burst:draw()
+    -- An idle pool is the common case — a Burst spends most of its life waiting
+    -- for something to happen, and a caller may well own several of them — so
+    -- bail before touching GL state rather than toggling the blend mode twice
+    -- every frame for nothing.
+    if #self.particles == 0 then return end
+
     -- Additive so overlapping debris glows hot at the center of the blast.
     love.graphics.setBlendMode("add")
     for _, p in ipairs(self.particles) do

@@ -1,5 +1,6 @@
 -- lib/particles/starfield.lua
--- Shooting stars that streak across the menu sky and can be clicked to pop.
+-- Shooting stars that streak across the menu sky. They can be clicked to pop,
+-- and the ones that aren't burn out on their own into a small puff of embers.
 -- TODO: meteor shower mode (a faster spawn profile).
 
 local Theme = require "lib.ui.theme"
@@ -8,12 +9,30 @@ local Burst = require "lib.particles.burst"
 local Audio = require "lib.audio"
 local Audios = require "lib.utils.audios"
 
--- Star palette: in-flight colour, then the flare it ages into.
-local WHITE       = { 1, 1, 1 }
-local WHITE_FLARE = { 1, 0.2, 0.15 }
+local GOLD       = { 1, 0.82, 0.35 }
+local GOLD_FLARE = { 1, 0.60, 0.12 }
 
-local GOLD        = { 1, 0.82, 0.35 }
-local GOLD_FLARE  = { 1, 0.6, 0.12 }
+local EMBER_PROFILE = {
+    countMin = 4, countMax = 7,
+    speedMin = 14, speedMax = 60,
+    lifeMin = 0.25, lifeMax = 0.55,
+    sizeMin = 1, sizeMax = 2,
+    drag = 5,
+}
+
+local function emberBurst(override)
+    if not override then return Burst.new(EMBER_PROFILE) end
+    local config = {}
+    for key, value in pairs(EMBER_PROFILE) do config[key] = value end
+    for key, value in pairs(override) do config[key] = value end
+    return Burst.new(config)
+end
+
+local TWINKLE_AMOUNT = 0.18
+local TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX = 5.5, 9.5
+
+local GOLDEN_TWINKLE_AMOUNT = 0.34
+local GOLDEN_TWINKLE_SPEED_MIN, GOLDEN_TWINKLE_SPEED_MAX = 2.4, 3.6
 
 local Starfield = {}
 Starfield.__index = Starfield
@@ -23,11 +42,12 @@ function Starfield.new(config)
     return setmetatable({
         stars = {},
         burst = Burst.new(config.burst),
+        embers = emberBurst(config.embers),
         -- How far from a star's center a click still counts as a hit.
         clickRadius = config.clickRadius or 20,
         timer = 0,
-        spawnMin = config.spawnMin or 0.8,
-        spawnMax = config.spawnMax or 1.3,
+        spawnMin = config.spawnMin or 0.4,
+        spawnMax = config.spawnMax or 1.5,
         speedMin = config.speedMin or 100,
         speedMax = config.speedMax or 450,
         lengthMin = config.lengthMin or 120,
@@ -35,8 +55,7 @@ function Starfield.new(config)
         lifeMin = config.lifeMin or 1.5,
         lifeMax = config.lifeMax or 5.2,
         dyingThreshold = config.dyingThreshold or 0.5,
-        -- Rare golden stars: slower and longer-lived, so they linger long enough
-        -- to be noticed and clicked.
+        -- Rare golden stars
         goldenChance = config.goldenChance or 0.003,
         goldenSpeedMin = config.goldenSpeedMin or 70,
         goldenSpeedMax = config.goldenSpeedMax or 110,
@@ -51,9 +70,13 @@ function Starfield:spawnStar()
     local golden = math.random() < self.goldenChance
     local speedMin, speedMax = self.speedMin, self.speedMax
     local lifeMin, lifeMax = self.lifeMin, self.lifeMax
+    local twinkleAmount = TWINKLE_AMOUNT
+    local twinkleMin, twinkleMax = TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX
     if golden then
         speedMin, speedMax = self.goldenSpeedMin, self.goldenSpeedMax
         lifeMin, lifeMax = self.goldenLifeMin, self.goldenLifeMax
+        twinkleAmount = GOLDEN_TWINKLE_AMOUNT
+        twinkleMin, twinkleMax = GOLDEN_TWINKLE_SPEED_MIN, GOLDEN_TWINKLE_SPEED_MAX
     end
 
     local x = Math.randRange(-0.05 * w, 0.65 * w)
@@ -62,17 +85,18 @@ function Starfield:spawnStar()
     local speed = Math.randRange(speedMin, speedMax)
     self.stars[#self.stars + 1] = {
         x = x, y = y,
-        spawnX = x, spawnY = y, -- fixed origin, so the trail can grow from here
+        spawnX = x, spawnY = y,
         vx = math.cos(angle) * speed,
         vy = math.sin(angle) * speed,
         length = Math.randRange(self.lengthMin, self.lengthMax),
         life = 0,
         maxLife = Math.randRange(lifeMin, lifeMax),
         golden = golden,
-        color = golden and GOLD or WHITE,
-        flare = golden and GOLD_FLARE or WHITE_FLARE,
-        -- Golden stars are drawn a little heavier so they register as special
-        -- from the corner of the eye, before the colour is even read.
+        color = golden and GOLD or Theme.colors.star,
+        flare = golden and GOLD_FLARE or Theme.colors.accentAlt,
+        twinklePhase = Math.randAngle(),
+        twinkleSpeed = Math.randRange(twinkleMin, twinkleMax),
+        twinkleAmount = twinkleAmount,
         scale = golden and 1.7 or 1,
     }
 end
@@ -83,12 +107,14 @@ local function dyingFactor(s, threshold)
     return (lifeRatio - threshold) / (1 - threshold)
 end
 
--- How long a clicked star's orphaned trail hangs in the air, dissolving, after
--- the burst has taken its head. `s.popped` counts seconds into that.
+-- The star's current flicker multiplier, ~1 +/- twinkleAmount.
+local function twinkleOf(s)
+    local p = s.twinklePhase
+    return 1 + s.twinkleAmount * (0.62 * math.sin(p) + 0.38 * math.sin(p * 2.37 + 1.3))
+end
+
 local POP_FADE = 0.7
 
--- Slack around the window before a star counts as gone, so nothing is culled
--- while any part of its halo could still be showing.
 local CULL_MARGIN = 64
 
 local function fullyOffScreen(s)
@@ -102,10 +128,19 @@ local function fullyOffScreen(s)
 
     local right, bottom = w + CULL_MARGIN, h + CULL_MARGIN
     local left, top = -CULL_MARGIN, -CULL_MARGIN
-    return (s.x > right and tailX > right)
-        or (s.y > bottom and tailY > bottom)
-        or (s.x < left and tailX < left)
-        or (s.y < top and tailY < top)
+    -- Only an edge the star is moving toward may cull it.
+    return (s.vx > 0 and s.x > right and tailX > right)
+        or (s.vy > 0 and s.y > bottom and tailY > bottom)
+        or (s.vx < 0 and s.x < left and tailX < left)
+        or (s.vy < 0 and s.y < top and tailY < top)
+end
+
+
+function Starfield:expire(s)
+    local w, h = love.graphics.getDimensions()
+    if s.x < 0 or s.x > w or s.y < 0 or s.y > h then return end
+    local ratio = s.golden and 2 or 1
+    self.embers:spawn(s.x, s.y, s.flare, s.scale * ratio)
 end
 
 function Starfield:update(dt)
@@ -126,6 +161,7 @@ function Starfield:update(dt)
             end
         else
             s.life = s.life + dt
+            s.twinklePhase = s.twinklePhase + s.twinkleSpeed * dt
 
             -- Ease down to ~15% speed near expiry instead of vanishing at full
             -- speed. Computed fresh from the life ratio each frame (not applied
@@ -136,27 +172,32 @@ function Starfield:update(dt)
             s.x = s.x + s.vx * speedScale * dt
             s.y = s.y + s.vy * speedScale * dt
 
-            if s.life >= s.maxLife or fullyOffScreen(s) then
+            if s.life >= s.maxLife then
+                self:expire(s)
+                table.remove(self.stars, i)
+            elseif fullyOffScreen(s) then
+                -- Left the window rather than died. Nothing to see, so no puff.
                 table.remove(self.stars, i)
             end
         end
     end
 
     self.burst:update(dt)
+    self.embers:update(dt)
 end
 
 -- The dying window is split into a bright "flare up" then a fade to nothing.
 -- FLARE_FRAC is the fraction of that window where the glow surge peaks.
 local FLARE_FRAC = 0.35
 
-local FLARE_GLOW = 1.3
+local FLARE_GLOW = 1.75
 
 -- Fraction of the dying window spent shifting colors to dead color.
 local COLOR_FRAC = 0.12
 
--- For a star `dying` (0..1) into its dying window, returns head/core opacity,
--- additive-glow intensity, and the colour->flare mix. Glow surges from 1 up to
--- FLARE_GLOW during the flare, then both opacity and glow ease back down to 0.
+-- How much of its trail a star pulls in as it burns out.
+local DYING_RETRACT = 0.65
+
 local function dyingLook(dying)
     local colorMix = math.min(1, dying / COLOR_FRAC)
     if dying <= FLARE_FRAC then
@@ -167,17 +208,14 @@ local function dyingLook(dying)
     return k, FLARE_GLOW * k, colorMix
 end
 
--- A star's current look: head opacity, glow intensity, rgb, and how far into the
--- shift toward its flare colour it is. Both endpoints come from the star itself,
--- so a golden one ages through ambers while an ordinary one goes red.
-local function starLook(s, dyingThreshold)
-    local dying = dyingFactor(s, dyingThreshold)
+-- A star's current stats.
+local function starLook(s, dying)
     local fade, glowI, colorMix = 1, 1, 0
     if dying > 0 then
         fade, glowI, colorMix = dyingLook(dying)
     end
     local r, g, b = Theme.lerp(s.color, s.flare, colorMix)
-    return fade, glowI, r, g, b, colorMix
+    return fade, glowI, r, g, b
 end
 
 -- Trail geometry
@@ -185,6 +223,9 @@ local TRAIL_SEGMENTS = 24  -- lengthwise subdivisions; more = smoother falloff
 local TRAIL_CORE_W   = 2.5 -- half-width of the solid core at the head, px
 local TRAIL_FEATHER  = 1.5 -- soft edge on each side of the core, px
 local TRAIL_WIDTH_RAMP = 60
+
+-- The power to which the trail's alpha is raised to create a smooth fade-out.
+local TRAIL_FADE_POW = 1.6
 
 -- One reused mesh for every star's trail: a (TRAIL_SEGMENTS + 1) x 4 grid of
 -- vertices (edge+, core+, core-, edge-) stitched into three bands of triangles.
@@ -222,33 +263,32 @@ end
 
 -- Lays the strip down the star's path: (dx, dy) is its unit heading, (nx, ny)
 -- the perpendicular, `length` how much of the streak has been earned so far.
+-- The caller owns the blend mode (additive), matching Nebula:stampCloud — both
+-- call sites here already have one set, and toggling it per trail would cost a
+-- state change per star.
 local function drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
     if not trailMesh then trailMesh, trailVerts = buildTrailMesh() end
 
     -- s.scale widens the streak for golden stars to match their heavier head.
-    local scale = math.min(1, length / TRAIL_WIDTH_RAMP) * (s.scale or 1)
+    local scale = math.min(1, length / TRAIL_WIDTH_RAMP) * s.scale
     local coreW = TRAIL_CORE_W * scale
     -- A short cone reaching ahead of the head.
     local nose = math.min(coreW + TRAIL_FEATHER, length)
 
     for i = 0, TRAIL_SEGMENTS do
-        -- t is the fraction of the streak behind the head: column 0 is the tip
-        -- just ahead of it, then 1..TRAIL_SEGMENTS run the head (t = 0) to the
-        -- tail (t = 1). So the body reaches full width right at the star.
         local t, shape
         if i == 0 then
             t, shape = -nose / length, 0
         else
             t = (i - 1) / (TRAIL_SEGMENTS - 1)
-            shape = 1 - t -- linear falloff: the streak's tuned taper
+            shape = 1 - t
         end
         local px = s.x - dx * length * t
         local py = s.y - dy * length * t
         local core = coreW * shape
-        -- The feather keeps its full width all the way to the tip, so the strip
-        -- never narrows to a hard-edged sliver anywhere along its length.
+
         local edge = core + TRAIL_FEATHER
-        local alpha = shape * fade
+        local alpha = shape ^ TRAIL_FADE_POW * fade
 
         local o, v = i * 4, trailVerts
         setVertex(v[o + 1], px + nx * edge, py + ny * edge, r, g, b, 0)
@@ -262,91 +302,95 @@ local function drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
     love.graphics.draw(trailMesh)
 end
 
+
+local GLOW_SIZE = 4
+
+local HEAD_RADIUS = 2   -- the head dot.
+local HEAD_SWELL  = 1.6 -- px it gains per unit of glow surge.
+
+-- The white-hot middle of the head.
+local CORE_FRAC  = 0.55
+local CORE_ALPHA = 0.85
+
+-- Scratch colour for the head's halo.
+local glowColor = { 0, 0, 0 }
+
 local function drawStar(s, dyingThreshold)
     local speed = Math.length(s.vx, s.vy)
     if speed == 0 then return end
     local dx, dy = s.vx / speed, s.vy / speed -- unit direction (unaffected by slowdown)
     local nx, ny = -dy, dx                     -- perpendicular (for trail width)
 
-    -- Grow the trail from nothing as the star travels, capped at its full
-    -- length, so it eases into a streak instead of popping in fully drawn. The
-    -- path is a straight line, so distance from spawn == distance travelled.
-    local length = math.min(s.length, Math.length(s.x - s.spawnX, s.y - s.spawnY))
-    -- In flight: a bright white streak at full opacity. On entering the dying
-    -- window it flares to coral with a glow surge, then fades out — so the
-    -- flare is seen at full brightness before it dims, not after.
-    local fade, glowI, r, g, b, colorMix = starLook(s, dyingThreshold)
-
-    -- Below a pixel there is no streak to speak of, only degenerate geometry.
-    local drawable = length >= 1
+    -- Grow the trail from nothing as the star travels.
+    local travelled = math.min(s.length, Math.length(s.x - s.spawnX, s.y - s.spawnY))
+    -- In flight: a bright streak in the sky's own star tint.
+    local dying = dyingFactor(s, dyingThreshold)
+    local fade, glowI, r, g, b = starLook(s, dying)
 
     if s.popped then
-        -- Nothing left but the streak dissolving where the star used to be, so
-        -- the click reads as the head being knocked out of it rather than the
-        -- whole thing being deleted mid-flight. Squared so it eases to nothing
-        -- instead of stopping dead at the end of the fade.
         local k = 1 - s.popped / POP_FADE
-        if drawable then
-            drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade * k * k)
+        if travelled >= 1 then
+            love.graphics.setBlendMode("add")
+            drawTrail(s, dx, dy, nx, ny, travelled, r, g, b, fade * k * k)
+            love.graphics.setBlendMode("alpha")
+            love.graphics.setColor(1, 1, 1, 1)
         end
         return
     end
 
-    local hs = 4 * (s.scale or 1)
-    local headR = (2 + math.max(0, glowI - 1)) * (s.scale or 1)
-    local glowColor = colorMix > 0 and s.flare or { r, g, b }
-    Theme.glowRect(s.x - hs, s.y - hs, hs * 2, hs * 2, hs, glowI, glowColor)
+    local length = travelled * (1 - dying * DYING_RETRACT)
+    local flicker = twinkleOf(s)
 
-    if drawable then
+    local hs = GLOW_SIZE * s.scale
+    -- The halo takes the same interpolated colour as the head.
+    glowColor[1], glowColor[2], glowColor[3] = r, g, b
+    Theme.glowRect(s.x - hs, s.y - hs, hs * 2, hs * 2, hs, glowI * flicker, glowColor)
+
+    love.graphics.setBlendMode("add")
+
+    if length >= 1 then
         drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
     end
 
-    -- The dot gets an explicit segment count: at this radius LÖVE's default
-    -- picks few enough segments to read as a visible polygon.
-    love.graphics.setColor(r, g, b, fade)
+    local headAlpha = Math.clamp01(fade * flicker)
+    local headR = (HEAD_RADIUS + math.max(0, glowI - 1) * HEAD_SWELL) * s.scale
+
+    love.graphics.setColor(r, g, b, headAlpha)
     love.graphics.circle("fill", s.x, s.y, headR, 24)
+    love.graphics.setColor(1, 1, 1, headAlpha * CORE_ALPHA)
+    love.graphics.circle("fill", s.x, s.y, headR * CORE_FRAC, 12)
+
+    love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Pops the topmost shooting star under (x, y), replacing its head with a
--- particle explosion and leaving the trail behind to fade.
---
--- Returns `hit, golden`: whether a star was hit (so callers can tell the click
--- was consumed) and whether it was a golden one, which is the event an
--- achievement would hang off:
---
---   local hit, golden = self.starfield:mousepressed(x, y, button)
---   if golden then Achievements.unlock("caught_a_golden_star") end
+-- Returns info about the star clicked.
 function Starfield:clickAt(x, y)
     local radius = self.clickRadius
     -- Iterate backwards: later stars draw on top, so they win the hit test.
     for i = #self.stars, 1, -1 do
         local s = self.stars[i]
         local dx, dy = s.x - x, s.y - y
-        -- Already-popped stars are just a fading streak with no head left to
-        -- hit, so they're skipped rather than counted as a second target.
         if not s.popped and dx * dx + dy * dy <= radius * radius then
-            -- Faster stars throw a slightly bigger blast, and a golden one
-            -- throws golden debris rather than the usual warm spark.
-            -- Cloned rather than shared: popping two stars at once should
-            -- sound twice, not cut the first pop short.
+            -- Faster stars throw a slightly bigger blast.
             local pop = s.golden and "goldenStarExplosion" or "starExplosion"
             Audio.play("sfx", Audios.clone(pop))
             local speed = Math.length(s.vx, s.vy)
-            local debris = s.golden and s.color or { 1, 0.4, 0.1 }
+            -- Keep color consistent.
+            local debris = s.golden and s.color or Theme.colors.accentAlt
             self.burst:spawn(s.x, s.y, debris,
-                (0.8 + speed / self.speedMax * 0.4) * (s.scale or 1))
-            s.popped = 0 -- update() fades the orphaned trail out, then removes it
+                (0.8 + speed / self.speedMax * 0.4) * s.scale)
+            s.popped = 0
             return true, s.golden
         end
     end
-    return false
+    return false, false
 end
 
 -- Convenience wrapper so states can forward the event straight through. Passes
 -- clickAt's `hit, golden` pair back to the caller.
 function Starfield:mousepressed(x, y, button)
-    if button ~= 1 then return false end
+    if button ~= 1 then return false, false end
     return self:clickAt(x, y)
 end
 
@@ -354,6 +398,8 @@ function Starfield:draw()
     for _, s in ipairs(self.stars) do
         drawStar(s, self.dyingThreshold)
     end
+
+    self.embers:draw()
     self.burst:draw()
 end
 

@@ -188,6 +188,14 @@ local PALETTES = {
         title     = { { 0.25, 0.60, 1.00 }, { 0.85, 0.92, 1.00 }, { 0.62, 0.40, 1.00 } },
     },
     {
+        -- Carbon - a black theme
+        id        = "carbon",
+        accent    = { 0.25, 0.25, 0.25 }, -- focus, fills, glow
+        accentAlt = { 0.9, 0.9, 0.9 }, -- violet partner for gradients and gas
+        tint      = 0.70,
+        title     = { { 0.4, 0.4, 0.4 }, { 0.85, 0.92, 1.00 }, { 0.2, 0.2, 0.2 } },
+    },
+    {
         -- "Amethyst" — violet through magenta, the warmest of the cool themes.
         id        = "amethyst",
         accent    = { 0.4, 0.1, 0.6 },
