@@ -6,18 +6,19 @@
   "menu": {
     "play": "Play",
     "options": "Options",
+    "achievements": "Achievements",
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select"
   },
   "options": {
     "title": "OPTIONS",
     "back": "Back",
-    "quit": "Quit to Menu",
     "apply": "Apply",
     "volume": "Master Volume",
     "musicVolume": "Music",
     "sfxVolume": "SFX",
     "language": "Language",
+    "theme": "Theme",
     "resolution": "Resolution",
     "msaa": "Antialiasing",
     "msaaOff": "Off",
@@ -32,6 +33,16 @@
       "borderless": "Borderless",
       "exclusive": "Fullscreen"
     },
+    "themeName": {
+      "default": "Nebula",
+      "amethyst": "Amethyst",
+      "emerald": "Emerald",
+      "ember": "Ember",
+      "topaz": "Topaz",
+      "lavender": "Lavender",
+      "slate": "Slate",
+      "ruby": "Ruby"
+    },
     "hint": {
       "general": "Arrows: adjust    Enter or Click: change    Esc: back",
       "graphics": "Graphics changes take effect when you press Apply    Esc: back"
@@ -41,14 +52,14 @@
       "musicVolume": "Background music only.",
       "sfxVolume": "Menu clicks and in-game effects.",
       "language": "Interface language. Applies immediately.",
+      "theme": "Color scheme for the interface and the night sky. Applies immediately.",
       "resolution": "Size of the game window.",
       "resolutionBorderless": "Unavailable in Borderless — the game matches your desktop resolution.",
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
       "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
       "apply": "Applies the graphics changes above. You'll be asked to confirm.",
-      "back": "Returns to the previous screen.",
-      "quit": "Abandons the current run and returns to the main menu."
+      "back": "Returns to the previous screen."
     }
   },
   "dialog": {
@@ -63,6 +74,42 @@
       "message": "Reverting in {n}s if you don't confirm.",
       "keep": "Keep",
       "revert": "Revert"
+    },
+    "unapplied": {
+      "title": "Unapplied changes",
+      "message": "Your graphics changes haven't been applied yet.",
+      "apply": "Apply",
+      "discard": "Discard"
+    }
+  },
+  "pause": {
+    "title": "PAUSED",
+    "resume": "Resume",
+    "options": "Options",
+    "quit": "Quit to Menu",
+    "hint": "W/S or Mouse: navigate    Enter or Click: select    Esc: resume"
+  },
+  "achievements": {
+    "title": "ACHIEVEMENTS",
+    "back": "Back",
+    "progress": "{done} of {total} earned",
+    "categoryProgress": "{name} — {done} of {total}",
+    "reward": "REWARD",
+    "hiddenTitle": "Hidden",
+    "hiddenDesc": "This one you'll have to find on your own.",
+    "hiddenReward": "Unknown",
+    "hint": "Arrows or Mouse: browse    Drag or scroll: pan    Esc: back",
+    "status": {
+      "earned": "Earned",
+      "available": "Available now",
+      "locked": "Locked"
+    },
+    "category": {
+      "foundations": "Foundations",
+      "arsenal": "Arsenal",
+      "economy": "Economy",
+      "conquest": "Conquest",
+      "secrets": "Secrets"
     }
   },
   "loading": {

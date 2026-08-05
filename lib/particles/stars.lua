@@ -150,9 +150,10 @@ function Stars:draw()
 
     local prevSize = love.graphics.getPointSize()
     love.graphics.setPointSize(2)
-    -- Per-point colours are multiplied by the draw colour, so this cool tint
-    -- applies to the whole sky (and overrides what the constellation pass left).
-    love.graphics.setColor(0.65, 0.75, 1, 1)
+    -- Per-point colours are multiplied by the draw colour, so the theme's star
+    -- tint applies to the whole sky at once (and overrides what the
+    -- constellation pass left behind).
+    Theme.setColor(Theme.colors.star, 1)
     love.graphics.points(points)
     love.graphics.setPointSize(prevSize)
 end

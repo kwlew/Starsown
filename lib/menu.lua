@@ -7,6 +7,8 @@
 --   label    : string, OR a function -> string for live values
 --   onSelect : function called when the item is activated
 --   enabled  : optional, false for a greyed-out entry (skipped by navigation)
+--   danger   : optional, true for an entry that destroys something (it lights
+--              up in the theme's danger red rather than its accent)
 --
 -- Usage:
 --   self.menu = Menu.new({
@@ -43,6 +45,7 @@ function Menu.new(items, font)
             label = item.label,
             onSelect = item.onSelect,
             enabled = item.enabled ~= false,
+            danger = item.danger,
             font = self.font,
         }
     end

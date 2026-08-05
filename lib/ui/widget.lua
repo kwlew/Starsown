@@ -48,6 +48,10 @@ function Widget.new(class, config)
     return setmetatable({
         label   = config.label or "",      -- string, or function(self) -> string
         enabled = config.enabled ~= false, -- disabled = greyed out and inert
+        -- Marks a row that destroys something (Quit, Discard). Purely visual:
+        -- it lights up red instead of in the accent, so hovering "Quit" looks
+        -- different from hovering "Back" before either label is read.
+        danger = config.danger or false,
         -- Stored unresolved (nil, a role name, or a Font); see Widget:getFont.
         font = config.font,
         x = config.x or 0,
@@ -110,7 +114,7 @@ end
 -- this. Disabled rows render dimmed and never glow (update forces glow to 0).
 function Widget:drawRow(alpha)
     Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
-        alpha or self:alpha())
+        alpha or self:alpha(), self.danger and "danger" or "accent")
 end
 
 -- Left-aligned row label at the standard padding, vertically centered. The

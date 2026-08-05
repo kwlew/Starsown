@@ -7,11 +7,10 @@
 --
 -- Esc or "Back" returns to whichever state opened this one:
 --
---   StateManager.switch("options", { returnTo = "game" })
+--   StateManager.fadeTo("options", { returnTo = "pause" })
 --
--- Opened from the game, the footer also grows a "Quit" button that abandons
--- the run and drops back to the main menu — from the main menu there's nothing
--- to quit back to, so it's hidden.
+-- Abandoning a run is not offered here: during a run this screen is reached
+-- through the pause menu, and that's where quitting lives.
 
 local StateManager = require "lib.stateManager"
 local Assets = require "lib.assets"
@@ -23,6 +22,8 @@ local Presence = require "lib.presence"
 local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
+-- Where the panel would like to start. It's pulled upward from here when the
+-- stack below it wouldn't otherwise fit — see Options:layout.
 local PANEL_Y_RATIO   = 0.32
 -- Design-space px, scaled through Theme.px at use.
 local PANEL_PAD       = 20
@@ -60,6 +61,10 @@ end
 
 local function languageIndexFor(code)
     return indexWhere(I18n.available(), function(e) return e.code == code end)
+end
+
+local function themeIndexFor(id)
+    return indexWhere(UI.Theme.available(), function(e) return e.id == id end)
 end
 
 local function resolutionIndexFor(settings)
@@ -163,12 +168,23 @@ function Options:keepGraphics()
     self.revertDialog:close()
     self.revertTo = nil
     Settings.save(self.settings)
+
+    -- They were already on their way out when they chose Apply (see
+    -- buildDialogs), so a change that's now confirmed carries them the rest of
+    -- the way rather than parking them back on a screen they'd finished with.
+    if self.leaveAfterApply then
+        self.leaveAfterApply = false
+        self:leave()
+    end
 end
 
 -- Player declined, or the countdown ran out (which is the case that matters —
 -- it's what a player who can't see anything is relying on).
 function Options:revertGraphics()
     self.revertDialog:close()
+    -- The mode they picked didn't stick, so any exit queued behind it is
+    -- dropped: they stay here, where they can try a different one.
+    self.leaveAfterApply = false
     if not self.revertTo then return end
 
     for key, value in pairs(self.revertTo) do
@@ -180,21 +196,43 @@ function Options:revertGraphics()
     self:resetPending()
 end
 
--- Buttons stacked under the panel, in draw order. Quit is only offered when
--- Options was opened from the game; entered from the main menu there's no run
--- to abandon. Both the layout and the focus list read this, so the button can
--- never be visible-but-unfocusable (or vice versa).
+-- Switches the UI palette and rebuilds the one thing that can't simply re-read
+-- it. Everything drawn from Theme.colors picks the new palette up on its next
+-- frame — but the nebula stamps its gas into canvases with the accent colors
+-- burnt in at bake time, so the backdrop would keep the old theme's hues until
+-- something else forced a bake. It's the shared instance from Assets, so
+-- re-baking it here also recolors the copy the main menu is holding.
+function Options:applyTheme(id)
+    if not UI.Theme.setTheme(id) then return end
+
+    local nebula = Assets.get("nebula")
+    if nebula and nebula:isBaked() then nebula:bake() end
+end
+
+-- Buttons stacked under the panel, in draw order. Both the layout and the focus
+-- list read this, so a footer button can never be visible-but-unfocusable (or
+-- vice versa) — which is why it stays a list for the one button there is today.
 function Options:footerButtons()
-    if self.returnTo == "game" then
-        return { self.backButton, self.quitButton }
-    end
     return { self.backButton }
 end
 
--- Leaves for whichever state opened this screen. Pending graphics edits are
--- simply dropped (resetPending on the next visit).
+-- Back, or Esc. Graphics edits only take effect on Apply, so walking away from
+-- them is the one action on this screen that silently throws work out — and the
+-- Apply button greying itself out once it's been pressed is not much of a
+-- reminder that it hasn't been. So leaving with edits outstanding asks first.
 function Options:goBack()
     UI.Sfx.select()
+    if self:isDirty() then
+        self.unappliedDialog:openDialog()
+        return
+    end
+    self:leave()
+end
+
+-- The actual exit, for whichever state opened this screen. Anything still
+-- pending is dropped here (resetPending on the next visit); by this point the
+-- player has been asked about it.
+function Options:leave()
     StateManager.fadeTo(self.returnTo)
 end
 
@@ -225,23 +263,6 @@ end
 function Options:buildDialogs()
     local blip = UI.Sfx.focus
 
-    self.quitDialog = UI.Dialog.new{
-        title = function() return I18n.t("dialog.quit.title") end,
-        message = function() return I18n.t("dialog.quit.message") end,
-        onCancel = function() self.quitDialog:close() end,
-        buttons = {
-            { label = function() return I18n.t("dialog.cancel") end,
-              onSelect = function() self.quitDialog:close() end },
-            { label = function() return I18n.t("dialog.quit.confirm") end,
-              danger = true,
-              onSelect = function()
-                  self.quitDialog:close()
-                  Audio.stopAll() -- drop any gameplay audio on the way out
-                  StateManager.fadeTo("mainMenu")
-              end },
-        },
-    }
-
     -- The countdown is the whole point: if the new mode is unreadable, doing
     -- nothing has to be the safe choice, so a timeout reverts.
     self.revertDialog = UI.Dialog.new{
@@ -254,21 +275,49 @@ function Options:buildDialogs()
         onTimeout = function() self:revertGraphics() end,
         onCancel = function() self:revertGraphics() end,
         buttons = {
-            { label = function() return I18n.t("dialog.revert.revert") end,
+            { label = function() return I18n.t("dialog.revert.revert") end, danger = true,
               onSelect = function() self:revertGraphics() end },
             { label = function() return I18n.t("dialog.revert.keep") end,
               onSelect = function() self:keepGraphics() end },
         },
     }
 
-    self.quitDialog:setFocusSound(blip)
+    -- Raised by Back/Esc when graphics edits are still pending. Cancelling
+    -- (Esc, or a click off the panel) keeps the player here with the edits
+    -- intact, so the way out of this prompt is never the way that loses them.
+    self.unappliedDialog = UI.Dialog.new{
+        title = function() return I18n.t("dialog.unapplied.title") end,
+        message = function() return I18n.t("dialog.unapplied.message") end,
+        onCancel = function() self.unappliedDialog:close() end,
+        buttons = {
+            -- Discard first, matching the revert dialog's "the option that
+            -- commits nothing comes first" order.
+            { label = function() return I18n.t("dialog.unapplied.discard") end,
+              danger = true,
+              onSelect = function()
+                  self.unappliedDialog:close()
+                  self:resetPending() -- drop the edits, then go
+                  self:leave()
+              end },
+            { label = function() return I18n.t("dialog.unapplied.apply") end,
+              onSelect = function()
+                  self.unappliedDialog:close()
+                  -- applyPending raises the revert countdown, so the exit waits
+                  -- on the player confirming the new mode is actually usable.
+                  self.leaveAfterApply = true
+                  self:applyPending()
+              end },
+        },
+    }
+
     self.revertDialog:setFocusSound(blip)
+    self.unappliedDialog:setFocusSound(blip)
 end
 
 -- The modal currently showing, if any. Everything routes around this.
 function Options:activeDialog()
-    if self.quitDialog and self.quitDialog:isOpen() then return self.quitDialog end
     if self.revertDialog and self.revertDialog:isOpen() then return self.revertDialog end
+    if self.unappliedDialog and self.unappliedDialog:isOpen() then return self.unappliedDialog end
     return nil
 end
 
@@ -307,7 +356,25 @@ function Options:layout()
     local panelW = math.min(UI.Theme.px(PANEL_MAX_W), w * 0.72)
     local panelH = pad * 2 + rows * m.rowHeight + (rows - 1) * m.rowGap
     local panelX = (w - panelW) / 2
-    local panelY = h * PANEL_Y_RATIO
+
+    -- Vertical placement. The stack — tab bar, panel, footer buttons, the
+    -- description line — grows with the tab's row count and with whether Quit
+    -- is on offer, so pinning the panel to PANEL_Y_RATIO pushed the bottom of
+    -- it off the screen on the taller tabs. Start from the preferred pose, pull
+    -- up as far as needed to keep the last line on screen, and stop at the
+    -- heading: the stack may crowd the hint line (draw resolves that), never
+    -- the title above it.
+    local footer = self:footerButtons()
+    local descH = UI.Theme.font("small"):getHeight()
+    local aboveH = m.rowHeight + m.rowGap             -- tab bar and its gap
+    local belowH = #footer * (m.rowGap + m.rowHeight) -- footer buttons
+                 + m.rowGap + descH                   -- description line
+    local stackH = aboveH + panelH + belowH
+    local headingBottom = h * HEADING_Y_RATIO + UI.Theme.font("heading"):getHeight()
+
+    local top = math.min(h * PANEL_Y_RATIO - aboveH, UI.Label.hintY() - m.rowGap - stackH)
+    top = math.max(top, headingBottom + m.rowGap)
+    local panelY = top + aboveH
 
     self.panel = { x = panelX, y = panelY, w = panelW, h = panelH }
 
@@ -323,7 +390,6 @@ function Options:layout()
     end
 
     -- Footer stack below the panel, full panel width, one row apart.
-    local footer = self:footerButtons()
     for i, button in ipairs(footer) do
         button:setBounds(
             panelX,
@@ -332,12 +398,13 @@ function Options:layout()
             m.rowHeight)
     end
 
-    -- Description line for the focused row, under the last footer button.
+    -- Description line for the focused row, under the last footer button. Its
+    -- height is kept so draw can tell whether it reaches into the hint line.
     local footerBottom = panelY + panelH + m.rowGap + #footer * (m.rowHeight + m.rowGap)
-    self.descRect = { x = panelX, y = footerBottom, w = panelW }
+    self.descRect = { x = panelX, y = footerBottom, w = panelW, h = descH }
 
-    if self.quitDialog then self.quitDialog:layout() end
     if self.revertDialog then self.revertDialog:layout() end
+    if self.unappliedDialog then self.unappliedDialog:layout() end
 end
 
 function Options:resize()
@@ -363,9 +430,7 @@ end
 function Options:enter(previousName, opts)
     Presence.set{ details = "Options", state = "Changing settings",
                     smallText = "Options", startedAt = Globals.game.startedAt }
-    local returnTo = (type(opts) == "table" and opts.returnTo) or previousName
-    if not returnTo or returnTo == "options" then returnTo = "mainMenu" end
-    self.returnTo = returnTo
+    self.returnTo = StateManager.returnTarget(previousName, opts, "options")
 
     -- Shared settings table, loaded and applied at boot by the loading state.
     self.settings = Assets.get("settings") or Settings.load()
@@ -414,6 +479,23 @@ function Options:enter(previousName, opts)
             end,
         }
         self.languageSelector.descKey = 'options.desc.language'
+
+        -- Theme is General-tab behavior too: live and persisted immediately.
+        -- Nothing is staged, because unlike a resolution a palette can't leave
+        -- the player unable to see the screen — the worst case is a look they
+        -- don't like, which the same selector undoes.
+        self.themeSelector = UI.Selector.new{
+            label = function() return I18n.t("options.theme") end,
+            options = UI.Theme.available(),
+            format = function(entry) return I18n.t("options.themeName." .. entry.id) end,
+            onChange = function(entry)
+                UI.Sfx.select()
+                self.settings.theme = entry.id
+                self:applyTheme(entry.id)
+                persist()
+            end,
+        }
+        self.themeSelector.descKey = 'options.desc.theme'
 
         -- Graphics tab: writes to pending only; Apply commits.
         self.resolutionSelector = UI.Selector.new{
@@ -486,22 +568,12 @@ function Options:enter(previousName, opts)
         }
         self.backButton.descKey = 'options.desc.back'
 
-        -- Shown only when returnTo == "game" (see footerButtons). Abandoning a
-        -- run is destructive, so it goes through a confirmation.
-        self.quitButton = UI.Button.new{
-            label = function() return I18n.t("options.quit") end,
-            onSelect = function()
-                UI.Sfx.press()
-                self.quitDialog:openDialog()
-            end,
-        }
-        self.quitButton.descKey = 'options.desc.quit'
-
         self:buildDialogs()
 
         self.tabs = {
             { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
-                                             self.sfxVolumeSlider, self.languageSelector } },
+                                             self.sfxVolumeSlider, self.languageSelector,
+                                             self.themeSelector } },
             { name = "graphics", widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
                                              self.vsyncToggle, self.applyButton, } },
         }
@@ -520,15 +592,17 @@ function Options:enter(previousName, opts)
 
     -- Every exit path closes its own modal, but a modal left open would make
     -- this screen unusable, so a fresh visit never inherits one.
-    self.quitDialog:close()
     self.revertDialog:close()
+    self.unappliedDialog:close()
     self.revertTo = nil
+    self.leaveAfterApply = false
 
     -- Fresh visit: discard any stale pending edits, re-sync live values.
     self.volumeSlider.value = self.settings.volume
     self.musicVolumeSlider.value = self.settings.musicVolume
     self.sfxVolumeSlider.value = self.settings.sfxVolume
     self.languageSelector.index = languageIndexFor(self.settings.language)
+    self.themeSelector.index = themeIndexFor(UI.Theme.current)
     self:resetPending()
     self:selectTab(self.tabBar.index)
 end
@@ -585,19 +659,26 @@ function Options:draw()
 
     -- What the focused row actually does. Also the only place the resolution
     -- selector can explain why it greys out in Borderless.
+    local desc = self.descRect
     local descKey = self:focusedDescription()
     if descKey then
         UI.Label.draw{
             text = I18n.t(descKey),
-            x = self.descRect.x,
-            y = self.descRect.y,
-            width = self.descRect.w,
+            x = desc.x,
+            y = desc.y,
+            width = desc.w,
             font = UI.Theme.font("small"),
             color = UI.Theme.colors.textMuted,
         }
     end
 
-    UI.Label.hint(I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general"))
+    -- The description and the hint are both a single grey line at the bottom of
+    -- the screen, and the tallest stack (a five-row tab with Quit in the footer)
+    -- leaves room for only one of them. The description is about the row under
+    -- the focus, so it wins; the static control hint is what gives way.
+    if desc.y + desc.h <= UI.Label.hintY() then
+        UI.Label.hint(I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general"))
+    end
 
     -- Modals paint over everything, including the hint.
     local dialog = self:activeDialog()

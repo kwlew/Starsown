@@ -90,6 +90,7 @@ function MainMenu:enter()
     -- language change from Options updates the menu with no rebuild.
     if not self.menu then
         self.menu = Menu.new({
+            -- Play button
             { label = function() return I18n.t("menu.play") end, onSelect = function()
                 Audio.stopAll() -- stop the menu music before the game starts
                 UI.Sfx.select()
@@ -97,20 +98,25 @@ function MainMenu:enter()
                 -- when Play was pressed, not when the fade finishes.
                 StateManager.fadeTo("game")
             end },
+            -- Achievements button
+            { label = function() return I18n.t("menu.achievements") end, onSelect = function()
+                UI.Sfx.select()
+                StateManager.fadeTo("achievements")
+            end },
+            -- Options button
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
             end },
-            { label = function() return I18n.t("menu.quit") end, onSelect = function()
+            -- Quit button
+            { label = function() return I18n.t("menu.quit") end, danger = true,
+              onSelect = function()
                 love.event.quit()
             end },
         })
         self.menu:onFocusChanged(UI.Sfx.focus)
     end
 
-    -- Re-asserted every time we land here (e.g. back from options). No
-    -- startedAt: the menu's clock covers the whole session, so returning to it
-    -- must not restart the count.
     Presence.set{ details = "Main Menu", state = "Getting ready",
                   smallText = "In the menu" }
 

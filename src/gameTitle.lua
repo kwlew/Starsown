@@ -20,13 +20,17 @@ GameTitle.MENU_Y_RATIO = 0.16
 
 -- Rebuild on resize: the wrap width is baked in at construction, and it's what
 -- keeps the text horizontally centered.
+--
+-- A theme change needs no rebuild: the gradient holds the theme's live color
+-- tables and the shader is handed their current values every draw, so the
+-- wordmark recolors itself the moment the palette does.
 function GameTitle.build()
     return TextFactory:new{
         text = GameTitle.TEXT,
         y = love.graphics.getHeight() * GameTitle.MENU_Y_RATIO,
         align = "center",
         font = UI.Theme.font("title"),
-        gradient = { UI.Theme.colors.accent, UI.Theme.colors.accentAlt },
+        gradient = UI.Theme.titleGradient(),
     }
 end
 

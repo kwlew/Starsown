@@ -20,6 +20,7 @@ Settings.defaults = {
     res_x = 1280,
     res_y = 720,
     language = "en", -- locale code; validated against available files by I18n
+    theme = "default", -- UI theme name; validated against available themes by UI.Theme
 }
 
 -- Allowed values for string settings; anything else in the file falls back
@@ -107,6 +108,15 @@ function Settings.load()
                 -- (unknown codes fall back to English at setLanguage time).
                 if type(settings.language) ~= "string" or settings.language == "" then
                     settings.language = Settings.defaults.language
+                end
+
+                -- Theme, likewise: UI.Theme owns the list of palettes it ships
+                -- and falls back to the default at setTheme time. Keeping that
+                -- knowledge out of here is what lets conf.lua require this file
+                -- during love.conf, before there is any graphics module for the
+                -- UI package to be loaded against.
+                if type(settings.theme) ~= "string" or settings.theme == "" then
+                    settings.theme = Settings.defaults.theme
                 end
             end
         end

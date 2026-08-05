@@ -12,6 +12,8 @@
 -- because it doesn't know where you're going. The arriving state gets
 -- previousName and decides.
 
+local Theme = require "lib.ui.theme"
+
 local StateManager = {
     states = {},
     current = nil,
@@ -33,6 +35,28 @@ function StateManager.register(name, state)
     assert(state ~= nil, "StateManager.register: state cannot be nil")
     StateManager.states[name] = state
     return state
+end
+
+-- The registered state for a name, or nil. Screens normally reach each other by
+-- switching rather than by holding references — this is for the rarer case of a
+-- screen that has to *draw* another one, the way the pause menu draws the state
+-- it froze underneath itself.
+function StateManager.get(name)
+    return StateManager.states[name]
+end
+
+-- Where a screen should go when the player backs out of it: an explicit
+-- opts.returnTo wins, otherwise wherever they came from, and never `selfName` —
+-- a screen re-entered from itself would otherwise have no way out. Any screen
+-- opened from more than one place resolves its exit this way.
+--
+--   self.returnTo = StateManager.returnTarget(previousName, opts, "options")
+function StateManager.returnTarget(previousName, opts, selfName, fallback)
+    local target = (type(opts) == "table" and opts.returnTo) or previousName
+    if not target or target == selfName then
+        target = fallback or "mainMenu"
+    end
+    return target
 end
 
 -- Extra arguments are forwarded to the new state's enter().
@@ -109,7 +133,10 @@ function StateManager.draw()
 
     local alpha = fadeAlpha()
     if alpha > 0 then
-        love.graphics.setColor(0, 0, 0, alpha)
+        -- The theme's background rather than pure black: it's what both screens
+        -- are already cleared to, so the fade bottoms out on the incoming
+        -- screen's backdrop instead of dipping past it and back.
+        Theme.setColor(Theme.colors.bg, alpha)
         love.graphics.rectangle("fill", 0, 0, love.graphics.getDimensions())
         love.graphics.setColor(1, 1, 1, 1)
     end

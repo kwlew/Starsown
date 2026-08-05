@@ -141,7 +141,7 @@ function Slider:draw()
     love.graphics.rectangle("fill", trackX, trackY, trackW, trackH, trackH / 2, trackH / 2, 12)
     Theme.setColor(c.accent, alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW * self.value, trackH, trackH / 2, trackH / 2, 12)
-    Theme.setColor(c.text, alpha)
+    Theme.setColor(c.sliderKnob, alpha)
     love.graphics.circle("fill", trackX + trackW * self.value, trackY + trackH / 2,
         trackH * KNOB_RATIO, 4)
 

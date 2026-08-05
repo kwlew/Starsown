@@ -10,6 +10,8 @@ local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
 local optionsState = require "states.options"
 local gameState = require "states.game"
+local achievementsState = require "states.achievements"
+local pauseState = require "states.pause"
 local Globals = require "globals"
 
 function love.load()
@@ -21,16 +23,21 @@ function love.load()
 
     Globals.init()
 
-    -- Load translations and select the saved language before any screen draws,
-    -- so even the loading screen's own text is localized.
+    -- Load translations and select the saved language and palette before any
+    -- screen draws, so even the loading screen is localized and wearing the
+    -- theme the player left the game in.
+    local settings = Settings.load()
     I18n.load()
-    I18n.setLanguage(Settings.load().language)
+    I18n.setLanguage(settings.language)
+    UI.Theme.setTheme(settings.theme)
 
     -- Register every screen, then boot into the loading sequence.
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)
     StateManager.register("options", optionsState)
     StateManager.register("game", gameState)
+    StateManager.register("achievements", achievementsState)
+    StateManager.register("pause", pauseState)
 
     StateManager.switch("loading")
 

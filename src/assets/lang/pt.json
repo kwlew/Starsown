@@ -6,18 +6,19 @@
   "menu": {
     "play": "Jogar",
     "options": "Opções",
+    "achievements": "Conquistas",
     "quit": "Sair",
     "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar"
   },
   "options": {
     "title": "OPÇÕES",
     "back": "Voltar",
-    "quit": "Sair para o Menu",
     "apply": "Aplicar",
     "volume": "Volume Principal",
     "musicVolume": "Música",
     "sfxVolume": "SFX",
     "language": "Idioma",
+    "theme": "Tema",
     "resolution": "Resolução",
     "msaa": "Suavização",
     "msaaOff": "Desativado",
@@ -32,6 +33,16 @@
       "borderless": "Sem Bordas",
       "exclusive": "Tela Cheia"
     },
+    "themeName": {
+      "default": "Nebulosa",
+      "amethyst": "Ametista",
+      "emerald": "Esmeralda",
+      "ember": "Brasa",
+      "topaz": "Topázio",
+      "lavender": "Lavenda",
+      "slate": "Ardósia",
+      "ruby": "Rubi"
+    },
     "hint": {
       "general": "Setas: ajustar    Enter ou Clique: alterar    Esc: voltar",
       "graphics": "As alterações gráficas são aplicadas ao pressionar Aplicar    Esc: voltar"
@@ -41,14 +52,14 @@
       "musicVolume": "Apenas a música de fundo.",
       "sfxVolume": "Cliques do menu e efeitos do jogo.",
       "language": "Idioma da interface. Aplica imediatamente.",
+      "theme": "Esquema de cores da interface e do céu noturno. Aplica imediatamente.",
       "resolution": "Tamanho da janela do jogo.",
       "resolutionBorderless": "Indisponível em Sem bordas — o jogo usa a resolução da sua área de trabalho.",
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
       "displayMode": "Em janela, tela cheia sem bordas ou tela cheia exclusiva.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
-      "back": "Volta para a tela anterior.",
-      "quit": "Abandona a partida atual e volta ao menu principal."
+      "back": "Volta para a tela anterior."
     }
   },
   "dialog": {
@@ -63,6 +74,42 @@
       "message": "Revertendo em {n}s se você não confirmar.",
       "keep": "Manter",
       "revert": "Reverter"
+    },
+    "unapplied": {
+      "title": "Alterações não aplicadas",
+      "message": "Você ainda não aplicou suas alterações gráficas.",
+      "apply": "Aplicar",
+      "discard": "Descartar"
+    }
+  },
+  "pause": {
+    "title": "PAUSADO",
+    "resume": "Retomar",
+    "options": "Opções",
+    "quit": "Sair para o Menu",
+    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar    Esc: retomar"
+  },
+  "achievements": {
+    "title": "CONQUISTAS",
+    "back": "Voltar",
+    "progress": "{done} de {total} conquistadas",
+    "categoryProgress": "{name} — {done} de {total}",
+    "reward": "RECOMPENSA",
+    "hiddenTitle": "Oculta",
+    "hiddenDesc": "Esta você terá que descobrir sozinho.",
+    "hiddenReward": "Desconhecida",
+    "hint": "Setas ou Mouse: explorar    Arraste ou role: mover    Esc: voltar",
+    "status": {
+      "earned": "Conquistada",
+      "available": "Disponível agora",
+      "locked": "Bloqueada"
+    },
+    "category": {
+      "foundations": "Alicerces",
+      "arsenal": "Arsenal",
+      "economy": "Economia",
+      "conquest": "Conquista",
+      "secrets": "Segredos"
     }
   },
   "loading": {

@@ -12,10 +12,10 @@ local Text = require "lib.ui.text"
 
 local Label = {}
 
--- Offset and opacity of the optional drop shadow. Small and soft: it exists to
--- keep text legible over the starfield, not to look like a shadow.
+-- Offset of the optional drop shadow, design-space px. Small and soft: it
+-- exists to keep text legible over the starfield, not to look like a shadow.
+-- Its color and opacity are the theme's (Theme.colors.shadow).
 local SHADOW_OFFSET = 2
-local SHADOW_ALPHA = 0.75
 
 -- Distance from the bottom edge to the hint line, design-space px.
 local HINT_BOTTOM = 48
@@ -35,7 +35,10 @@ function Label.draw(opts)
     -- the stars, where dim text on a bright star all but disappears).
     if opts.shadow then
         local offset = Theme.px(SHADOW_OFFSET)
-        love.graphics.setColor(0, 0, 0, alpha * SHADOW_ALPHA)
+        local shadow = Theme.colors.shadow
+        -- Multiplied, not overridden: a label fading out has to take its own
+        -- shadow with it.
+        Theme.setColor(shadow, alpha * (shadow[4] or 1))
         love.graphics.draw(mesh, x + offset, y + offset)
     end
 
@@ -44,12 +47,19 @@ function Label.draw(opts)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- The y Label.hint draws at. Exposed so a screen whose own bottom furniture can
+-- grow into this line is able to tell (see Options, whose per-row description
+-- yields the hint when the two would collide).
+function Label.hintY()
+    return love.graphics.getHeight() - Theme.px(HINT_BOTTOM)
+end
+
 -- The dim one-line hint pinned above the bottom edge. `shadow` for a screen that
 -- draws it straight onto the starfield.
 function Label.hint(text, shadow)
     Label.draw{
         text = text,
-        y = love.graphics.getHeight() - Theme.px(HINT_BOTTOM),
+        y = Label.hintY(),
         font = Theme.font("small"),
         color = Theme.colors.textDim,
         shadow = shadow,

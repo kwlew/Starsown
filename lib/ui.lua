@@ -12,6 +12,8 @@ return {
     Theme       = require "lib.ui.theme",
     Cursor      = require "lib.ui.cursor",
     Sfx         = require "lib.ui.sfx",
+    Glyph       = require "lib.ui.glyph",
+    Widget      = require "lib.ui.widget",
     FocusGroup  = require "lib.ui.focusGroup",
     Dialog      = require "lib.ui.dialog",
     Button      = require "lib.ui.button",

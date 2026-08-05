@@ -6,6 +6,15 @@
 -- Everything sized in pixels is expressed at a 720p design height and scaled by
 -- Theme.scale (see Theme.rescale), so the UI keeps its proportions from 768p up
 -- to 1080p instead of shrinking into the middle of a big screen.
+--
+-- Colors come from the palette the player picked in Options:
+--
+--   Theme.setTheme("ember")   -- swap the active palette
+--   Theme.colors.accent       -- always the *active* palette's accent
+--   Theme.available()         -- { {id="default"}, ... } for a selector
+--
+-- Theme.colors is a flat table of {r, g, b} (a few carry a fourth alpha), and it
+-- is rewritten in place on a theme switch, never swapped out — see applyPalette.
 
 local Math = require "lib.utils.math"
 
@@ -16,20 +25,301 @@ local Theme = {}
 -- headings/buttons get the heavy cuts and body/hint text gets the light ones.
 local FONT_DIR = "assets/fonts/Oxanium/"
 
-Theme.colors = {
+-- The live palette. Populated by applyPalette below; never assign to this table
+-- itself (see applyPalette for why).
+Theme.colors = {}
+
+-- The neutral ramp every palette is built from: the greys that carry the UI's
+-- structure. A palette doesn't restate these, it only says how hard they lean
+-- toward its own accent, so the themes stay siblings rather than five separate
+-- designs that happen to share a widget set.
+local NEUTRALS = {
     bg          = { 0.05, 0.05, 0.07 }, -- window clear color
     panel       = { 0.10, 0.11, 0.14 }, -- widget/panel background
     panelBorder = { 0.25, 0.28, 0.35 },
     track       = { 0.18, 0.18, 0.20 }, -- empty bar/slider track
+    sliderKnob = { 0.92, 0.94, 0.98 }, -- the knob on a slider track
     text        = { 0.92, 0.94, 0.98 },
     textMuted   = { 0.72, 0.75, 0.82 }, -- secondary text that still reads as text
     textDim     = { 0.55, 0.58, 0.65 }, -- hints, footers, debug overlay
-    accent      = { 0.30, 0.70, 1.00 }, -- the neon blue: focus, fills, glow
-    accentDark  = { 0.13, 0.30, 0.45 }, -- focused-widget background
-    accentAlt   = { 0.62, 0.40, 1.00 }, -- violet partner for gradients
-    warning     = { 1.00, 0.75, 0.25 },
-    danger      = { 0.95, 0.35, 0.35 },
 }
+
+-- How far each neutral leans toward the accent hue at a palette tint of 1.
+-- Borders and panels carry most of the theme: the background has to stay
+-- near-black for the night sky to read against it, and body text has to stay
+-- text rather than turn into a second highlight color.
+local TINT_STRENGTH = {
+    bg          = 0.2,
+    panel       = 0.75,
+    panelBorder = 0.85,
+    track       = 0.60,
+    sliderKnob = 0.4,
+    text        = 0.10,
+    textMuted   = 0.22,
+    textDim     = 0.35,
+}
+
+-- Deliberately the same in every palette: "this button destroys something" must
+-- not be a property of the skin the player happens to be wearing. A palette
+-- whose accent sits on top of one of these overrides it by name (see `ember`).
+local SEMANTIC = {
+    warning = { 1.00, 0.75, 0.25 },
+    danger  = { 0.95, 0.35, 0.35 },
+}
+
+-- Mixes behind the derived colors, all 0..1.
+local ACCENT_DARK_MIX = 0.32 -- panel -> accent, for a focused widget's fill
+local DANGER_REST_MIX = 0.55 -- panelBorder -> danger, for a destructive row at rest
+local STAR_TINT       = 0.45 -- white -> accent, for the night sky
+local SCRIM_DARKEN    = 0.35 -- of bg, for the modal scrim
+local SCRIM_ALPHA     = 0.62
+local SHADOW_DARKEN   = 0.25 -- of bg, for text drop shadows
+local SHADOW_ALPHA    = 0.75
+
+-- Perceived brightness (Rec. 601), used to hold a neutral's lightness fixed
+-- while its hue is moved.
+local function luminance(r, g, b)
+    return 0.30 * r + 0.59 * g + 0.11 * b
+end
+
+local function mix(a, b, t)
+    return Math.clamp01(a + (b - a) * t)
+end
+
+-- Component-wise mix of two colors, returning a new table. (Theme.lerp is the
+-- same math for the draw path, where returning three values avoids the alloc.)
+local function blend(a, b, t)
+    return { mix(a[1], b[1], t), mix(a[2], b[2], t), mix(a[3], b[3], t) }
+end
+
+-- A color pushed up to full brightness, for mixing into light colors: mixing
+-- white toward a dim accent only greys it out, it never tints it.
+local function normalized(color)
+    local peak = math.max(color[1], color[2], color[3])
+    if peak <= 0 then return { 0, 0, 0 } end
+    return { color[1] / peak, color[2] / peak, color[3] / peak }
+end
+
+-- Mixes `base` toward `hue` by `amount` *without changing how bright base is*:
+-- the hue is normalized and then rescaled to base's own luminance before the
+-- mix. That is what makes the near-black background tintable at all — a plain
+-- lerp toward a neon accent lifts it into a visible grey long before the hue
+-- shows. Clamped per channel, so a near-white neutral pulled toward a saturated
+-- hue just desaturates as far as it can instead of blowing out.
+local function tinted(base, hue, amount)
+    local peak = math.max(hue[1], hue[2], hue[3])
+    if peak <= 0 or amount <= 0 then
+        return { base[1], base[2], base[3] }
+    end
+
+    local nr, ng, nb = hue[1] / peak, hue[2] / peak, hue[3] / peak
+    local k = luminance(base[1], base[2], base[3]) / luminance(nr, ng, nb)
+
+    return {
+        mix(base[1], Math.clamp01(nr * k), amount),
+        mix(base[2], Math.clamp01(ng * k), amount),
+        mix(base[3], Math.clamp01(nb * k), amount),
+    }
+end
+
+-- Expands a palette spec into the flat color table the UI actually reads. Every
+-- palette comes out with the same set of keys, which is what lets a theme
+-- switch overwrite the live table in place without leaving a color from the
+-- previous theme stranded in it.
+local function buildPalette(spec)
+    local accent = spec.accent
+    local colors = { accent = accent, accentAlt = spec.accentAlt }
+
+    for name, neutral in pairs(NEUTRALS) do
+        colors[name] = spec[name] or tinted(neutral, accent, TINT_STRENGTH[name] * spec.tint)
+    end
+    for name, color in pairs(SEMANTIC) do
+        colors[name] = spec[name] or color
+    end
+
+    -- Focused-widget background: the panel carried toward the accent, so a lit
+    -- row still reads as a panel that lit up rather than as a slab of accent.
+    colors.accentDark = spec.accentDark or blend(colors.panel, accent, ACCENT_DARK_MIX)
+
+    -- The danger tone's counterparts (see TONES): a destructive row lights up
+    -- in these instead of the accent's, and carries dangerBorder at rest so it
+    -- reads as different before it's ever focused.
+    colors.dangerDark = spec.dangerDark or blend(colors.panel, colors.danger, ACCENT_DARK_MIX)
+    colors.dangerBorder = spec.dangerBorder or
+        blend(colors.panelBorder, colors.danger, DANGER_REST_MIX)
+
+    -- The fixed stars, tinted so the backdrop belongs to the theme too.
+    colors.star = spec.star or blend({ 1, 1, 1 }, normalized(accent), STAR_TINT)
+
+    -- Both carry their own alpha (Theme.setColor reads color[4]): a scrim and a
+    -- drop shadow are only ever drawn at one opacity.
+    local bg = colors.bg
+    colors.scrim = spec.scrim or
+        { bg[1] * SCRIM_DARKEN, bg[2] * SCRIM_DARKEN, bg[3] * SCRIM_DARKEN, SCRIM_ALPHA }
+    colors.shadow = spec.shadow or
+        { bg[1] * SHADOW_DARKEN, bg[2] * SHADOW_DARKEN, bg[3] * SHADOW_DARKEN, SHADOW_ALPHA }
+
+    colors.titleGradient1 = spec.title[1]
+    colors.titleGradient2 = spec.title[2]
+    colors.titleGradient3 = spec.title[3]
+
+    return colors
+end
+
+-- The themes the player can choose, in selector order.
+--
+-- A palette is authored as a handful of decisions rather than as eighteen
+-- triples: the accent pair the whole UI is built around, how hard the neutrals
+-- lean toward it, and the three stops the wordmark cycles through. buildPalette
+-- derives the rest — which is what keeps the themes consistent with each other,
+-- and what stops a new one from needing eighteen numbers to be right. Any
+-- derived key can still be pinned by naming it in the spec.
+--
+-- Nothing here is player-visible: display names are localized, keyed on `id`
+-- (options.themeName.<id>).
+local PALETTES = {
+    {
+        -- "Nebula" — the game's original cool neon, and the fallback for a
+        -- saved theme that no longer exists.
+        id        = "default",
+        accent    = { 0.30, 0.70, 1.00 }, -- focus, fills, glow
+        accentAlt = { 0.62, 0.40, 1.00 }, -- violet partner for gradients and gas
+        tint      = 0.70,
+        title     = { { 0.25, 0.60, 1.00 }, { 0.85, 0.92, 1.00 }, { 0.62, 0.40, 1.00 } },
+    },
+    {
+        -- "Amethyst" — violet through magenta, the warmest of the cool themes.
+        id        = "amethyst",
+        accent    = { 0.4, 0.1, 0.6 },
+        accentAlt = { 0.8, 0.2, 0.6 },
+        tint      = 0.75,
+        title     = { { 0.62, 0.25, 1.00 }, { 0.95, 0.86, 1.00 }, { 1.00, 0.40, 0.85 } },
+    },
+    {
+        -- "Emerald" — green into teal.
+        id        = "emerald",
+        accent    = { 0.25, 0.92, 0.60 },
+        accentAlt = { 0.35, 0.80, 1.00 },
+        tint      = 0.70,
+        title     = { { 0.20, 0.90, 0.55 }, { 0.88, 1.00, 0.92 }, { 0.30, 0.78, 1.00 } },
+    },
+    {
+        -- "Lavender" — purple into pink.
+        id        = "lavender",
+        accent    = { 0.72, 0.32, 1.00 },
+        accentAlt = { 1.00, 0.42, 0.85 },
+        tint      = 0.75,
+        title     = { { 0.62, 0.25, 1.00 }, { 0.95, 0.86, 1.00 }, { 1.00, 0.40, 0.85 } },
+    },
+    {
+        -- "Topaz" — yellow into orange.
+        id        = "topaz",
+        accent    = { 1.00, 0.90, 0.30 },
+        accentAlt = { 1.00, 0.50, 0.30 },
+        tint      = 0.70,
+        danger    = { 0.95, 0.10, 0.14 },
+        title     = { { 1.00, 0.90, 0.30 }, { 1.00, 0.95, 0.82 }, { 1.00, 0.50, 0.30 } },
+    },
+    {
+        -- "Ember" — the warm theme.
+        id        = "ember",
+        accent    = { 1.00, 0.60, 0.20 },
+        accentAlt = { 1.00, 0.35, 0.45 },
+        tint      = 0.70,
+        warning   = { 1.00, 0.88, 0.48 },
+        danger    = { 1.00, 0.26, 0.30 },
+        title     = { { 1.00, 0.72, 0.25 }, { 1.00, 0.95, 0.82 }, { 1.00, 0.38, 0.32 } },
+    },
+    {
+        -- "Slate" — near-monochrome, for players who'd rather the UI stayed out
+        -- of the way. The low tint is the point: it keeps the greys grey.
+        id        = "slate",
+        accent    = { 0.70, 0.78, 0.92 },
+        accentAlt = { 0.52, 0.60, 0.76 },
+        tint      = 0.40,
+        title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
+    },
+    {
+        -- "Ruby" — pink through coral. Its accent sits closest of any theme to
+        -- the danger red, so danger is pushed to a deep crimson to keep a
+        -- destructive row telling itself apart from a merely focused one.
+        id        = "ruby",
+        accent    = { 1.00, 0.30, 0.50 },
+        accentAlt = { 1.00, 0.50, 0.30 },
+        tint      = 0.5,
+        danger    = { 0.95, 0.10, 0.14 },
+        title     = { { 1.00, 0.30, 0.50 }, { 1.00, 0.90, 0.85 }, { 1.00, 0.50, 0.30 } },
+    },
+
+    -- a placeholder for a palette the player built in Options
+    --{
+    --    id        = "custom",
+    --    accent    = { 0.30, 0.70, 1.00 },
+    --    accentAlt = { 0.52, 0.60, 0.76 },
+    --    tint      = 0.40,
+    --    title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
+    --},
+}
+
+Theme.DEFAULT = "default"
+
+local palettes = {}    -- id -> resolved flat color table
+local paletteList = {} -- { { id = ... }, ... }, in PALETTES order
+
+for _, spec in ipairs(PALETTES) do
+    palettes[spec.id] = buildPalette(spec)
+    paletteList[#paletteList + 1] = { id = spec.id }
+end
+
+Theme.current = Theme.DEFAULT
+
+-- Copies a resolved palette into Theme.colors *in place*. Widgets, particle
+-- layers and the wordmark's gradient all hold references to the individual
+-- color tables, so a theme switch has to rewrite the numbers inside them rather
+-- than hand out new tables — same reason Theme.rescale mutates Theme.metrics.
+-- The fourth slot is written unconditionally so a palette without an alpha
+-- clears one left by the palette before it.
+local function applyPalette(palette)
+    for name, color in pairs(palette) do
+        local live = Theme.colors[name]
+        if live then
+            live[1], live[2], live[3], live[4] = color[1], color[2], color[3], color[4]
+        else
+            Theme.colors[name] = { color[1], color[2], color[3], color[4] }
+        end
+    end
+end
+
+-- Available themes for a selector: { {id="default"}, ... }, in the order they're
+-- declared above. The same table every call — it's derived from a constant.
+function Theme.available()
+    return paletteList
+end
+
+-- Switches the active palette. Unknown ids fall back to the default, so a saved
+-- theme from a build that offered more of them can never leave the UI colorless.
+-- Returns true when the palette actually changed, so callers can skip the work
+-- that a switch forces (the nebula's gas is baked with the accent burnt into it
+-- and has to be re-baked; everything else re-reads Theme.colors as it draws).
+function Theme.setTheme(id)
+    if not palettes[id] then id = Theme.DEFAULT end
+    if id == Theme.current then return false end
+
+    Theme.current = id
+    applyPalette(palettes[id])
+    -- The clear color is GL state rather than something read per frame, so it
+    -- has to be pushed again every time bg moves.
+    love.graphics.setBackgroundColor(Theme.colors.bg)
+    return true
+end
+
+-- The wordmark's gradient stops, as the live color tables (see gameTitle.lua).
+-- Always exactly three, in every palette: TextFactory bakes the stop *count*
+-- into the shader at build time but re-reads the colors every draw, so holding
+-- the count fixed is what lets a theme switch recolor the title with no rebuild.
+function Theme.titleGradient()
+    return { Theme.colors.titleGradient1, Theme.colors.titleGradient2, Theme.colors.titleGradient3 }
+end
 
 -- Design-space metrics, in px at Theme.scale == 1. Theme.metrics holds these
 -- multiplied by the live scale; read that, never this.
@@ -232,21 +522,40 @@ function Theme.glowRect(x, y, w, h, radius, intensity, color)
     love.graphics.setBlendMode("alpha")
 end
 
+-- The colors a row moves through as it lights up: the border it rests at, the
+-- border and glow it reaches when focused or hovered, and the fill underneath.
+-- Named by key rather than holding the color tables, so this stays a plain
+-- constant that a theme switch — which rewrites Theme.colors in place — has
+-- nothing to invalidate.
+local TONES = {
+    accent = { rest = "panelBorder",  lit = "accent", fill = "accentDark" },
+    danger = { rest = "dangerBorder", lit = "danger", fill = "dangerDark" },
+}
+
 -- The standard interactive-row background, shared by button/toggle/slider/
--- selector: a pulsing glow halo when focused, a fill easing panel -> accentDark
--- with focus, and a border easing panelBorder -> accent. `glow` is the widget's
--- eased 0..1 focus amount, `time` drives the halo pulse. `alpha` (default 1)
--- fades only the border for disabled rows, matching the Selector's greyed look
--- (the fill stays opaque so the row still reads as a solid control).
-function Theme.rowChrome(x, y, w, h, glow, time, alpha)
+-- selector: a pulsing glow halo when focused, a fill easing panel -> the tone's
+-- dark with focus, and a border easing the tone's resting color -> its lit one.
+-- `glow` is the widget's eased 0..1 focus amount, `time` drives the halo pulse.
+-- `alpha` (default 1) fades only the border for disabled rows, matching the
+-- Selector's greyed look (the fill stays opaque so the row still reads as a
+-- solid control).
+--
+-- `tone` picks which color set to light up in: "accent" (the default) or
+-- "danger" for a row that destroys something. A danger row is red-leaning even
+-- at rest and goes fully red under the cursor, so the difference registers
+-- before the label has been read — see Widget's `danger` flag.
+function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone)
     alpha = alpha or 1
     local c, m = Theme.colors, Theme.metrics
+    local set = TONES[tone] or TONES.accent
+    local lit = c[set.lit]
+
     if glow > 0.01 then
-        Theme.glowRect(x, y, w, h, m.radius, glow * Theme.pulse(time))
+        Theme.glowRect(x, y, w, h, m.radius, glow * Theme.pulse(time), lit)
     end
-    love.graphics.setColor(Theme.lerp(c.panel, c.accentDark, glow))
+    love.graphics.setColor(Theme.lerp(c.panel, c[set.fill], glow))
     love.graphics.rectangle("fill", x, y, w, h, m.radius, m.radius, 10)
-    local br, bg, bb = Theme.lerp(c.panelBorder, c.accent, glow)
+    local br, bg, bb = Theme.lerp(c[set.rest], lit, glow)
     love.graphics.setColor(br, bg, bb, alpha)
     love.graphics.rectangle("line", x, y, w, h, m.radius, m.radius, 10)
 end
@@ -261,8 +570,11 @@ function Theme.panel(x, y, w, h)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Seed metrics at scale 1 so the table is never empty if something reads it
--- before love.load gets a chance to call rescale.
+-- Seed colors and metrics so neither table is ever empty if something reads one
+-- before love.load gets a chance to call setTheme/rescale. Seeded through
+-- applyPalette rather than setTheme because this runs at require time, which is
+-- too early to be touching love.graphics state.
+applyPalette(palettes[Theme.DEFAULT])
 Theme.rescale(DESIGN_HEIGHT)
 
 return Theme

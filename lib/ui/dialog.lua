@@ -55,10 +55,13 @@ function Dialog.new(config)
 
     local buttons = {}
     for _, spec in ipairs(config.buttons or {}) do
-        local button = Button.new{ label = spec.label, onSelect = spec.onSelect }
-        -- Marks the destructive choice so draw can tint it; purely visual.
-        button.danger = spec.danger or false
-        buttons[#buttons + 1] = button
+        -- `danger` marks the destructive choice: the button draws itself in the
+        -- theme's danger tone, red at rest and brighter under the cursor.
+        buttons[#buttons + 1] = Button.new{
+            label = spec.label,
+            onSelect = spec.onSelect,
+            danger = spec.danger,
+        }
     end
     self.buttons = buttons
     self.group:setWidgets(buttons)
@@ -187,13 +190,14 @@ function Dialog:update(dt)
 end
 
 function Dialog:draw()
-    local c, m = Theme.colors, Theme.metrics
+    local c = Theme.colors
     local pad = Theme.px(PANEL_PAD)
     local panel = self.panel
 
     -- Scrim: darkens whatever screen is underneath so the panel reads as the
-    -- only thing that can be interacted with.
-    love.graphics.setColor(0, 0, 0, 0.6)
+    -- only thing that can be interacted with. Carries its own alpha, so this is
+    -- a plain setColor rather than a call that has to know the opacity.
+    Theme.setColor(c.scrim)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getDimensions())
 
     Theme.panel(panel.x, panel.y, panel.w, panel.h)
@@ -215,13 +219,6 @@ function Dialog:draw()
 
     for _, button in ipairs(self.buttons) do
         button:draw()
-        -- The destructive choice gets a danger-tinted border on top of the
-        -- normal row chrome, so it reads as different before it's read at all.
-        if button.danger then
-            Theme.setColor(c.danger, 0.55 + 0.45 * button.glow)
-            love.graphics.rectangle("line", button.x, button.y, button.w, button.h,
-                m.radius, m.radius, 10)
-        end
     end
 
     love.graphics.setColor(1, 1, 1, 1)
