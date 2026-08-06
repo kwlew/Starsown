@@ -217,7 +217,7 @@ local CATEGORIES = {
                 {
                     id = "stargazer", icon = "star", unlocked = true,
                     title = "Stargazer", desc = "Pop a shooting star on the title screen.",
-                    reward = "+1% gold gain",
+                    reward = "bread",
                     children = {
                         { id = "goldenHour", icon = "coin", kind = "challenge", secret = true,
                           title = "Golden Hour", desc = "Pop a golden star.",

@@ -19,6 +19,7 @@ local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
 local Presence = require "lib.presence"
+local OnlineCount = require "lib.onlineCount"
 local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
@@ -547,6 +548,22 @@ function Options:enter(previousName, opts)
         }
         self.vsyncToggle.descKey = 'options.desc.vsync'
 
+        -- General-tab behavior: live and persisted immediately, like Language
+        -- and Theme. setEnabled starts or stops the heartbeat thread on the
+        -- spot — a privacy switch that only takes effect after a restart isn't
+        -- really one.
+        self.shareStatsToggle = UI.Toggle.new{
+            label = function() return I18n.t("options.shareStats") end,
+            value = self.settings.shareStats,
+            onChange = function(value)
+                UI.Sfx.select()
+                self.settings.shareStats = value
+                OnlineCount.setEnabled(value)
+                persist()
+            end,
+        }
+        self.shareStatsToggle.descKey = 'options.desc.shareStats'
+
         -- Label is a constant "Apply"; the button greys out (via
         -- syncEnabledStates -> enabled = isDirty) when there's nothing to apply.
         self.applyButton = UI.Button.new{
@@ -573,7 +590,7 @@ function Options:enter(previousName, opts)
         self.tabs = {
             { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
                                              self.sfxVolumeSlider, self.languageSelector,
-                                             self.themeSelector } },
+                                             self.themeSelector, self.shareStatsToggle, } },
             { name = "graphics", widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
                                              self.vsyncToggle, self.applyButton, } },
         }
@@ -603,6 +620,7 @@ function Options:enter(previousName, opts)
     self.sfxVolumeSlider.value = self.settings.sfxVolume
     self.languageSelector.index = languageIndexFor(self.settings.language)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
+    self.shareStatsToggle.value = self.settings.shareStats
     self:resetPending()
     self:selectTab(self.tabBar.index)
 end

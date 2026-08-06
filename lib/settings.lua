@@ -21,6 +21,7 @@ Settings.defaults = {
     res_y = 720,
     language = "en", -- locale code; validated against available files by I18n
     theme = "default", -- UI theme name; validated against available themes by UI.Theme
+    shareStats = true,
 }
 
 -- Allowed values for string settings; anything else in the file falls back

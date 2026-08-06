@@ -8,7 +8,8 @@
     "options": "Opções",
     "achievements": "Conquistas",
     "quit": "Sair",
-    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar"
+    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
+    "onlinePlayers": "{n} jogando agora"
   },
   "options": {
     "title": "OPÇÕES",
@@ -24,6 +25,7 @@
     "msaaOff": "Desativado",
     "displayMode": "Modo de Tela",
     "vsync": "VSync",
+    "shareStats": "Compartilhar estatísticas",
     "tab": {
       "general": "Geral",
       "graphics": "Gráficos"
@@ -59,6 +61,7 @@
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
       "displayMode": "Em janela, tela cheia sem bordas ou tela cheia exclusiva.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
+      "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando. Nenhum dado pessoal.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
       "back": "Volta para a tela anterior."
     }

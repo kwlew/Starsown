@@ -14,6 +14,8 @@ local achievementsState = require "states.achievements"
 local pauseState = require "states.pause"
 local Globals = require "globals"
 
+local OnlineCount = require "lib.onlineCount"
+
 function love.load()
     love.window.setTitle(Globals.game.name)
 
@@ -27,6 +29,10 @@ function love.load()
     -- screen draws, so even the loading screen is localized and wearing the
     -- theme the player left the game in.
     local settings = Settings.load()
+    -- Read the opt-out before starting: the heartbeat must never fire for a
+    -- player who turned it off, not even once at boot.
+    OnlineCount.enabled = settings.shareStats
+    OnlineCount.start()
     I18n.load()
     I18n.setLanguage(settings.language)
     UI.Theme.setTheme(settings.theme)
@@ -50,11 +56,13 @@ function love.update(dt)
     -- After StateManager, so a presence set during a state change is delivered
     -- in the same frame rather than the next one.
     Presence.update(dt)
+    OnlineCount.update()
 end
 
--- Closes the Discord IPC connection.
+-- Closes the Discord IPC connection and stops the online-count heartbeat.
 function love.quit()
     Presence.shutdown()
+    OnlineCount.shutdown()
 end
 
 function love.draw()

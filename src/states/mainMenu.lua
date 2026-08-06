@@ -16,6 +16,8 @@ local Audio         = require "lib.audio"
 local Audios        = require "lib.utils.audios"
 local Globals       = require "globals"
 
+local OnlineCount   = require "lib.onlineCount"
+
 -- Layout is expressed as fractions of the window so it survives resizing and
 -- runs at any resolution, instead of hardcoded pixel offsets. The title's ratio
 -- lives in gameTitle.lua, since the loading screen animates to it.
@@ -40,6 +42,19 @@ local buildTitle = GameTitle.build
 local function buildVersionLabel()
     return TextFactory:new{
         text = "v" .. Globals.game.version,
+        font = UI.Theme.font("small"),
+        color = UI.Theme.colors.textDim,
+    }
+end
+
+-- Sits just above the version label, same treatment. Returns nil when the count
+-- is unknown — no server response yet, no network, or the player opted out — and
+-- every caller treats nil as "draw nothing". A counter that says 0 (or "--")
+-- makes a live game look abandoned, which is worse than not showing one at all.
+local function buildOnlinePlayersLabel(count)
+    if not count then return nil end
+    return TextFactory:new{
+        text = I18n.t("menu.onlinePlayers", { n = count }),
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
@@ -70,6 +85,11 @@ function MainMenu:enter()
     menuMusic()
     self.title = buildTitle()
     self.version = buildVersionLabel()
+    -- Cached alongside the label so update() can tell when the heartbeat has
+    -- actually moved the number. Re-read on every enter because the count may
+    -- have arrived (or been switched off in Options) while we were away.
+    self.onlineCount = OnlineCount.value
+    self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     self.githubHover = false
     self.githubPressed = false
     -- Seeded from the real pointer so hover feedback is right on the first
@@ -139,6 +159,15 @@ function MainMenu:layout()
         w - self.version.font:getWidth(self.version.text) - pad,
         h - self.version.font:getHeight() - pad)
 
+    -- Stacked directly on top of the version label, right-aligned to match it.
+    -- Absent whenever the count is unknown, so everything here is nil-guarded.
+    if self.onlinePlayers then
+        self.onlinePlayers:setPosition(
+            w - self.onlinePlayers.font:getWidth(self.onlinePlayers.text) - pad,
+            h - self.version.font:getHeight() - self.onlinePlayers.font:getHeight() - pad
+        )
+    end
+
     self.menu:layout(h * MENU_Y_RATIO)
 end
 
@@ -148,6 +177,17 @@ function MainMenu:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)
     self.menu:update(dt)
+
+    -- The count lands from the heartbeat thread, at most once every few
+    -- minutes. TextFactory bakes a glyph mesh, so the label is rebuilt only
+    -- when the number actually changes rather than every frame — and re-laid
+    -- out with it, because a different number is a different width and this
+    -- label is right-aligned.
+    if OnlineCount.value ~= self.onlineCount then
+        self.onlineCount = OnlineCount.value
+        self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
+        self:layout()
+    end
 end
 
 -- Widgets resolve their fonts per draw, but TextFactory caches a glyph mesh
@@ -158,6 +198,7 @@ function MainMenu:resize(w, h, rescaled)
     self.title = buildTitle()
     if rescaled then
         self.version = buildVersionLabel()
+        self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     end
     self:layout()
 end
@@ -217,6 +258,12 @@ function MainMenu:draw()
 
     -- Version: a plain standalone label pinned to the bottom-right.
     self.version:draw()
+
+    -- Online players: same treatment, stacked above the version. Absent until
+    -- the first heartbeat comes back, and gone again if the player opts out.
+    if self.onlinePlayers then
+        self.onlinePlayers:draw()
+    end
 
     -- GitHub mark: bottom-left, a link to the repo that lights up on hover.
     -- Always carries a soft halo so it reads against the starfield, and lights

@@ -8,7 +8,8 @@
     "options": "Options",
     "achievements": "Achievements",
     "quit": "Quit",
-    "hint": "W/S or Mouse: navigate    Enter or Click: select"
+    "hint": "W/S or Mouse: navigate    Enter or Click: select",
+    "onlinePlayers": "{n} playing now"
   },
   "options": {
     "title": "OPTIONS",
@@ -24,6 +25,7 @@
     "msaaOff": "Off",
     "displayMode": "Display Mode",
     "vsync": "VSync",
+    "shareStats": "Share Play Stats",
     "tab": {
       "general": "General",
       "graphics": "Graphics"
@@ -59,6 +61,7 @@
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
       "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
+      "shareStats": "Sends an anonymous ping so the menu can show how many people are playing. No personal data.",
       "apply": "Applies the graphics changes above. You'll be asked to confirm.",
       "back": "Returns to the previous screen."
     }

@@ -1,6 +1,6 @@
 -- conf.lua
 function love.conf(t)
-    t.identity = "my-game"          -- save-directory name (love.filesystem writes here)
+    t.identity = "TD-Idle"          -- save-directory name (love.filesystem writes here)
     t.version = "11.5"
     t.console = false
 
