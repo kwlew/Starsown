@@ -1,3 +1,0 @@
-[smoke] conf ok (1600x900, msaa 0, vsync 1)
-[smoke] love.load returned
-[smoke] PASS -- 1673 frames, 1673 draws in 4.0s
