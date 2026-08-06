@@ -1,0 +1,10 @@
+saveDir: C:/Users/kaleo/AppData/Roaming/LOVE/probe
+source getInfo: true
+read bytes: 2349718
+write to save dir: true
+mount copy.love at "" -> true
+   sees main.lua: true
+   sees assets/lang/en.json: true
+mount copy.love at "game" -> true
+   sees game/main.lua: true
+   sees assets/lang/en.json: true
