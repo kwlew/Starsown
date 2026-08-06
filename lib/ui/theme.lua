@@ -20,10 +20,20 @@ local Math = require "lib.utils.math"
 
 local Theme = {}
 
--- Where the UI font family lives. Each role below picks its own weight from it:
--- a single weight for every role is what makes dense screens read as noise, so
--- headings/buttons get the heavy cuts and body/hint text gets the light ones.
-local FONT_DIR = "assets/fonts/Oxanium/"
+-- Where each UI font family lives, keyed by a short name fontRoles refers to
+-- below. Most roles share one family and pick their own weight from it — a
+-- single weight for every role is what makes dense screens read as noise, so
+-- headings/buttons get the heavy cuts and body/hint text gets the light ones —
+-- but a role can name a different family (a display face for the title, say)
+-- and it's just another entry here. static/ is Orbitron's individually-cut
+-- weights; its bare .ttf one level up is a variable font, which LÖVE 11.5 can
+-- open but always renders at a single default weight, so the static cuts are
+-- the ones worth pointing a role at.
+local FONT_FAMILIES = {
+    oxanium  = "assets/fonts/Oxanium/",
+    orbitron = "assets/fonts/Orbitron/static/",
+}
+local DEFAULT_FAMILY = "oxanium"
 
 -- The live palette. Populated by applyPalette below; never assign to this table
 -- itself (see applyPalette for why).
@@ -349,9 +359,11 @@ local constantMetrics = {
 
 -- Point sizes at scale 1, plus the weight each role is cut from. Sizes alone
 -- can't build a hierarchy — weight is what separates a heading from the body
--- text sitting right under it.
+-- text sitting right under it. `family` is optional and looked up in
+-- FONT_FAMILIES above; a role that omits it gets DEFAULT_FAMILY, which is why
+-- every role below can leave it out today without changing anything.
 local fontRoles = {
-    title   = { file = "Oxanium-ExtraBold.ttf", size = 72 }, -- game title
+    title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 72 }, -- game title
     heading = { file = "Oxanium-Bold.ttf",      size = 40 }, -- screen headings
     button  = { file = "Oxanium-SemiBold.ttf",  size = 26 }, -- buttons, tabs
     body    = { file = "Oxanium-Medium.ttf",    size = 26 }, -- widget labels/values
@@ -411,10 +423,12 @@ function Theme.font(name)
     assert(role, "Theme.font: unknown font '" .. tostring(name) .. "'")
     if not fontCache[name] then
         local size = math.max(1, Math.round(role.size * Theme.scale))
+        local dir = FONT_FAMILIES[role.family or DEFAULT_FAMILY]
+        assert(dir, "Theme.font: role '" .. name .. "' names unknown family '" .. tostring(role.family) .. "'")
         -- Fall back to LÖVE's default font if the .ttf can't be opened, so a
         -- missing/renamed font file degrades gracefully instead of crashing
         -- (also lets headless tests run without the assets dir mounted).
-        local ok, font = pcall(love.graphics.newFont, FONT_DIR .. role.file, size)
+        local ok, font = pcall(love.graphics.newFont, dir .. role.file, size)
         fontCache[name] = ok and font or love.graphics.newFont(size)
     end
     return fontCache[name]

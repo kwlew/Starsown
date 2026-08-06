@@ -227,33 +227,58 @@ local TRAIL_WIDTH_RAMP = 60
 -- The power to which the trail's alpha is raised to create a smooth fade-out.
 local TRAIL_FADE_POW = 1.6
 
--- One reused mesh for every star's trail: a (TRAIL_SEGMENTS + 1) x 4 grid of
--- vertices (edge+, core+, core-, edge-) stitched into three bands of triangles.
--- Vertices are rewritten in place per draw via setVertices, so no Mesh (nor its
--- GPU buffer) is allocated per frame and the vertex map is built only once.
-local trailMesh, trailVerts
+-- Every star's trail is a (TRAIL_SEGMENTS + 1) x 4 grid of vertices (edge+,
+-- core+, core-, edge-) stitched into three bands of triangles.
+--
+-- All of them share ONE mesh and, importantly, ONE upload per frame. This used
+-- to be an upload and a draw call per star: the buffer was rewritten and drawn,
+-- rewritten and drawn, once around the loop. Writing to a buffer that already
+-- has a draw pending against it is the expensive shape — the driver has to
+-- either stall or shadow the buffer — and it cost a draw call per star on top.
+-- Queuing every trail into one buffer and sending it in a single setVertices +
+-- draw makes the whole field one draw call, flat in the number of stars.
+--
+-- Reordering is safe because every trail is drawn additively, and addition
+-- commutes: batching them ahead of the heads and halos gives the same image.
+local VERTS_PER_TRAIL   = (TRAIL_SEGMENTS + 1) * 4
+local INDICES_PER_TRAIL = TRAIL_SEGMENTS * 3 * 6
 
-local function buildTrailMesh()
+local trailMesh, trailVerts
+local trailCapacity = 0 -- trails the current buffer can hold
+local batchCount = 0    -- trails queued so far this frame
+
+-- Grows the shared buffer to hold `capacity` trails. Rare: capacity only
+-- ratchets upward, and doubles when it does, so a busy sky pays for this once.
+local function ensureTrailMesh(capacity)
+    if trailCapacity >= capacity then return end
+
+    capacity = math.max(capacity, trailCapacity * 2, 16)
+
     local verts, map = {}, {}
-    for _ = 0, TRAIL_SEGMENTS do
-        for _ = 1, 4 do
+    for t = 0, capacity - 1 do
+        local base = t * VERTS_PER_TRAIL
+        for _ = 1, VERTS_PER_TRAIL do
             verts[#verts + 1] = { 0, 0, 0, 0, 1, 1, 1, 1 }
         end
-    end
-    for i = 0, TRAIL_SEGMENTS - 1 do
-        local a, b = i * 4, (i + 1) * 4 -- first vertex of this column / the next
-        for row = 1, 3 do               -- edge+ -> core+, core+ -> core-, core- -> edge-
-            map[#map + 1] = a + row
-            map[#map + 1] = a + row + 1
-            map[#map + 1] = b + row + 1
-            map[#map + 1] = a + row
-            map[#map + 1] = b + row + 1
-            map[#map + 1] = b + row
+        for i = 0, TRAIL_SEGMENTS - 1 do
+            -- First vertex of this column / the next, offset into this trail's
+            -- slice of the shared buffer. The vertex map is 1-based.
+            local a, b = base + i * 4, base + (i + 1) * 4
+            for row = 1, 3 do -- edge+ -> core+, core+ -> core-, core- -> edge-
+                map[#map + 1] = a + row
+                map[#map + 1] = a + row + 1
+                map[#map + 1] = b + row + 1
+                map[#map + 1] = a + row
+                map[#map + 1] = b + row + 1
+                map[#map + 1] = b + row
+            end
         end
     end
-    local mesh = love.graphics.newMesh(verts, "triangles")
-    mesh:setVertexMap(map)
-    return mesh, verts
+
+    trailMesh = love.graphics.newMesh(verts, "triangles")
+    trailMesh:setVertexMap(map)
+    trailVerts = verts
+    trailCapacity = capacity
 end
 
 local function setVertex(v, x, y, r, g, b, a)
@@ -261,13 +286,19 @@ local function setVertex(v, x, y, r, g, b, a)
     v[5], v[6], v[7], v[8] = r, g, b, a
 end
 
--- Lays the strip down the star's path: (dx, dy) is its unit heading, (nx, ny)
--- the perpendicular, `length` how much of the streak has been earned so far.
--- The caller owns the blend mode (additive), matching Nebula:stampCloud — both
--- call sites here already have one set, and toggling it per trail would cost a
--- state change per star.
-local function drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
-    if not trailMesh then trailMesh, trailVerts = buildTrailMesh() end
+-- Queues the strip down the star's path into the shared batch: (dx, dy) is its
+-- unit heading, (nx, ny) the perpendicular, `length` how much of the streak has
+-- been earned so far. Nothing is drawn here — flushTrails() sends the whole
+-- field in one call.
+local function addTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
+    -- draw() sizes the buffer for the whole field before queuing anything, so
+    -- this can't normally trip. The buffer is deliberately not grown here on
+    -- demand: a rebuild allocates a fresh vertex table, which would silently
+    -- drop every trail already queued this frame.
+    if batchCount >= trailCapacity then return end
+
+    local base = batchCount * VERTS_PER_TRAIL
+    batchCount = batchCount + 1
 
     -- s.scale widens the streak for golden stars to match their heavier head.
     local scale = math.min(1, length / TRAIL_WIDTH_RAMP) * s.scale
@@ -290,16 +321,29 @@ local function drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
         local edge = core + TRAIL_FEATHER
         local alpha = shape ^ TRAIL_FADE_POW * fade
 
-        local o, v = i * 4, trailVerts
+        local o, v = base + i * 4, trailVerts
         setVertex(v[o + 1], px + nx * edge, py + ny * edge, r, g, b, 0)
         setVertex(v[o + 2], px + nx * core, py + ny * core, r, g, b, alpha)
         setVertex(v[o + 3], px - nx * core, py - ny * core, r, g, b, alpha)
         setVertex(v[o + 4], px - nx * edge, py - ny * edge, r, g, b, 0)
     end
+end
 
-    trailMesh:setVertices(trailVerts)
+-- Sends every trail queued this frame as a single additive draw, then resets
+-- the batch. Only the slice actually written is uploaded and drawn, so a sky
+-- with two stars doesn't pay for a buffer sized by the busiest moment so far.
+local function flushTrails()
+    if batchCount == 0 then return end
+
+    trailMesh:setVertices(trailVerts, 1, batchCount * VERTS_PER_TRAIL)
+    trailMesh:setDrawRange(1, batchCount * INDICES_PER_TRAIL)
+
+    love.graphics.setBlendMode("add")
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(trailMesh)
+    love.graphics.setBlendMode("alpha")
+
+    batchCount = 0
 end
 
 
@@ -330,10 +374,7 @@ local function drawStar(s, dyingThreshold)
     if s.popped then
         local k = 1 - s.popped / POP_FADE
         if travelled >= 1 then
-            love.graphics.setBlendMode("add")
-            drawTrail(s, dx, dy, nx, ny, travelled, r, g, b, fade * k * k)
-            love.graphics.setBlendMode("alpha")
-            love.graphics.setColor(1, 1, 1, 1)
+            addTrail(s, dx, dy, nx, ny, travelled, r, g, b, fade * k * k)
         end
         return
     end
@@ -346,11 +387,11 @@ local function drawStar(s, dyingThreshold)
     glowColor[1], glowColor[2], glowColor[3] = r, g, b
     Theme.glowRect(s.x - hs, s.y - hs, hs * 2, hs * 2, hs, glowI * flicker, glowColor)
 
-    love.graphics.setBlendMode("add")
-
     if length >= 1 then
-        drawTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
+        addTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
     end
+
+    love.graphics.setBlendMode("add")
 
     local headAlpha = Math.clamp01(fade * flicker)
     local headR = (HEAD_RADIUS + math.max(0, glowI - 1) * HEAD_SWELL) * s.scale
@@ -395,9 +436,16 @@ function Starfield:mousepressed(x, y, button)
 end
 
 function Starfield:draw()
+    -- Two passes on purpose: drawStar only queues trail geometry, so the whole
+    -- field's trails go up in one upload and one draw rather than one per star.
+    -- Heads and halos are still drawn inside drawStar. Everything here is
+    -- additive, so the split doesn't change the image.
+    ensureTrailMesh(#self.stars)
+
     for _, s in ipairs(self.stars) do
         drawStar(s, self.dyingThreshold)
     end
+    flushTrails()
 
     self.embers:draw()
     self.burst:draw()
