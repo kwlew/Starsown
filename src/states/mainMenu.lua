@@ -269,9 +269,9 @@ function MainMenu:draw()
     -- Always carries a soft halo so it reads against the starfield, and lights
     -- up to the accent color with a stronger glow while hovered.
     local mark = self.githubBounds
-    --GithubMark.draw(mark.x, mark.y, mark.w,
-    --    self.githubHover and UI.Theme.colors.accent or UI.Theme.colors.text,
-    --    self.githubHover and 1 or 0.45)
+    GithubMark.draw(mark.x, mark.y, mark.w,
+        self.githubHover and UI.Theme.colors.accent or UI.Theme.colors.text,
+        self.githubHover and 1 or 0.45)
 
     self.title:drawChroma()
 

@@ -34,7 +34,7 @@ function Text.get(str, font, width, align)
 
     if count >= MAX_ENTRIES then Text.clear() end
 
-    entry = love.graphics.newTextBatch(font)
+    entry = love.graphics.newText(font)
     entry:setf(str, width, align)
     cache[key] = entry
     count = count + 1

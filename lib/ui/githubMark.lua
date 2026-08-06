@@ -111,33 +111,20 @@ end
 -- overlapping triangles cancel outside the glyph and only the true interior is
 -- left odd. Note the test must be "notequal 0", NOT "equal 1": a bitwise invert
 -- turns 0 into 255, so comparing against 1 would match nothing at all.
---
--- LÖVE 12 replaced love.graphics.stencil/setStencilTest with setStencilState.
--- The old stencil() also suppressed color writes for the duration of its
--- callback; setStencilState does not, so the color mask has to be closed by
--- hand around the mask pass — without it the fan's raw triangles would be
--- painted straight onto the target.
 local function fillMark(x, y, size)
     mesh = mesh or buildMesh()
 
-    -- Pass 1: stamp the outline into the stencil buffer only.
-    love.graphics.setColorMask(false, false, false, false)
-    love.graphics.setStencilState("invert", "always", 1)
+    love.graphics.stencil(function()
+        love.graphics.push()
+        love.graphics.translate(x, y)
+        love.graphics.scale(size, size)
+        love.graphics.draw(mesh)
+        love.graphics.pop()
+    end, "invert", 1)
 
-    love.graphics.push()
-    love.graphics.translate(x, y)
-    love.graphics.scale(size, size)
-    love.graphics.draw(mesh)
-    love.graphics.pop()
-
-    love.graphics.setColorMask(true, true, true, true)
-
-    -- Pass 2: paint the square, keeping only the pixels the stamp left odd.
-    love.graphics.setStencilState("keep", "notequal", 0)
+    love.graphics.setStencilTest("notequal", 0)
     love.graphics.rectangle("fill", x, y, size, size)
-
-    -- Back to the default ("keep", "always", 0): no test, no write.
-    love.graphics.setStencilState()
+    love.graphics.setStencilTest()
 end
 
 -- Paints the mark and its halo into the current target, glyph top-left at

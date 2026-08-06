@@ -97,7 +97,7 @@ function TextFactory:new(config)
 
     -- Cached glyph mesh: printf-style wrapping/rasterization is redone here
     -- only when the text or font actually changes, not on every draw call.
-    obj.textObject = love.graphics.newTextBatch(obj.font)
+    obj.textObject = love.graphics.newText(obj.font)
     obj.textObject:setf(obj.text, obj.limit, obj.align)
 
     if config.gradient then
@@ -121,7 +121,7 @@ function TextFactory:setSize(size)
         self.font = love.graphics.newFont(size)
     end
 
-    self.textObject = love.graphics.newTextBatch(self.font)
+    self.textObject = love.graphics.newText(self.font)
     self.textObject:setf(self.text, self.limit, self.align)
 end
 
