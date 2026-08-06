@@ -33,7 +33,7 @@ Globals.menu = {
         lifeMin        = 1.5, lifeMax       = 5.2,
         dyingThreshold = 0.4,
         -- Golden stars.
-        goldenChance   = 0.33,
+        goldenChance   = 0.003,
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
         },

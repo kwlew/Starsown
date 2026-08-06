@@ -590,9 +590,10 @@ function Options:enter(previousName, opts)
         self.tabs = {
             { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
                                              self.sfxVolumeSlider, self.languageSelector,
-                                             self.themeSelector, self.shareStatsToggle, } },
+                                             self.themeSelector, } },
             { name = "graphics", widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
                                              self.vsyncToggle, self.applyButton, } },
+            { name = "misc", widgets = { self.shareStatsToggle, } }, -- placeholder for future expansion
         }
 
         self.tabBar = UI.TabBar.new{
