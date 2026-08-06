@@ -9,7 +9,11 @@
     "achievements": "Logros",
     "quit": "Salir",
     "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar",
-    "onlinePlayers": "{n} jugando ahora"
+    "onlinePlayers": "{n} jugando ahora",
+    "starsPopped": "{n} estrellas reventadas · {g} doradas"
+  },
+  "format": {
+    "thousands": "."
   },
   "options": {
     "title": "OPCIONES",
@@ -61,7 +65,7 @@
       "msaa": "Suaviza los bordes dentados. Los valores altos cuestan más rendimiento.",
       "displayMode": "En ventana, pantalla completa sin bordes o pantalla completa exclusiva.",
       "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el desgarro.",
-      "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando. Ningún dato personal.",
+      "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando y cuántas estrellas ha reventado todo el mundo. Ningún dato personal.",
       "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
       "back": "Vuelve a la pantalla anterior."
     }

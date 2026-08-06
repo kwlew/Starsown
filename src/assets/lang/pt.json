@@ -9,7 +9,11 @@
     "achievements": "Conquistas",
     "quit": "Sair",
     "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
-    "onlinePlayers": "{n} jogando agora"
+    "onlinePlayers": "{n} jogando agora",
+    "starsPopped": "{n} estrelas estouradas · {g} douradas"
+  },
+  "format": {
+    "thousands": "."
   },
   "options": {
     "title": "OPÇÕES",
@@ -61,7 +65,7 @@
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
       "displayMode": "Em janela, tela cheia sem bordas ou tela cheia exclusiva.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
-      "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando. Nenhum dado pessoal.",
+      "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando e quantas estrelas todo mundo estourou. Nenhum dado pessoal.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
       "back": "Volta para a tela anterior."
     }

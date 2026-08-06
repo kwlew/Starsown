@@ -16,7 +16,7 @@ local Audio         = require "lib.audio"
 local Audios        = require "lib.utils.audios"
 local Globals       = require "globals"
 
-local OnlineCount   = require "lib.onlineCount"
+local Stats         = require "lib.stats"
 
 -- Layout is expressed as fractions of the window so it survives resizing and
 -- runs at any resolution, instead of hardcoded pixel offsets. The title's ratio
@@ -47,17 +47,50 @@ local function buildVersionLabel()
     }
 end
 
--- Sits just above the version label, same treatment. Returns nil when the count
--- is unknown — no server response yet, no network, or the player opted out — and
--- every caller treats nil as "draw nothing". A counter that says 0 (or "--")
--- makes a live game look abandoned, which is worse than not showing one at all.
-local function buildOnlinePlayersLabel(count)
-    if not count then return nil end
+-- Groups a number for display: 1234567 -> "1,234,567", using whatever separator
+-- the active language uses (a comma in English, a period in Spanish and
+-- Portuguese). The world star tally is the one number here that gets long
+-- enough to be unreadable ungrouped.
+local function grouped(n)
+    local sep = I18n.t("format.thousands")
+    local text = tostring(math.floor(n))
+    -- Walk right to left in threes. The %1 guard stops the pattern from
+    -- prefixing a separator onto the leading group.
+    local done
+    repeat
+        text, done = text:gsub("^(%-?%d+)(%d%d%d)", "%1" .. sep .. "%2")
+    until done == 0
+    return text
+end
+
+-- A small dim standalone label for the bottom-right stack. Shared by the two
+-- world figures so they get identical treatment.
+local function buildCornerLabel(text)
     return TextFactory:new{
-        text = I18n.t("menu.onlinePlayers", { n = count }),
+        text = text,
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
+end
+
+-- Sits just above the version label. Returns nil when the count is unknown — no
+-- server response yet, no network, or the player opted out — and every caller
+-- treats nil as "draw nothing". A counter that says 0 (or "--") makes a live
+-- game look abandoned, which is worse than not showing one at all.
+local function buildOnlinePlayersLabel(count)
+    if not count then return nil end
+    return buildCornerLabel(I18n.t("menu.onlinePlayers", { n = grouped(count) }))
+end
+
+-- The world star tally, above the player count. Same nil rule. Golden stars are
+-- a subset of the total, not a second pile added to it, which is why the string
+-- reads "of which" rather than listing two independent numbers.
+local function buildStarsPoppedLabel(stars, golden)
+    if not stars then return nil end
+    return buildCornerLabel(I18n.t("menu.starsPopped", {
+        n = grouped(stars),
+        g = grouped(golden or 0),
+    }))
 end
 
 -- A background layer is built by the loading screen and handed over through
@@ -85,11 +118,13 @@ function MainMenu:enter()
     menuMusic()
     self.title = buildTitle()
     self.version = buildVersionLabel()
-    -- Cached alongside the label so update() can tell when the heartbeat has
-    -- actually moved the number. Re-read on every enter because the count may
-    -- have arrived (or been switched off in Options) while we were away.
-    self.onlineCount = OnlineCount.value
+    -- Cached alongside the labels so update() can tell when the heartbeat has
+    -- actually moved a number. Re-read on every enter because they may have
+    -- arrived (or been switched off in Options) while we were away.
+    self.onlineCount = Stats.online
+    self.starCount, self.goldenCount = Stats.stars, Stats.golden
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
+    self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
     self.githubHover = false
     self.githubPressed = false
     -- Seeded from the real pointer so hover feedback is right on the first
@@ -155,17 +190,20 @@ function MainMenu:layout()
 
     self.title.y = h * GameTitle.MENU_Y_RATIO
     self.githubBounds = { x = pad, y = h - iconSize - pad, w = iconSize, h = iconSize }
-    self.version:setPosition(
-        w - self.version.font:getWidth(self.version.text) - pad,
-        h - self.version.font:getHeight() - pad)
 
-    -- Stacked directly on top of the version label, right-aligned to match it.
-    -- Absent whenever the count is unknown, so everything here is nil-guarded.
-    if self.onlinePlayers then
-        self.onlinePlayers:setPosition(
-            w - self.onlinePlayers.font:getWidth(self.onlinePlayers.text) - pad,
-            h - self.version.font:getHeight() - self.onlinePlayers.font:getHeight() - pad
-        )
+    -- The bottom-right stack, laid out from the floor upwards and right-aligned
+    -- to a shared margin. Built as a list rather than three hardcoded offsets
+    -- because the two world figures come and go independently — either can be
+    -- absent while the count is unknown, and a gap where one used to be would
+    -- leave the version label floating.
+    local stack = { self.version }
+    if self.onlinePlayers then stack[#stack + 1] = self.onlinePlayers end
+    if self.starsPopped then stack[#stack + 1] = self.starsPopped end
+
+    local y = h - pad
+    for _, label in ipairs(stack) do
+        y = y - label.font:getHeight()
+        label:setPosition(w - label.font:getWidth(label.text) - pad, y)
     end
 
     self.menu:layout(h * MENU_Y_RATIO)
@@ -178,16 +216,26 @@ function MainMenu:update(dt)
     self.title:update(dt)
     self.menu:update(dt)
 
-    -- The count lands from the heartbeat thread, at most once every few
-    -- minutes. TextFactory bakes a glyph mesh, so the label is rebuilt only
-    -- when the number actually changes rather than every frame — and re-laid
-    -- out with it, because a different number is a different width and this
-    -- label is right-aligned.
-    if OnlineCount.value ~= self.onlineCount then
-        self.onlineCount = OnlineCount.value
+    -- The figures land from the heartbeat thread, at most once every few
+    -- minutes. TextFactory bakes a glyph mesh, so a label is rebuilt only when
+    -- its number actually changes rather than every frame — and re-laid out
+    -- with it, because a different number is a different width and the whole
+    -- stack is right-aligned.
+    local moved = false
+
+    if Stats.online ~= self.onlineCount then
+        self.onlineCount = Stats.online
         self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-        self:layout()
+        moved = true
     end
+
+    if Stats.stars ~= self.starCount or Stats.golden ~= self.goldenCount then
+        self.starCount, self.goldenCount = Stats.stars, Stats.golden
+        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+        moved = true
+    end
+
+    if moved then self:layout() end
 end
 
 -- Widgets resolve their fonts per draw, but TextFactory caches a glyph mesh
@@ -199,6 +247,7 @@ function MainMenu:resize(w, h, rescaled)
     if rescaled then
         self.version = buildVersionLabel()
         self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
+        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
     end
     self:layout()
 end
@@ -231,7 +280,12 @@ function MainMenu:mousepressed(x, y, button)
         UI.Sfx.press()
         return
     end
-    self.starfield:mousepressed(x, y, button)
+    -- A popped star is the one thing on this screen that feeds the world
+    -- tally. Recording it is two integers on the main thread; it rides out on
+    -- the next heartbeat rather than costing a request of its own, and does
+    -- nothing at all if the player has opted out.
+    local hit, golden = self.starfield:mousepressed(x, y, button)
+    if hit then Stats.pop(golden) end
 end
 
 function MainMenu:mousereleased(x, y, button)
@@ -259,10 +313,14 @@ function MainMenu:draw()
     -- Version: a plain standalone label pinned to the bottom-right.
     self.version:draw()
 
-    -- Online players: same treatment, stacked above the version. Absent until
-    -- the first heartbeat comes back, and gone again if the player opts out.
+    -- The world figures: same treatment, stacked above the version. Both are
+    -- absent until the first heartbeat comes back, and gone again if the player
+    -- opts out.
     if self.onlinePlayers then
         self.onlinePlayers:draw()
+    end
+    if self.starsPopped then
+        self.starsPopped:draw()
     end
 
     -- GitHub mark: bottom-left, a link to the repo that lights up on hover.

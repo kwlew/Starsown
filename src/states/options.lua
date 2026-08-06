@@ -19,7 +19,7 @@ local UI = require "lib.ui"
 local I18n = require "lib.i18n"
 local Audio = require "lib.audio"
 local Presence = require "lib.presence"
-local OnlineCount = require "lib.onlineCount"
+local Stats = require "lib.stats"
 local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
@@ -558,7 +558,7 @@ function Options:enter(previousName, opts)
             onChange = function(value)
                 UI.Sfx.select()
                 self.settings.shareStats = value
-                OnlineCount.setEnabled(value)
+                Stats.setEnabled(value)
                 persist()
             end,
         }
