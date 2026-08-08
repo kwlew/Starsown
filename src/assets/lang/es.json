@@ -15,6 +15,39 @@
   "format": {
     "thousands": "."
   },
+  "game": {
+    "wave": "Oleada {n}",
+    "best": "mejor {n}",
+    "nextWave": "Próxima oleada en {n}s",
+    "incoming": "Oleada en camino",
+    "bossIncoming": "Jefe en camino",
+    "clearing": "Despejando el campo",
+    "inProgress": "Activa",
+    "ready": "Lista",
+    "callWave": "Llamar Oleada",
+    "called": "Oleada llamada — {n} de oro",
+    "overcharge": "Sobrecarga",
+    "overchargeActive": "{n}s",
+    "overchargeOn": "Sobrecarga activada",
+    "level": "Nv {n}",
+    "dps": "Daño/s",
+    "range": "Alcance",
+    "kills": "Bajas",
+    "upgradeFor": "Mejorar {n}",
+    "sellFor": "Vender +{n}",
+    "maxLevel": "Nivel máximo",
+    "leak": "-1",
+    "bossWave": "Oleada {n} — se acerca un jefe",
+    "setback": "Defensas superadas — retrocediendo a la oleada {n}",
+    "offline": "Ausente {t} — tus torres ganaron {n} de oro",
+    "presence": "{n} torres en pie",
+    "hint": "Clic en una casilla para construir    1-3: elegir torre    Espacio: llamar oleada    E: sobrecarga    U: mejorar    Esc: pausa",
+    "tower": {
+      "gun": "Cañón Ligero",
+      "frost": "Escarcha",
+      "cannon": "Obús"
+    }
+  },
   "options": {
     "title": "OPCIONES",
     "back": "Volver",
@@ -74,7 +107,7 @@
     "cancel": "Cancelar",
     "quit": {
       "title": "¿Salir al menú?",
-      "message": "Se perderá la partida actual.",
+      "message": "Tu progreso queda guardado — tus torres siguen ganando mientras no estás.",
       "confirm": "Abandonar"
     },
     "revert": {

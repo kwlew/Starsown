@@ -15,6 +15,39 @@
   "format": {
     "thousands": "."
   },
+  "game": {
+    "wave": "Onda {n}",
+    "best": "melhor {n}",
+    "nextWave": "Próxima onda em {n}s",
+    "incoming": "Onda a caminho",
+    "bossIncoming": "Chefe a caminho",
+    "clearing": "Limpando o campo",
+    "inProgress": "Ativa",
+    "ready": "Pronta",
+    "callWave": "Chamar Onda",
+    "called": "Onda chamada — {n} de ouro",
+    "overcharge": "Sobrecarga",
+    "overchargeActive": "{n}s",
+    "overchargeOn": "Sobrecarga ativada",
+    "level": "Nv {n}",
+    "dps": "Dano/s",
+    "range": "Alcance",
+    "kills": "Abates",
+    "upgradeFor": "Melhorar {n}",
+    "sellFor": "Vender +{n}",
+    "maxLevel": "Nível máximo",
+    "leak": "-1",
+    "bossWave": "Onda {n} — chefe se aproximando",
+    "setback": "Defesas superadas — recuando para a onda {n}",
+    "offline": "Ausente {t} — suas torres renderam {n} de ouro",
+    "presence": "{n} torres de pé",
+    "hint": "Clique num bloco para construir    1-3: escolher torre    Espaço: chamar onda    E: sobrecarga    U: melhorar    Esc: pausar",
+    "tower": {
+      "gun": "Metralha",
+      "frost": "Gelo",
+      "cannon": "Canhão"
+    }
+  },
   "options": {
     "title": "OPÇÕES",
     "back": "Voltar",
@@ -74,7 +107,7 @@
     "cancel": "Cancelar",
     "quit": {
       "title": "Sair para o menu?",
-      "message": "A partida atual será perdida.",
+      "message": "Seu progresso está salvo — suas torres continuam rendendo enquanto você estiver fora.",
       "confirm": "Abandonar"
     },
     "revert": {
