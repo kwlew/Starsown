@@ -61,7 +61,13 @@ end
 
 -- Closes the Discord IPC connection and stops the stats heartbeat — which also
 -- writes any popped stars that never made it out, so they go with the next one.
+--
+-- The run is saved first, and unconditionally: a player who alt-F4s out of a
+-- wave should lose nothing. Game autosaves on a timer as well, so this only
+-- narrows the window rather than being the only thing standing between the
+-- player and a lost session.
 function love.quit()
+    gameState.saveIfRunning()
     Presence.shutdown()
     Stats.shutdown()
 end
