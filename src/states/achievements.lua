@@ -27,11 +27,11 @@
 --
 -- TODO: after the initial game implementation, start achievement implementation.
 
-local StateManager = require "lib.stateManager"
-local Presence     = require "lib.presence"
-local I18n         = require "lib.i18n"
-local Math         = require "lib.utils.math"
-local UI           = require "lib.ui"
+local StateManager = require "core.stateManager"
+local Presence     = require "services.presence"
+local I18n         = require "core.i18n"
+local Math         = require "utils.math"
+local UI           = require "ui"
 
 local Achievements = {}
 
@@ -58,7 +58,7 @@ local AVAILABLE_MIX = 0.45
 -- The categories, in tab order. Each is a tree of nodes:
 --
 --   id       : unique within the category; the save key a real one would use
---   icon     : a lib/ui/glyph name
+--   icon     : a src/ui/glyph name
 --   title    : string, or function -> string once these are localized
 --   desc     : what earning it takes
 --   reward   : what it's worth — the reason an idle player is on this screen

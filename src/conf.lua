@@ -20,11 +20,11 @@ function love.conf(t)
     -- frame stall that fast-forwards the loading screen. love.filesystem is
     -- functional during love.conf (conf.lua itself is loaded through it),
     -- but the save-dir identity isn't set until after conf returns, so set
-    -- it manually before reading. pcall: if anything fails (e.g. different
-    -- cwd so lib/ doesn't resolve), the defaults above still stand.
+    -- it manually before reading. pcall: if anything fails, the defaults
+    -- above still stand.
     local ok, settings = pcall(function()
         love.filesystem.setIdentity(t.identity)
-        return require("lib.settings").load()
+        return require("core.settings").load()
     end)
     if ok and settings then
         t.window.vsync = settings.vsync

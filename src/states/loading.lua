@@ -13,16 +13,16 @@
 -- of stalling and then jumping. Weights make the bar reflect cost rather than
 -- how many entries have been dequeued.
 
-local StateManager = require "lib.stateManager"
-local Assets = require "lib.assets"
-local Settings = require "lib.settings"
-local UI = require "lib.ui"
-local I18n = require "lib.i18n"
-local Audio = require "lib.audio"
-local Audios = require "lib.utils.audios"
-local Particles = require "lib.particles"
-local Math = require "lib.utils.math"
-local GameTitle = require "gameTitle"
+local StateManager = require "core.stateManager"
+local Assets = require "core.assets"
+local Settings = require "core.settings"
+local UI = require "ui"
+local I18n = require "core.i18n"
+local Audio = require "core.audio"
+local Audios = require "utils.audios"
+local Particles = require "particles"
+local Math = require "utils.math"
+local GameTitle = require "ui.gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.75  -- length of the hand-off animation

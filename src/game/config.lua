@@ -93,7 +93,7 @@ Config.overcharge = {
 -- The towers, in build-bar order.
 --
 --   id       : save key and locale key (game.tower.<id>)
---   icon     : a lib/ui/glyph name
+--   icon     : a src/ui/glyph name
 --   cost     : gold to build at level 1
 --   damage   : per shot
 --   range    : tiles, measured from the tower's tile center

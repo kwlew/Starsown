@@ -15,12 +15,12 @@
 -- own Quit button when it was opened straight from the game; reached this way
 -- it doesn't, because the entry right here does that job.
 
-local StateManager = require "lib.stateManager"
-local Presence = require "lib.presence"
-local Audio = require "lib.audio"
-local Menu = require "lib.menu"
-local I18n = require "lib.i18n"
-local UI = require "lib.ui"
+local StateManager = require "core.stateManager"
+local Presence = require "services.presence"
+local Audio = require "core.audio"
+local Menu = require "ui.menu"
+local I18n = require "core.i18n"
+local UI = require "ui"
 
 local Pause = {}
 

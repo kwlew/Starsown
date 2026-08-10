@@ -43,7 +43,7 @@
     "presence": "{n} torres de pé",
     "hint": "Clique num bloco para construir    1-3: escolher torre    Espaço: chamar onda    E: sobrecarga    U: melhorar    Esc: pausar",
     "tower": {
-      "gun": "Metralha",
+      "gun": "Metralhadora",
       "frost": "Gelo",
       "cannon": "Canhão"
     }
