@@ -1,4 +1,4 @@
-local Particles = require "lib.particles"
+local Particles = require "particles"
 
 local Globals   = {}
 

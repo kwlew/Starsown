@@ -14,9 +14,9 @@
 -- That means there is no second copy of "which tower is selected" to fall out of
 -- sync with the one the board is drawing.
 
-local UI = require "lib.ui"
-local I18n = require "lib.i18n"
-local Format = require "lib.utils.format"
+local UI = require "ui"
+local I18n = require "core.i18n"
+local Format = require "utils.format"
 local Config = require "game.config"
 
 local Hud = {}

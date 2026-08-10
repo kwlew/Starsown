@@ -1,9 +1,9 @@
-local Debug = require "lib.debug"
-local StateManager = require "lib.stateManager"
-local Presence = require "lib.presence"
-local Settings = require "lib.settings"
-local I18n = require "lib.i18n"
-local UI = require "lib.ui"
+local Debug = require "core.debug"
+local StateManager = require "core.stateManager"
+local Presence = require "services.presence"
+local Settings = require "core.settings"
+local I18n = require "core.i18n"
+local UI = require "ui"
 
 -- Concrete game screens (live under src/, loaded via LÖVE's filesystem).
 local loadingState = require "states.loading"
@@ -14,7 +14,7 @@ local achievementsState = require "states.achievements"
 local pauseState = require "states.pause"
 local Globals = require "globals"
 
-local Stats = require "lib.stats"
+local Stats = require "services.stats"
 
 function love.load()
     love.window.setTitle(Globals.game.name)

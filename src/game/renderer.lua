@@ -18,8 +18,8 @@
 -- tiles at other resolutions. Theme.px is still right for anything measured in
 -- screen furniture (the floating text, line widths).
 
-local Theme = require "lib.ui.theme"
-local Glyph = require "lib.ui.glyph"
+local Theme = require "ui.theme"
+local Glyph = require "ui.glyph"
 local Map = require "game.map"
 local Config = require "game.config"
 

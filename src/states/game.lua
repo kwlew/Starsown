@@ -16,11 +16,14 @@
 -- whether it took it, so a click on a build button can never also place a tower
 -- on whatever is behind it.
 
-local StateManager = require "lib.stateManager"
-local Presence = require "lib.presence"
-local I18n = require "lib.i18n"
-local Format = require "lib.utils.format"
-local UI = require "lib.ui"
+local StateManager = require "core.stateManager"
+local Presence = require "services.presence"
+local I18n = require "core.i18n"
+local Format = require "utils.format"
+local UI = require "ui"
+
+local Audio = require "core.audio"
+local Audios = require "utils.audios"
 
 local Config = require "game.config"
 local World = require "game.world"
@@ -66,6 +69,7 @@ function Game:wireEvents()
     world.onKill = function(enemy)
         renderer:floater(enemy.x, enemy.y, "+" .. Format.number(enemy.bounty),
             UI.Theme.colors.warning)
+        Audio.play("sfx", Audios.clone("starExplosion"))
     end
 
     world.onLeak = function(enemy)

@@ -1,6 +1,6 @@
 -- src/game/save.lua
 -- Persists a run to the LÖVE save directory and pays out the time the player
--- spent away. Same shape and the same defensiveness as lib/settings.lua: the
+-- spent away. Same shape and the same defensiveness as src/core/settings.lua: the
 -- file is a Lua chunk that returns a table, and a missing, corrupt or
 -- hand-edited one always yields a playable run rather than an error.
 --

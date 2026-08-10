@@ -12,14 +12,14 @@
 -- Abandoning a run is not offered here: during a run this screen is reached
 -- through the pause menu, and that's where quitting lives.
 
-local StateManager = require "lib.stateManager"
-local Assets = require "lib.assets"
-local Settings = require "lib.settings"
-local UI = require "lib.ui"
-local I18n = require "lib.i18n"
-local Audio = require "lib.audio"
-local Presence = require "lib.presence"
-local Stats = require "lib.stats"
+local StateManager = require "core.stateManager"
+local Assets = require "core.assets"
+local Settings = require "core.settings"
+local UI = require "ui"
+local I18n = require "core.i18n"
+local Audio = require "core.audio"
+local Presence = require "services.presence"
+local Stats = require "services.stats"
 local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
@@ -458,7 +458,7 @@ function Options:enter(previousName, opts)
 
         -- General tab: all three volume sliders apply live and persist
         -- immediately. Master scales every channel via love.audio.setVolume;
-        -- Music/SFX are independent channels (see lib/audio.lua) so lowering
+        -- Music/SFX are independent channels (see src/core/audio.lua) so lowering
         -- one doesn't affect the other.
         self.volumeSlider = self:buildVolumeSlider("volume", love.audio.setVolume, true)
         self.musicVolumeSlider = self:buildVolumeSlider("musicVolume",

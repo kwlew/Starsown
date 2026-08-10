@@ -2,21 +2,21 @@
 -- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
 -- themed buttons.
 
-local StateManager  = require "lib.stateManager"
-local Assets        = require "lib.assets"
-local Presence      = require "lib.presence"
-local Menu          = require "lib.menu"
-local TextFactory   = require "lib.textFactory"
-local UI            = require "lib.ui"
-local I18n          = require "lib.i18n"
-local Particles     = require "lib.particles"
-local GithubMark    = require "lib.ui.githubMark"
-local GameTitle     = require "gameTitle"
-local Audio         = require "lib.audio"
-local Audios        = require "lib.utils.audios"
+local StateManager  = require "core.stateManager"
+local Assets        = require "core.assets"
+local Presence      = require "services.presence"
+local Menu          = require "ui.menu"
+local TextFactory   = require "ui.textFactory"
+local UI            = require "ui"
+local I18n          = require "core.i18n"
+local Particles     = require "particles"
+local GithubMark    = require "ui.githubMark"
+local GameTitle     = require "ui.gameTitle"
+local Audio         = require "core.audio"
+local Audios        = require "utils.audios"
 local Globals       = require "globals"
 
-local Stats         = require "lib.stats"
+local Stats         = require "services.stats"
 
 -- Layout is expressed as fractions of the window so it survives resizing and
 -- runs at any resolution, instead of hardcoded pixel offsets. The title's ratio
