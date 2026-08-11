@@ -8,7 +8,7 @@
 )
 
 
-- **Three tower types**, each with five upgrade levels — a fast single-target
+- **Three tower types**, each with five upgrade levels | a fast single-target
   gun, a splash tower that slows what it hits, and a heavy cannon.
 - **Idle progression** | waves advance and towers fight on their own, and time
   spent away from the game earns gold against your run's own pace.
