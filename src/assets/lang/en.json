@@ -4,9 +4,7 @@
     "code": "en"
   },
   "menu": {
-    "play": "Play",
     "options": "Options",
-    "achievements": "Achievements",
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select",
     "onlinePlayers": "{n} playing now",
@@ -14,39 +12,6 @@
   },
   "format": {
     "thousands": ","
-  },
-  "game": {
-    "wave": "Wave {n}",
-    "best": "best {n}",
-    "nextWave": "Next wave in {n}s",
-    "incoming": "Wave incoming",
-    "bossIncoming": "Boss incoming",
-    "clearing": "Clearing the field",
-    "inProgress": "Active",
-    "ready": "Ready",
-    "callWave": "Call Wave",
-    "called": "Wave called — {n} gold banked",
-    "overcharge": "Overcharge",
-    "overchargeActive": "{n}s",
-    "overchargeOn": "Overcharge engaged",
-    "level": "Lv {n}",
-    "dps": "Damage/s",
-    "range": "Range",
-    "kills": "Kills",
-    "upgradeFor": "Upgrade {n}",
-    "sellFor": "Sell +{n}",
-    "maxLevel": "Max level",
-    "leak": "-1",
-    "bossWave": "Wave {n} — boss approaching",
-    "setback": "Defences overrun — falling back to wave {n}",
-    "offline": "Away {t} — your towers earned {n} gold",
-    "presence": "{n} towers standing",
-    "hint": "Click a tile to build    1-3: pick tower    Space: call wave    E: overcharge    U: upgrade    Esc: pause",
-    "tower": {
-      "gun": "Gun",
-      "frost": "Frost",
-      "cannon": "Cannon"
-    }
   },
   "options": {
     "title": "OPTIONS",
@@ -105,11 +70,6 @@
   },
   "dialog": {
     "cancel": "Cancel",
-    "quit": {
-      "title": "Quit to Menu?",
-      "message": "Your progress is saved — your towers keep earning while you're away.",
-      "confirm": "Quit Run"
-    },
     "revert": {
       "title": "Keep these settings?",
       "message": "Reverting in {n}s if you don't confirm.",
@@ -121,36 +81,6 @@
       "message": "Your graphics changes haven't been applied yet.",
       "apply": "Apply",
       "discard": "Discard"
-    }
-  },
-  "pause": {
-    "title": "PAUSED",
-    "resume": "Resume",
-    "options": "Options",
-    "quit": "Quit to Menu",
-    "hint": "W/S or Mouse: navigate    Enter or Click: select    Esc: resume"
-  },
-  "achievements": {
-    "title": "ACHIEVEMENTS",
-    "back": "Back",
-    "progress": "{done} of {total} earned",
-    "categoryProgress": "{name} — {done} of {total}",
-    "reward": "REWARD",
-    "hiddenTitle": "Hidden",
-    "hiddenDesc": "This one you'll have to find on your own.",
-    "hiddenReward": "Unknown",
-    "hint": "Arrows or Mouse: browse    Drag or scroll: pan    Esc: back",
-    "status": {
-      "earned": "Earned",
-      "available": "Available now",
-      "locked": "Locked"
-    },
-    "category": {
-      "foundations": "Foundations",
-      "arsenal": "Arsenal",
-      "economy": "Economy",
-      "conquest": "Conquest",
-      "secrets": "Secrets"
     }
   },
   "loading": {

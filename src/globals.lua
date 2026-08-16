@@ -4,7 +4,7 @@ local Globals   = {}
 
 Globals.game = {
     name        = "TD Idle",
-    version     = "0.0.1",
+    version     = "0.0.3a",
     startedAt   = 0,
 }
 
@@ -33,7 +33,7 @@ Globals.menu = {
         lifeMin        = 1.5, lifeMax       = 5.2,
         dyingThreshold = 0.4,
         -- Golden stars.
-        goldenChance   = 0.33,
+        goldenChance   = 0.003, -- about 1 in 300 stars is golden.
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
         },

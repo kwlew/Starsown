@@ -348,60 +348,138 @@ end
 -- Called on enter, on resize, and on tab switch — never from draw. Hit-testing
 -- reads these bounds, so laying out during draw meant input for a frame was
 -- answered against the *previous* frame's geometry.
+-- Lines the description area has to be able to hold: the longest description in
+-- this tab, wrapped to the panel width. Measured over the whole tab rather than
+-- over the focused row, so the stack is a property of the tab and the panel
+-- doesn't jump every time the focus moves onto a wordier setting.
+--
+-- Capped, because one runaway string shouldn't be able to squeeze the rows it
+-- is describing; a description longer than the cap is clipped by draw instead.
+local DESC_MAX_LINES = 3
+
+function Options:descriptionLines(width)
+    local font = UI.Theme.font("small")
+    local most = 1
+
+    for _, widget in ipairs(self.tabs[self.activeTab].widgets) do
+        if widget.descKey then
+            local _, wrapped = font:getWrap(I18n.t(widget.descKey), width)
+            most = math.max(most, #wrapped)
+        end
+    end
+    -- The conditional line the resolution row shows while it's inert. It is
+    -- never any widget's descKey, so nothing above would have measured it.
+    if self.activeTab == 2 then
+        local _, wrapped = font:getWrap(I18n.t("options.desc.resolutionBorderless"), width)
+        most = math.max(most, #wrapped)
+    end
+
+    return math.min(most, DESC_MAX_LINES)
+end
+
+-- Computes every rect this screen draws and hands each widget its bounds.
+-- Called on enter, on resize, and on tab switch — never from draw. Hit-testing
+-- reads these bounds, so laying out during draw meant input for a frame was
+-- answered against the *previous* frame's geometry.
+--
+-- The screen is laid out to FIT rather than to a fixed pose. Every row is sized
+-- from Theme.metrics, which scales with the window height — so a taller window
+-- buys no extra rows, it just draws the same rows bigger, and the stack ran off
+-- the bottom at every supported resolution once the General tab reached seven
+-- rows. Worse on big screens, not better: at 1920x1080 it overshot by 71px
+-- against 39px at 1024x768.
+--
+-- So: measure the space actually available between the heading and the hint
+-- line, and shrink to fit. Whitespace goes first and row height only if that
+-- wasn't enough, because a full-height row with less air around it still reads
+-- as a control while a squashed one stops looking clickable.
 function Options:layout()
     local w, h = love.graphics.getDimensions()
     local m = UI.Theme.metrics
-    local pad = UI.Theme.px(PANEL_PAD)
 
     local rows = #self.tabs[self.activeTab].widgets
+    local footer = self:footerButtons()
     local panelW = math.min(UI.Theme.px(PANEL_MAX_W), w * 0.72)
-    local panelH = pad * 2 + rows * m.rowHeight + (rows - 1) * m.rowGap
     local panelX = (w - panelW) / 2
 
-    -- Vertical placement. The stack — tab bar, panel, footer buttons, the
-    -- description line — grows with the tab's row count and with whether Quit
-    -- is on offer, so pinning the panel to PANEL_Y_RATIO pushed the bottom of
-    -- it off the screen on the taller tabs. Start from the preferred pose, pull
-    -- up as far as needed to keep the last line on screen, and stop at the
-    -- heading: the stack may crowd the hint line (draw resolves that), never
-    -- the title above it.
-    local footer = self:footerButtons()
     local descH = UI.Theme.font("small"):getHeight()
-    local aboveH = m.rowHeight + m.rowGap             -- tab bar and its gap
-    local belowH = #footer * (m.rowGap + m.rowHeight) -- footer buttons
-                 + m.rowGap + descH                   -- description line
-    local stackH = aboveH + panelH + belowH
-    local headingBottom = h * HEADING_Y_RATIO + UI.Theme.font("heading"):getHeight()
+        * self:descriptionLines(panelW - UI.Theme.px(PANEL_PAD) * 2)
 
-    local top = math.min(h * PANEL_Y_RATIO - aboveH, UI.Label.hintY() - m.rowGap - stackH)
-    top = math.max(top, headingBottom + m.rowGap)
+    -- What the stack is made of, independent of how big each piece ends up:
+    -- the tab bar, the tab's rows and the footer buttons are all one row tall,
+    -- and a gap sits after every one of them except the last.
+    local rowCount = 1 + rows + #footer
+    local gapCount = rows + #footer + 1
+    local function stackHeight(rowH, gap, pad)
+        return rowCount * rowH + gapCount * gap + pad * 2 + descH
+    end
+
+    -- The room there is for it. Measured from under the heading to the hint
+    -- line, which is the real ceiling and floor of this screen.
+    local headingBottom = h * HEADING_Y_RATIO + UI.Theme.font("heading"):getHeight()
+    local stackTop = headingBottom + m.rowGap
+    local budget = UI.Label.hintY() - m.rowGap - stackTop
+
+    -- Floors. Derived from the font rather than hardcoded, so a row can never
+    -- be shorter than the label inside it however the type scale is retuned.
+    local minRow = UI.Theme.font("body"):getHeight() + UI.Theme.px(8)
+    local minGap = UI.Theme.px(4)
+    local minPad = UI.Theme.px(6)
+
+    local rowH, gap, pad = m.rowHeight, m.rowGap, UI.Theme.px(PANEL_PAD)
+
+    if stackHeight(rowH, gap, pad) > budget then
+        -- Whitespace first, all of it proportionally, down to the floors.
+        local slack = gapCount * (gap - minGap) + 2 * (pad - minPad)
+        local need = stackHeight(rowH, gap, pad) - budget
+        if slack > 0 then
+            local keep = 1 - math.min(need, slack) / slack
+            gap = minGap + math.floor((gap - minGap) * keep)
+            pad = minPad + math.floor((pad - minPad) * keep)
+        end
+
+        -- Then, and only then, the rows themselves.
+        if stackHeight(rowH, gap, pad) > budget then
+            local forRows = budget - gapCount * gap - pad * 2 - descH
+            rowH = math.max(minRow, math.floor(forRows / rowCount))
+        end
+    end
+
+    local panelH = pad * 2 + rows * rowH + (rows - 1) * gap
+    local stackH = stackHeight(rowH, gap, pad)
+
+    -- Preferred pose, clamped so the whole stack stays inside the budget. When
+    -- it fits with room to spare this still sits where it always did.
+    local aboveH = rowH + gap -- tab bar and its gap
+    local top = math.max(stackTop,
+        math.min(h * PANEL_Y_RATIO - aboveH, stackTop + budget - stackH))
     local panelY = top + aboveH
 
     self.panel = { x = panelX, y = panelY, w = panelW, h = panelH }
 
     -- Tab bar sits one row above the panel.
-    self.tabBar:setBounds(panelX, panelY - m.rowHeight - m.rowGap, panelW, m.rowHeight)
+    self.tabBar:setBounds(panelX, panelY - rowH - gap, panelW, rowH)
 
     for i, widget in ipairs(self.tabs[self.activeTab].widgets) do
         widget:setBounds(
             panelX + pad,
-            panelY + pad + (i - 1) * (m.rowHeight + m.rowGap),
+            panelY + pad + (i - 1) * (rowH + gap),
             panelW - pad * 2,
-            m.rowHeight)
+            rowH)
     end
 
     -- Footer stack below the panel, full panel width, one row apart.
     for i, button in ipairs(footer) do
         button:setBounds(
             panelX,
-            panelY + panelH + m.rowGap + (i - 1) * (m.rowHeight + m.rowGap),
+            panelY + panelH + gap + (i - 1) * (rowH + gap),
             panelW,
-            m.rowHeight)
+            rowH)
     end
 
-    -- Description line for the focused row, under the last footer button. Its
-    -- height is kept so draw can tell whether it reaches into the hint line.
-    local footerBottom = panelY + panelH + m.rowGap + #footer * (m.rowHeight + m.rowGap)
+    -- Description for the focused row, under the last footer button. Its height
+    -- is the reserved one, so draw can tell whether it reaches the hint line.
+    local footerBottom = panelY + panelH + gap + #footer * (rowH + gap)
     self.descRect = { x = panelX, y = footerBottom, w = panelW, h = descH }
 
     if self.revertDialog then self.revertDialog:layout() end
@@ -680,6 +758,12 @@ function Options:draw()
     local desc = self.descRect
     local descKey = self:focusedDescription()
     if descKey then
+        -- Clipped to the height layout reserved. That height is the longest
+        -- description in this tab, so in practice nothing is cut — the scissor
+        -- is here so that a future string longer than DESC_MAX_LINES loses its
+        -- tail instead of spilling over the hint line and out of the window.
+        love.graphics.setScissor(math.floor(desc.x), math.floor(desc.y),
+            math.ceil(desc.w), math.ceil(desc.h))
         UI.Label.draw{
             text = I18n.t(descKey),
             x = desc.x,
@@ -688,6 +772,7 @@ function Options:draw()
             font = UI.Theme.font("small"),
             color = UI.Theme.colors.textMuted,
         }
+        love.graphics.setScissor()
     end
 
     -- The description and the hint are both a single grey line at the bottom of

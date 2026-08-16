@@ -28,6 +28,11 @@ function ProgressBar.new(config)
         -- Global opacity, so an owning screen can fade the bar out as part of
         -- a transition. Set the field directly before drawing.
         alpha = config.alpha or 1,
+        -- Fill colour, for a bar that means something other than "progress".
+        -- nil takes the accent, which is what every bar in the UI wants; the
+        -- wave timer switches to `warning` on a boss wave. Set the field
+        -- directly to change it between frames.
+        color = config.color,
         time = 0,
     }, ProgressBar)
 end
@@ -64,11 +69,12 @@ function ProgressBar:draw(x, y, w, h)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
 
     -- Filled portion with a pulsing glow.
+    local fill = self.color or c.accent
     local fillW = self.w * self.shown
     if fillW > 0 then
         local pulse = 0.6 + 0.4 * math.sin(self.time * self.pulseSpeed)
-        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha)
-        Theme.setColor(c.accent, alpha)
+        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha, fill)
+        Theme.setColor(fill, alpha)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)
     end
 

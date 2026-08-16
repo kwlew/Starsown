@@ -16,6 +16,11 @@ function Burst.new(config)
     config = config or {}
     return setmetatable({
         particles = {},
+        -- Spent particles, kept for reuse. A menu Burst fires when the player
+        -- clicks a star and is otherwise idle, but the board fires one on every
+        -- kill and every shell that lands — thousands of small tables a minute,
+        -- all identical in shape, which is exactly the churn worth avoiding.
+        spent = {},
         countMin = config.countMin or 14,
         countMax = config.countMax or 22,
         speedMin = config.speedMin or 60,
@@ -35,38 +40,56 @@ end
 function Burst:spawn(x, y, color, scale)
     color = color or { 1, 1, 1 }
     scale = scale or 1
+    local spent = self.spent
+
     for _ = 1, Math.randInt(self.countMin, self.countMax) do
         local angle = Math.randAngle()
         local speed = Math.randRange(self.speedMin, self.speedMax) * scale
-        self.particles[#self.particles + 1] = {
-            x = x, y = y,
-            vx = math.cos(angle) * speed,
-            vy = math.sin(angle) * speed,
-            life = 0,
-            maxLife = Math.randRange(self.lifeMin, self.lifeMax),
-            size = Math.randRange(self.sizeMin, self.sizeMax) * scale,
-            r = color[1], g = color[2], b = color[3],
-        }
+
+        -- Every field is written below, so a recycled particle carries nothing
+        -- forward from its last burst.
+        local p = spent[#spent]
+        if p then spent[#spent] = nil else p = {} end
+
+        p.x, p.y = x, y
+        p.vx = math.cos(angle) * speed
+        p.vy = math.sin(angle) * speed
+        p.life = 0
+        p.maxLife = Math.randRange(self.lifeMin, self.lifeMax)
+        p.size = Math.randRange(self.sizeMin, self.sizeMax) * scale
+        p.r, p.g, p.b = color[1], color[2], color[3]
+
+        self.particles[#self.particles + 1] = p
     end
 end
 
 function Burst:update(dt)
-    -- Iterate backwards so table.remove during the loop is safe.
-    for i = #self.particles, 1, -1 do
+    -- exp() decay is frame-rate independent, unlike a per-frame multiply, so
+    -- the spread looks the same at any refresh rate. Hoisted: it does not vary
+    -- per particle.
+    local decay = math.exp(-self.drag * dt)
+
+    -- Compacted in a single forward pass rather than with table.remove in a
+    -- reverse loop: table.remove is O(n) per call, so a burst expiring together
+    -- — which is the normal case, they are spawned together — was quadratic.
+    local kept = 0
+    for i = 1, #self.particles do
         local p = self.particles[i]
         p.life = p.life + dt
 
         if p.life >= p.maxLife then
-            table.remove(self.particles, i)
+            self.spent[#self.spent + 1] = p
         else
-            -- exp() decay is frame-rate independent, unlike a per-frame
-            -- multiply, so the spread looks the same at any refresh rate.
-            local decay = math.exp(-self.drag * dt)
             p.vx = p.vx * decay
             p.vy = p.vy * decay
             p.x = p.x + p.vx * dt
             p.y = p.y + p.vy * dt
+            kept = kept + 1
+            self.particles[kept] = p
         end
+    end
+    for i = #self.particles, kept + 1, -1 do
+        self.particles[i] = nil
     end
 end
 

@@ -22,6 +22,7 @@ local Audio = require "core.audio"
 local Audios = require "utils.audios"
 local Particles = require "particles"
 local Math = require "utils.math"
+local Ease = require "utils.ease"
 local GameTitle = require "ui.gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
@@ -49,10 +50,6 @@ local BAR_W_RATIO = 0.5
 local BAR_H = 26 -- design-space px
 
 local Loading = {}
-
-local function easeOutCubic(t)
-    return 1 - (1 - t) ^ 3
-end
 
 -- Ticks a background layer and eases its opacity up. nil until the task that
 -- builds it has run, so both callers can fire from the first frame.
@@ -308,7 +305,7 @@ function Loading:draw()
     if self.stars then self.stars:draw() end
 
     -- Title, easing from its own smaller pose into the menu's exact one.
-    local ease = easeOutCubic(outro)
+    local ease = Ease.outCubic(outro)
     local titleY = h * TITLE_Y_RATIO + (h * GameTitle.MENU_Y_RATIO - h * TITLE_Y_RATIO) * ease
     GameTitle.drawScaled(self.title, titleY, TITLE_SCALE + (1 - TITLE_SCALE) * ease)
 

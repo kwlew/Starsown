@@ -145,19 +145,6 @@ function MainMenu:enter()
     -- language change from Options updates the menu with no rebuild.
     if not self.menu then
         self.menu = Menu.new({
-            -- Play button
-            { label = function() return I18n.t("menu.play") end, onSelect = function()
-                Audio.stopAll() -- stop the menu music before the game starts
-                UI.Sfx.select()
-                -- Stamped here rather than in Game:enter so the run clock starts
-                -- when Play was pressed, not when the fade finishes.
-                StateManager.fadeTo("game")
-            end },
-            -- Achievements button
-            { label = function() return I18n.t("menu.achievements") end, onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("achievements")
-            end },
             -- Options button
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
