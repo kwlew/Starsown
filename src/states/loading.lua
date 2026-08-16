@@ -27,15 +27,8 @@ local GameTitle = require "ui.gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.75  -- length of the hand-off animation
--- The real work finishes in a handful of frames on any modern machine, so an
--- honest bar would flash 0 -> 100% and then sit full while a minimum-duration
--- timer ran out. Pacing the bar's *target* instead keeps it moving for the whole
--- time the screen is up: it fills over this long, or slower when the work
--- genuinely takes longer. This is the only floor on how long the screen stays
--- up; the outro gates on the bar.
 local MIN_FILL_TIME = 1.0
--- Fraction of the outro spent fading the bar block out. Shorter than the whole
--- outro so the title finishes travelling against a clean screen.
+
 local FURNITURE_FADE = 0.45
 local SKY_FADE_SPEED = 1.5 -- how fast the sky (nebula + stars) fades up, in alpha per second
 
@@ -67,9 +60,7 @@ local function buildVersionLabel()
     }
 end
 
--- The audio the game needs before the menu can make a sound. Music streams
--- (long, one at a time); sfx are static so they're already decoded when a star
--- pops mid-frame.
+-- The audio the game needs.
 local CLIPS = {
     { "assets/audio/bg/ambientmain_0.ogg", "mainMenuBG", "stream" },
     { "assets/audio/sfx/explosions/star_explosion.wav", "starExplosion" },
@@ -87,9 +78,6 @@ function Loading:buildTasks()
             label = I18n.t("loading.task.interface"),
             weight = 2,
             run = function(yield)
-                -- Warm the theme's font cache so later screens don't hitch.
-                -- Driven off the theme's own role list so adding a weight there
-                -- doesn't leave a font to be built mid-game.
                 local roles = UI.Theme.fontRoles()
                 for i, role in ipairs(roles) do
                     UI.Theme.font(role)
@@ -110,18 +98,12 @@ function Loading:buildTasks()
             label = I18n.t("loading.task.world"),
             weight = 3,
             run = function(yield)
-                -- Built here, not in the menu, and shared through Assets: this
-                -- screen fades it in behind the bar and the menu then inherits
-                -- the identical sky, so nothing changes across the hand-off.
                 local stars = Particles.Stars.new{ alpha = 0 }
                 stars:spawnStars()
                 Assets.set("stars", stars)
                 self.stars = stars
                 yield(0.5)
 
-                -- The nebula bakes its canvases here for the same reason, and
-                -- because baking is the one genuinely expensive thing this
-                -- screen does — doing it in the menu would hitch the hand-off.
                 local nebula = Particles.Nebula.new{ alpha = 0 }
                 nebula:bake()
                 Assets.set("nebula", nebula)
@@ -134,9 +116,6 @@ function Loading:buildTasks()
             weight = 5,
             run = function(yield, warn)
                 for i, clip in ipairs(CLIPS) do
-                    -- preload is best-effort and returns nil on failure; a
-                    -- missing clip shouldn't take the boot down, but the player
-                    -- deserves to know the game will be partly silent.
                     if not Audios.preload(clip[1], clip[2], clip[3]) then
                         warn(clip[2])
                     end
@@ -167,9 +146,6 @@ function Loading:enter()
     self.elapsed = 0
     self.outro = 0
 
-    -- The target is already paced (see MIN_FILL_TIME), so the bar's own ease is
-    -- only here to smooth the steps between tasks; a slow one would fight the
-    -- pacing and leave a visible tail after the work is done.
     self.bar = UI.ProgressBar.new{ showPercent = false, fillSpeed = 12 }
     self.title = GameTitle.build()
     self.stars = nil
@@ -178,15 +154,11 @@ function Loading:enter()
     self.dotTimer = 0
     self.dotCount = 0
 
-    -- Passed into every task; captured once so each coroutine gets the same
-    -- pair rather than allocating a closure per resume.
     self.yield = function(fraction) return coroutine.yield(fraction) end
     self.warn = function(detail) self:recordFailure(self.label, detail) end
 end
 
 function Loading:resize()
-    -- The title's wrap width is baked in at construction and is what keeps it
-    -- centered, so a resize has to rebuild it.
     self.title = GameTitle.build()
 end
 
@@ -195,8 +167,6 @@ function Loading:recordFailure(label, detail)
     print(("[loading] task '%s' failed: %s"):format(tostring(label), tostring(detail)))
 end
 
--- Fraction of the total work done, weighted, including partial progress inside
--- the task currently running.
 function Loading:progress()
     if self.totalWeight == 0 then return 1 end
     local task = self.tasks[self.index]
@@ -208,8 +178,6 @@ function Loading:isLoaded()
     return self.index > #self.tasks
 end
 
--- Advances the running task by one resume. coroutine.resume isolates errors, so
--- a task that throws is recorded and the queue moves on.
 function Loading:step()
     local task = self.tasks[self.index]
     if not task then return end
@@ -236,15 +204,12 @@ function Loading:step()
 end
 
 function Loading:update(dt)
-    -- Clamp dt so a single stalled frame (a heavy task, a window-mode change)
-    -- can't fast-forward past MIN_FILL_TIME and skip the screen.
     dt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
 
     if self.phase == "loading" then
         self:step()
-        -- Whichever is further behind: the work actually done, or the paced
-        -- fill. The bar can run ahead of neither.
+
         self.bar:setProgress(math.min(self:progress(), self.elapsed / MIN_FILL_TIME))
 
         -- Leave once every task is done and the bar has visually filled.

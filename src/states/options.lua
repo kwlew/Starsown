@@ -787,11 +787,7 @@ function Options:draw()
     local dialog = self:activeDialog()
     if dialog then dialog:draw() end
 
-    -- Asked for every frame the cursor is over an enabled control (see
-    -- UI.Cursor for why this can't live in mousemoved).
-    if self.mouseX and self:inputTarget():hovering(self.mouseX, self.mouseY) then
-        UI.Cursor.want("hand")
-    end
+    UI.Cursor.setHover(self.mouseX ~= nil and self:inputTarget():hovering(self.mouseX, self.mouseY))
 end
 
 return Options

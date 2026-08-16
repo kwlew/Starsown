@@ -138,9 +138,10 @@ end
 --
 -- Window modes: "windowed" (no fullscreen), "borderless" (desktop-type
 -- fullscreen at desktop resolution), "exclusive" (real fullscreen at
--- res_x x res_y — can change the display mode). The cursor is re-shown after
--- every mode change: exclusive fullscreen in particular can hide the OS
--- cursor on some Windows drivers.
+-- res_x x res_y — can change the display mode). The OS cursor is force-hidden
+-- again after every mode change: setMode recreates the window, which on some
+-- Windows drivers resets cursor visibility to shown — and the game draws its
+-- own cursor (see ui/cursor.lua), so the system one must never reappear.
 function Settings.applyGraphics(settings)
     local w, h, flags = love.window.getMode()
 
@@ -174,10 +175,20 @@ function Settings.applyGraphics(settings)
     -- capped to 8x or 4x). Store what we actually got: otherwise the comparison
     -- above never settles, so every later call recreates the window, and the
     -- request rather than the reality is what gets written to the save file.
-    local _, _, granted = love.window.getMode()
+    local w, h, granted = love.window.getMode()
     settings.msaa = granted.msaa or settings.msaa
 
-    love.mouse.setVisible(true)
+    -- love.window.setMode does NOT reliably fire love.resize on its own —
+    -- confirmed against this LÖVE build, which never calls it for a
+    -- programmatic setMode. That callback is the only thing that rescales the
+    -- UI and relays out the active screen (see love.resize in main.lua), so
+    -- without this, Options applying a new resolution would leave every
+    -- widget laid out for the window's old size. Triggered by hand, with
+    -- whatever size the window actually ended up at (getMode, not
+    -- settings.res_x/res_y — borderless fullscreen reports the desktop size).
+    if love.resize then love.resize(w, h) end
+
+    love.mouse.setVisible(false)
 end
 
 -- Pushes the settings into LÖVE (call once at boot and whenever they change).

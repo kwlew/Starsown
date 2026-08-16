@@ -19,6 +19,9 @@ function love.load()
     -- Size the UI to this window before anything asks the theme for a font or a
     -- metric — the loading screen warms the font cache on its very first task.
     UI.Theme.rescale()
+    -- Hides the OS arrow for the whole app; UI.Cursor.draw() replaces it every
+    -- frame from here on, on every screen.
+    UI.Cursor.init()
 
     Globals.init()
 
@@ -49,6 +52,7 @@ function love.update(dt)
     Debug:update()
     Presence.update(dt)
     Stats.update(dt)
+    UI.Cursor.update(dt)
 end
 
 function love.quit()
@@ -59,7 +63,7 @@ end
 function love.draw()
     StateManager.draw()
     Debug:draw()
-    UI.Cursor.commit()
+    UI.Cursor.draw()
 end
 
 function love.resize(w, h)
