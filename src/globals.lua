@@ -33,11 +33,18 @@ Globals.menu = {
         lifeMin        = 1.5, lifeMax       = 5.2,
         dyingThreshold = 0.4,
         -- Golden stars.
-        goldenChance   = 0.003, -- about 1 in 300 stars is golden.
+        goldenChance   = 0.004, -- about 1 in 250 stars is golden.
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
+        -- Rainbow stars.
+        rainbowChance  = 0.001, -- about 1 in 1000 stars is rainbow.
         },
     }
+}
+
+Globals.cursor = {
+    color = { 0.90, 0.90, 0.90 },
+    size = 3,
 }
 
 function Globals.init()

@@ -10,6 +10,7 @@ local TextFactory   = require "ui.textFactory"
 local UI            = require "ui"
 local I18n          = require "core.i18n"
 local Particles     = require "particles"
+local DiscordMark   = require "ui.discordMark"
 local GithubMark    = require "ui.githubMark"
 local GameTitle     = require "ui.gameTitle"
 local Audio         = require "core.audio"
@@ -25,9 +26,11 @@ local MENU_Y_RATIO = 0.44
 
 -- Repo that the clickable GitHub mark opens.
 local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
+local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
 -- Side length of the GitHub mark in the bottom-left corner, and the margin
 -- around the bottom-corner furniture. Design-space px (see Theme.px).
 local GITHUB_ICON_SIZE = 26
+local DISCORD_ICON_SIZE = 26
 local CORNER_PAD = 12
 
 local MainMenu = {}
@@ -101,6 +104,8 @@ function MainMenu:enter()
     self.starCount, self.goldenCount = Stats.stars, Stats.golden
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+    self.discordHover = false
+    self.discordPressed = false
     self.githubHover = false
     self.githubPressed = false
     self.mouseX, self.mouseY = love.mouse.getPosition()
@@ -142,9 +147,11 @@ function MainMenu:layout()
     local w, h = love.graphics.getDimensions()
     local pad = UI.Theme.px(CORNER_PAD)
     local iconSize = UI.Theme.px(GITHUB_ICON_SIZE)
+    local discordIconSize = UI.Theme.px(DISCORD_ICON_SIZE)
 
     self.title.y = h * GameTitle.MENU_Y_RATIO
     self.githubBounds = { x = pad, y = h - iconSize - pad, w = iconSize, h = iconSize }
+    self.discordBound = { x = pad, y = h - iconSize - pad - discordIconSize - pad, w = discordIconSize, h = discordIconSize }
 
 
     local stack = { self.version }
@@ -205,9 +212,16 @@ function MainMenu:githubContains(x, y)
     return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
 end
 
+-- Hit test for the clickable Discord mark.
+function MainMenu:discordContains(x, y)
+    local b = self.discordBound
+    return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
+end
+
 function MainMenu:mousemoved(x, y)
     self.menu:mousemoved(x, y)
     self.githubHover = self:githubContains(x, y)
+    self.discordHover = self:discordContains(x, y)
     -- The cursor itself is requested from draw.
     self.mouseX, self.mouseY = x, y
 end
@@ -220,9 +234,19 @@ function MainMenu:mousepressed(x, y, button)
         UI.Sfx.press()
         return
     end
+    if button == 1 and self:discordContains(x, y) then
+        self.discordPressed = true
+        UI.Sfx.press()
+        return
+    end
 
-    local hit, golden = self.starfield:mousepressed(x, y, button)
-    if hit then Stats.pop(golden) end
+    local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
+    if hit then
+        Stats.pop(golden)
+        -- TODO: Stats.pop only distinguishes golden vs not right now. Once it
+        -- can track a third category, count rainbow pops here too:
+        -- if rainbow then Stats.popRainbow() end
+    end
 end
 
 function MainMenu:mousereleased(x, y, button)
@@ -233,6 +257,12 @@ function MainMenu:mousereleased(x, y, button)
         self.githubPressed = false
         if self:githubContains(x, y) then
             love.system.openURL(GITHUB_URL)
+        end
+    end
+    if button == 1 and self.discordPressed then
+        self.discordPressed = false
+        if self:discordContains(x, y) then
+            love.system.openURL(DISCORD_URL)
         end
     end
 end
@@ -256,8 +286,14 @@ function MainMenu:draw()
 
     local mark = self.githubBounds
     GithubMark.draw(mark.x, mark.y, mark.w,
-        self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.accent,
+        self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
         self.githubHover and 1 or 0.45)
+    
+
+    local discordMark = self.discordBound
+    DiscordMark.draw(discordMark.x, discordMark.y, discordMark.w,
+        self.discordHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
+        self.discordHover and 1 or 0.45)
 
     self.title:drawChroma()
 

@@ -1,7 +1,9 @@
 -- src/ui/selector.lua
 -- Labeled discrete-option cycler: label on the left, "< value >" on the right.
--- Left/right arrows (keyboard or clicking the arrow chevrons) step through the
--- options list; clicking the value advances forward; Enter advances forward.
+-- Left/right keyboard arrows step through the options list; Enter advances
+-- forward. The mouse doesn't aim at the chevrons specifically — the whole
+-- arrow+value+arrow cluster is one click target split down the middle, left
+-- half back, right half forward, so there's no thin sliver to miss.
 -- Generic — use it for resolution, quality presets, difficulty, etc.
 --
 --   local s = Selector.new{
@@ -70,7 +72,9 @@ function Selector:valueColumnWidth(font)
     return Math.clamp(width, 0, available)
 end
 
--- Left chevron, value area, and right chevron rects (right-aligned in the row).
+-- Left chevron, value area, and right chevron rects (right-aligned in the
+-- row). Purely for draw()'s positioning — see controlBounds for the actual
+-- click/hover target, which doesn't follow these boundaries.
 function Selector:controlRects()
     local m = Theme.metrics
     local arrowW = Theme.px(ARROW_W)
@@ -82,6 +86,12 @@ function Selector:controlRects()
         { x = leftArrowX,  y = self.y, w = arrowW, h = self.h },
         { x = valueX,      y = self.y, w = valueW, h = self.h },
         { x = rightArrowX, y = self.y, w = arrowW, h = self.h }
+end
+
+-- The whole arrow+value+arrow cluster as one.
+function Selector:controlBounds()
+    local left, _, right = self:controlRects()
+    return left.x, self.y, (right.x + right.w) - left.x, self.h
 end
 
 function Selector:setIndex(index)
@@ -109,13 +119,9 @@ end
 -- Returns false: a selector has no drag, so it never captures the mouse.
 function Selector:mousepressed(px, py, mouseButton)
     if mouseButton ~= 1 then return false end
-    local left, value, right = self:controlRects()
-    if Theme.pointIn(px, py, left.x, left.y, left.w, left.h) then
-        self:adjust(-1)
-    elseif Theme.pointIn(px, py, right.x, right.y, right.w, right.h) then
-        self:adjust(1)
-    elseif Theme.pointIn(px, py, value.x, value.y, value.w, value.h) then
-        self:adjust(1)
+    local x, y, w, h = self:controlBounds()
+    if Theme.pointIn(px, py, x, y, w, h) then
+        self:adjust(px < x + w / 2 and -1 or 1)
     end
     return false
 end
@@ -125,12 +131,13 @@ function Selector:mousemoved(px, py)
         self.hoverLeft, self.hoverRight = false, false
         return
     end
-    local left, _, right = self:controlRects()
-    self.hoverLeft = Theme.pointIn(px, py, left.x, left.y, left.w, left.h)
-    self.hoverRight = Theme.pointIn(px, py, right.x, right.y, right.w, right.h)
+    local x, y, w, h = self:controlBounds()
+    local inside = Theme.pointIn(px, py, x, y, w, h)
+    self.hoverLeft = inside and px < x + w / 2
+    self.hoverRight = inside and not self.hoverLeft
 end
 
--- Draws a chevron centered in `rect`, pointing left (dir -1) or right (dir 1).
+-- Draws a chevron centered in rect, pointing left (dir -1) or right (dir 1).
 local function drawChevron(rect, dir, active, alpha)
     local cx = rect.x + rect.w / 2
     local cy = rect.y + rect.h / 2

@@ -12,6 +12,36 @@ local Audios = require "utils.audios"
 local GOLD       = { 1, 0.82, 0.35 }
 local GOLD_FLARE = { 1, 0.60, 0.12 }
 
+-- Rainbow stars don't carry a fixed color like golden ones do -- their head
+-- and trail are computed live from the hue wheel (see hueToRgb, starLook and
+-- addTrail). CYCLE_SPEED is how fast that hue turns over, in wheel-rotations
+-- per second of the star's own life; TRAIL_SPAN is how much of the wheel the
+-- trail spans from head to tail. Together these are what make the streak
+-- itself read as a rainbow, rather than a single color that just drifts over
+-- time.
+local RAINBOW_CYCLE_SPEED = 0.15
+local RAINBOW_TRAIL_SPAN  = 0.6
+
+-- Hue (any real number, wrapping every 1.0) to RGB at full saturation and
+-- value. The same sweep the game's chroma title shader computes per pixel
+-- (see ui/textFactory.lua) -- evaluated here in Lua instead, since a rainbow
+-- star only needs a couple dozen of these a frame rather than one per screen
+-- pixel.
+local function hueToRgb(hue)
+    hue = hue % 1
+    local scaled = hue * 6
+    local i = math.floor(scaled) % 6
+    local f = scaled - math.floor(scaled)
+    local q, t = 1 - f, f
+    if i == 0 then return 1, t, 0
+    elseif i == 1 then return q, 1, 0
+    elseif i == 2 then return 0, 1, t
+    elseif i == 3 then return 0, q, 1
+    elseif i == 4 then return t, 0, 1
+    else return 1, 0, q
+    end
+end
+
 local EMBER_PROFILE = {
     countMin = 4, countMax = 7,
     speedMin = 14, speedMax = 60,
@@ -61,18 +91,29 @@ function Starfield.new(config)
         goldenSpeedMax = config.goldenSpeedMax or 110,
         goldenLifeMin = config.goldenLifeMin or 9,
         goldenLifeMax = config.goldenLifeMax or 13,
+        -- Rarer still, and mutually exclusive with golden (see spawnStar).
+        -- Reuses golden's speed/life pacing rather than a profile of its own
+        -- -- it doesn't need to be slower AND have its own tuning knobs to
+        -- also feel special.
+        rainbowChance = config.rainbowChance or 0.001,
     }, Starfield)
 end
 
 function Starfield:spawnStar()
     local w, h = love.graphics.getWidth(), love.graphics.getHeight()
 
+    -- Mutually exclusive: golden is checked first (it's the more common of
+    -- the two), so a star that already rolled golden never also rolls
+    -- rainbow.
     local golden = math.random() < self.goldenChance
+    local rainbow = not golden and math.random() < self.rainbowChance
+    local special = golden or rainbow
+
     local speedMin, speedMax = self.speedMin, self.speedMax
     local lifeMin, lifeMax = self.lifeMin, self.lifeMax
     local twinkleAmount = TWINKLE_AMOUNT
     local twinkleMin, twinkleMax = TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX
-    if golden then
+    if special then
         speedMin, speedMax = self.goldenSpeedMin, self.goldenSpeedMax
         lifeMin, lifeMax = self.goldenLifeMin, self.goldenLifeMax
         twinkleAmount = GOLDEN_TWINKLE_AMOUNT
@@ -92,12 +133,19 @@ function Starfield:spawnStar()
         life = 0,
         maxLife = Math.randRange(lifeMin, lifeMax),
         golden = golden,
+        rainbow = rainbow,
+        -- Unused by a rainbow star's own head/trail (see starLook/addTrail),
+        -- but still its fallback for the things that stay a plain color even
+        -- for a rainbow star -- the ember puff on a natural burnout, in
+        -- particular (see expire). Making those rainbow too would mean
+        -- teaching Burst a per-particle color cycle, which is a bigger
+        -- change than this one.
         color = golden and GOLD or Theme.colors.star,
         flare = golden and GOLD_FLARE or Theme.colors.accentAlt,
         twinklePhase = Math.randAngle(),
         twinkleSpeed = Math.randRange(twinkleMin, twinkleMax),
         twinkleAmount = twinkleAmount,
-        scale = golden and 1.7 or 1,
+        scale = special and 1.7 or 1,
     }
 end
 
@@ -139,7 +187,7 @@ end
 function Starfield:expire(s)
     local w, h = love.graphics.getDimensions()
     if s.x < 0 or s.x > w or s.y < 0 or s.y > h then return end
-    local ratio = s.golden and 2 or 1
+    local ratio = (s.golden or s.rainbow) and 2 or 1
     self.embers:spawn(s.x, s.y, s.flare, s.scale * ratio)
 end
 
@@ -214,7 +262,17 @@ local function starLook(s, dying)
     if dying > 0 then
         fade, glowI, colorMix = dyingLook(dying)
     end
-    local r, g, b = Theme.lerp(s.color, s.flare, colorMix)
+    local r, g, b
+    if s.rainbow then
+        -- The head's color, computed the same way as the very front of its
+        -- own trail (t = 0 in addTrail) so the two meet with no seam. Still
+        -- rides dyingLook's fade/glow envelope above -- a rainbow star still
+        -- flares up and fades out burning up, it just doesn't fix on one hue
+        -- while it does.
+        r, g, b = hueToRgb(s.life * RAINBOW_CYCLE_SPEED)
+    else
+        r, g, b = Theme.lerp(s.color, s.flare, colorMix)
+    end
     return fade, glowI, r, g, b
 end
 
@@ -321,11 +379,22 @@ local function addTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
         local edge = core + TRAIL_FEATHER
         local alpha = shape ^ TRAIL_FADE_POW * fade
 
+        -- A rainbow star doesn't share one color across its whole trail like
+        -- every other star does: each segment reads its own hue off how far
+        -- back along the trail it sits (t), offset by the star's own life so
+        -- the whole streak slowly turns over. At t = 0 this lands on exactly
+        -- the same hue as starLook's head color, so the two meet with no
+        -- seam.
+        local sr, sg, sb = r, g, b
+        if s.rainbow then
+            sr, sg, sb = hueToRgb(s.life * RAINBOW_CYCLE_SPEED - t * RAINBOW_TRAIL_SPAN)
+        end
+
         local o, v = base + i * 4, trailVerts
-        setVertex(v[o + 1], px + nx * edge, py + ny * edge, r, g, b, 0)
-        setVertex(v[o + 2], px + nx * core, py + ny * core, r, g, b, alpha)
-        setVertex(v[o + 3], px - nx * core, py - ny * core, r, g, b, alpha)
-        setVertex(v[o + 4], px - nx * edge, py - ny * edge, r, g, b, 0)
+        setVertex(v[o + 1], px + nx * edge, py + ny * edge, sr, sg, sb, 0)
+        setVertex(v[o + 2], px + nx * core, py + ny * core, sr, sg, sb, alpha)
+        setVertex(v[o + 3], px - nx * core, py - ny * core, sr, sg, sb, alpha)
+        setVertex(v[o + 4], px - nx * edge, py - ny * edge, sr, sg, sb, 0)
     end
 end
 
@@ -418,20 +487,20 @@ function Starfield:clickAt(x, y)
             Audio.play("sfx", Audios.clone(pop))
             local speed = Math.length(s.vx, s.vy)
             -- Keep color consistent.
-            local debris = s.golden and s.color or Theme.colors.accentAlt
+            local debris = s.golden and s.color or Theme.fixedColors.starPop
             self.burst:spawn(s.x, s.y, debris,
                 (0.8 + speed / self.speedMax * 0.4) * s.scale)
             s.popped = 0
-            return true, s.golden
+            return true, s.golden, s.rainbow
         end
     end
-    return false, false
+    return false, false, false
 end
 
 -- Convenience wrapper so states can forward the event straight through. Passes
--- clickAt's `hit, golden` pair back to the caller.
+-- clickAt's `hit, golden, rainbow` triple back to the caller.
 function Starfield:mousepressed(x, y, button)
-    if button ~= 1 then return false, false end
+    if button ~= 1 then return false, false, false end
     return self:clickAt(x, y)
 end
 

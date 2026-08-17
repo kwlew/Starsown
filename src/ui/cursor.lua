@@ -29,12 +29,13 @@
 -- stopped moving over a button.
 
 local Theme = require "ui.theme"
+local Globals = require "globals";
 
 local Cursor = {}
 
-local RADIUS = 4 -- design-space px, see Theme.px
+local RADIUS = Globals.cursor.size -- design-space px, see Theme.px
 
-local WHITE = { 1, 1, 1 }
+local WHITE = Globals.cursor.color
 
 local hovering = false -- the latest setHover request
 local danger = false    -- true when the hovered thing is destructive

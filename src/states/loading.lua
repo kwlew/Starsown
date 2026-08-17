@@ -1,17 +1,4 @@
 -- src/states/loading.lua
--- First state shown on launch. Runs a weighted queue of load tasks, then hands
--- off to the main menu.
---
--- Two things make the hand-off read as continuous rather than as a cut:
---   * the night sky is built here, drawn behind this screen, and passed to the
---     menu through Assets, so the background never pops in;
---   * the game title is drawn here too and eased into the menu's exact pose
---     during the outro, so the switch lands on an identical frame.
---
--- Tasks are coroutines. A task that calls yield() gives the frame back, so a
--- heavy one (five audio files to decode) moves the bar *while* it works instead
--- of stalling and then jumping. Weights make the bar reflect cost rather than
--- how many entries have been dequeued.
 
 local StateManager = require "core.stateManager"
 local Assets = require "core.assets"
@@ -26,8 +13,8 @@ local Ease = require "utils.ease"
 local GameTitle = require "ui.gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
-local OUTRO_TIME = 0.75  -- length of the hand-off animation
-local MIN_FILL_TIME = 1.0
+local OUTRO_TIME = 0.8  -- length of the hand-off animation
+local MIN_FILL_TIME = 1.5
 
 local FURNITURE_FADE = 0.45
 local SKY_FADE_SPEED = 1.5 -- how fast the sky (nebula + stars) fades up, in alpha per second
