@@ -787,7 +787,8 @@ function Options:draw()
     local dialog = self:activeDialog()
     if dialog then dialog:draw() end
 
-    UI.Cursor.setHover(self.mouseX ~= nil and self:inputTarget():hovering(self.mouseX, self.mouseY))
+    local overWidget, dangerous = self:inputTarget():hovering(self.mouseX or -1, self.mouseY or -1)
+    UI.Cursor.setHover(self.mouseX ~= nil and overWidget, dangerous)
 end
 
 return Options

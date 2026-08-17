@@ -256,7 +256,7 @@ function MainMenu:draw()
 
     local mark = self.githubBounds
     GithubMark.draw(mark.x, mark.y, mark.w,
-        self.githubHover and UI.Theme.colors.accent or UI.Theme.colors.text,
+        self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.accent,
         self.githubHover and 1 or 0.45)
 
     self.title:drawChroma()
@@ -265,8 +265,10 @@ function MainMenu:draw()
 
     UI.Label.hint(I18n.t("menu.hint"), true)
 
-    UI.Cursor.setHover(self.mouseX ~= nil
-        and (self.githubHover or self.menu:hovering(self.mouseX, self.mouseY)))
+    -- self.githubHover never carries danger — the mark is a plain link, not a
+    -- destructive action — so the menu's own flag is what decides the color.
+    local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
+    UI.Cursor.setHover(self.mouseX ~= nil and (self.githubHover or overMenu), dangerous)
 end
 
 return MainMenu

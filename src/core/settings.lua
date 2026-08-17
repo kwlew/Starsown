@@ -1,8 +1,4 @@
 -- src/core/settings.lua
--- Loads and saves player settings to the LÖVE save directory (keyed by the
--- `identity` set in conf.lua). The on-disk format is a plain Lua table so it
--- can be read back with love.filesystem.load; loading is defensive so a
--- missing, corrupt, or hand-edited file always falls back to defaults.
 
 local Audio = require "core.audio"
 
@@ -24,19 +20,11 @@ Settings.defaults = {
     shareStats = true,
 }
 
--- Allowed values for string settings; anything else in the file falls back
--- to the default (a bare type check isn't enough for enums).
+
 local VALID_WINDOW_MODES = { windowed = true, borderless = true, exclusive = true }
 
--- Multisample counts the game offers, in ascending order. Lives here rather
--- than in the Options screen because conf.lua feeds settings.msaa straight into
--- window creation at boot, long before any UI exists: a value off this list can
--- produce a broken framebuffer (a 6 here renders the whole window white), and
--- then there is no way for the player to reach Options and correct it. Load
--- must be the thing that guarantees a usable value.
---
--- No 1: LÖVE treats 0 and 1 alike, so it would duplicate "off".
-Settings.MSAA_LEVELS = { 0, 2, 4, 8, 16 }
+
+Settings.MSAA_LEVELS = { 0, 2, 4, 8, 16, }
 
 local VALID_MSAA = {}
 for _, samples in ipairs(Settings.MSAA_LEVELS) do VALID_MSAA[samples] = true end
