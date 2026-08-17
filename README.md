@@ -2,7 +2,7 @@
 
 ## Features
 
-![Version](https://img.shields.io/badge/version-v0.0.2-black?style=for-the-badge
+![Version](https://img.shields.io/badge/version-v0.0.3-black?style=for-the-badge
 )
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge
 )
