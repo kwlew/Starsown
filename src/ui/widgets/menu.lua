@@ -23,9 +23,9 @@
 --   function State:mousepressed(x, y, btn)  self.menu:mousepressed(x, y, btn) end
 --   function State:draw()                   self.menu:draw()                  end
 
-local Theme = require "ui.theme"
-local Button = require "ui.button"
-local FocusGroup = require "ui.focusGroup"
+local Theme = require "ui.core.theme"
+local Button = require "ui.widgets.button"
+local FocusGroup = require "ui.widgets.focusGroup"
 
 local Menu = {}
 Menu.__index = Menu

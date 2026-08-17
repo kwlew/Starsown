@@ -10,7 +10,7 @@ local Audios = require "utils.audios"
 local Particles = require "particles"
 local Math = require "utils.math"
 local Ease = require "utils.ease"
-local GameTitle = require "ui.gameTitle"
+local GameTitle = require "ui.text.gameTitle"
 
 local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.8  -- length of the hand-off animation

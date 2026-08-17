@@ -11,8 +11,8 @@
 --
 -- Sync the active tab without firing onChange by setting `bar.index` directly.
 
-local Theme = require "ui.theme"
-local Widget = require "ui.widget"
+local Theme = require "ui.core.theme"
+local Widget = require "ui.widgets.widget"
 
 local TabBar = {}
 Widget.extend(TabBar)

@@ -10,8 +10,8 @@
 -- Only the track grabs the mouse (see mousepressed), and a drag in progress
 -- captures it from the owning FocusGroup so it keeps tracking off-widget.
 
-local Theme = require "ui.theme"
-local Widget = require "ui.widget"
+local Theme = require "ui.core.theme"
+local Widget = require "ui.widgets.widget"
 local Math = require "utils.math"
 
 local Slider = {}

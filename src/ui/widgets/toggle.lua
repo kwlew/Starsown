@@ -5,8 +5,8 @@
 --   local t = Toggle.new{ label = "VSync", value = false,
 --                         onChange = function(v) ... end }
 
-local Theme = require "ui.theme"
-local Widget = require "ui.widget"
+local Theme = require "ui.core.theme"
+local Widget = require "ui.widgets.widget"
 
 local Toggle = {}
 Widget.extend(Toggle)

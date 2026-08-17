@@ -8,8 +8,8 @@
 -- Set b.enabled = false to grey it out and make it inert (ignores clicks and
 -- Enter, never glows); a FocusGroup skips it when moving focus.
 
-local Theme = require "ui.theme"
-local Widget = require "ui.widget"
+local Theme = require "ui.core.theme"
+local Widget = require "ui.widgets.widget"
 
 local Button = {}
 Widget.extend(Button)
