@@ -12,7 +12,7 @@
 -- because it doesn't know where you're going. The arriving state gets
 -- previousName and decides.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 
 local StateManager = {
     states = {},

@@ -10,7 +10,7 @@ local Sfx = {}
 
 -- The focus blip fires on every arrow press, so it sits well under a selection:
 -- at full volume, holding a direction reads as a rattle.
-local FOCUS_VOLUME = 0.35
+local FOCUS_VOLUME = 0.15
 
 -- Committing something: a menu choice, a settings change, a tab switch.
 function Sfx.select()

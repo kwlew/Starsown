@@ -2,7 +2,7 @@
 -- The F3 dev overlay. A singleton, not a class: main.lua drives the one overlay
 -- directly.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 
 local Debug = {

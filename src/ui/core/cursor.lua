@@ -28,7 +28,7 @@
 -- a request made there would freeze the last color the moment the player
 -- stopped moving over a button.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Globals = require "globals";
 
 local Cursor = {}

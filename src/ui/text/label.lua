@@ -7,8 +7,8 @@
 --   Label.draw{ text = "hint", y = 500, color = Theme.colors.textDim,
 --               font = Theme.font("small"), alpha = 0.5 }
 
-local Theme = require "ui.theme"
-local Text = require "ui.text"
+local Theme = require "ui.core.theme"
+local Text = require "ui.text.text"
 
 local Label = {}
 

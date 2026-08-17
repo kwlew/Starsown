@@ -16,8 +16,8 @@
 --
 -- Sync its display without firing onChange by setting `s.index` directly.
 
-local Theme = require "ui.theme"
-local Widget = require "ui.widget"
+local Theme = require "ui.core.theme"
+local Widget = require "ui.widgets.widget"
 local Math = require "utils.math"
 
 local Selector = {}

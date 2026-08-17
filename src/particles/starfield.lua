@@ -3,7 +3,7 @@
 -- and the ones that aren't burn out on their own into a small puff of embers.
 -- TODO: meteor shower mode (a faster spawn profile).
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 local Burst = require "particles.burst"
 local Audio = require "core.audio"

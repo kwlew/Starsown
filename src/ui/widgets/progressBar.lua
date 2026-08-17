@@ -7,7 +7,7 @@
 --   bar:update(dt)
 --   bar:draw(x, y, w, h)   -- geometry can also be set once via fields
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 
 local ProgressBar = {}

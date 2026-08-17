@@ -26,7 +26,7 @@
 -- Everything in `required` comes from here, so a new widget only has to write
 -- `draw` plus whichever of the optional verbs it supports.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 
 local Widget = {}
 Widget.__index = Widget

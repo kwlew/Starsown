@@ -6,7 +6,7 @@
 -- the menu's position and size on the way out, so the state switch lands on an
 -- identical frame instead of popping the title into existence.
 
-local TextFactory = require "ui.textFactory"
+local TextFactory = require "ui.text.textFactory"
 local UI = require "ui"
 local Globals = require "globals"
 

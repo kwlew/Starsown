@@ -18,7 +18,7 @@
 -- Stretching low-frequency gas by a few percent is invisible; stretching a
 -- field of point stars would not be.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 
 -- The authoring space (see header) and the fraction of it the canvas is baked

@@ -2,7 +2,7 @@
 -- The fixed night sky behind the loading screen and the menu: a field of
 -- twinkling points plus a few constellations linking some of them.
 
-local Theme = require "ui.theme"
+local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 
 local Stars = {}

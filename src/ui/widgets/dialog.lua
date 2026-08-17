@@ -26,9 +26,9 @@
 --
 --   if self.dialog:isOpen() then self.dialog:keypressed(key) return end
 
-local Theme = require "ui.theme"
-local Button = require "ui.button"
-local FocusGroup = require "ui.focusGroup"
+local Theme = require "ui.core.theme"
+local Button = require "ui.widgets.button"
+local FocusGroup = require "ui.widgets.focusGroup"
 
 local Dialog = {}
 Dialog.__index = Dialog
