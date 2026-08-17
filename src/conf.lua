@@ -2,7 +2,7 @@
 function love.conf(t)
     t.identity = "TD-Idle"          -- save-directory name (love.filesystem writes here)
     t.version = "11.5"
-    t.console = false
+    t.console = true
 
     t.window.title = "TD Idle"
     t.window.icon = "assets/icon.png"
@@ -14,14 +14,7 @@ function love.conf(t)
     t.window.fullscreen = false
     t.window.highdpi = true         -- retina/hidpi support
 
-    -- Create the window with the SAVED graphics settings, not the defaults
-    -- above: applying them later (loading state) would call setMode, which
-    -- recreates the window — a visible resize right after launch, plus a
-    -- frame stall that fast-forwards the loading screen. love.filesystem is
-    -- functional during love.conf (conf.lua itself is loaded through it),
-    -- but the save-dir identity isn't set until after conf returns, so set
-    -- it manually before reading. pcall: if anything fails, the defaults
-    -- above still stand.
+    -- Update settings to match the saved ones.
     local ok, settings = pcall(function()
         love.filesystem.setIdentity(t.identity)
         return require("core.settings").load()

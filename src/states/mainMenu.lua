@@ -10,6 +10,7 @@ local TextFactory   = require "ui.textFactory"
 local UI            = require "ui"
 local I18n          = require "core.i18n"
 local Particles     = require "particles"
+local DiscordMark   = require "ui.discordMark"
 local GithubMark    = require "ui.githubMark"
 local GameTitle     = require "ui.gameTitle"
 local Audio         = require "core.audio"
@@ -25,9 +26,11 @@ local MENU_Y_RATIO = 0.44
 
 -- Repo that the clickable GitHub mark opens.
 local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
+local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
 -- Side length of the GitHub mark in the bottom-left corner, and the margin
 -- around the bottom-corner furniture. Design-space px (see Theme.px).
 local GITHUB_ICON_SIZE = 26
+local DISCORD_ICON_SIZE = 26
 local CORNER_PAD = 12
 
 local MainMenu = {}
@@ -47,15 +50,10 @@ local function buildVersionLabel()
     }
 end
 
--- Groups a number for display: 1234567 -> "1,234,567", using whatever separator
--- the active language uses (a comma in English, a period in Spanish and
--- Portuguese). The world star tally is the one number here that gets long
--- enough to be unreadable ungrouped.
+
 local function grouped(n)
     local sep = I18n.t("format.thousands")
     local text = tostring(math.floor(n))
-    -- Walk right to left in threes. The %1 guard stops the pattern from
-    -- prefixing a separator onto the leading group.
     local done
     repeat
         text, done = text:gsub("^(%-?%d+)(%d%d%d)", "%1" .. sep .. "%2")
@@ -73,18 +71,11 @@ local function buildCornerLabel(text)
     }
 end
 
--- Sits just above the version label. Returns nil when the count is unknown — no
--- server response yet, no network, or the player opted out — and every caller
--- treats nil as "draw nothing". A counter that says 0 (or "--") makes a live
--- game look abandoned, which is worse than not showing one at all.
 local function buildOnlinePlayersLabel(count)
     if not count then return nil end
     return buildCornerLabel(I18n.t("menu.onlinePlayers", { n = grouped(count) }))
 end
 
--- The world star tally, above the player count. Same nil rule. Golden stars are
--- a subset of the total, not a second pile added to it, which is why the string
--- reads "of which" rather than listing two independent numbers.
 local function buildStarsPoppedLabel(stars, golden)
     if not stars then return nil end
     return buildCornerLabel(I18n.t("menu.starsPopped", {
@@ -93,21 +84,12 @@ local function buildStarsPoppedLabel(stars, golden)
     }))
 end
 
--- A background layer is built by the loading screen and handed over through
--- Assets, so it's already on screen behind the boot sequence and never pops in
--- here; `build` is the fallback for entering the menu without having come
--- through loading. Either way what we already have is kept: re-entering the menu
--- (e.g. back from Options) must not reshuffle the whole night sky.
 local function inheritSky(existing, name, build)
     local layer = existing or Assets.get(name) or build()
     layer.alpha = 1 -- loading may have handed it over mid-fade
     return layer
 end
 
--- Starts the preloaded menu track. enter() runs again every time we come back
--- here (from Options, from the game), so this checks the shared Source before
--- replaying it — otherwise a round trip through Options would stack a second
--- copy of the music on top of the first.
 local function menuMusic()
     local source = Audios.get("mainMenuBG")
     if not source or source:isPlaying() then return end
@@ -118,17 +100,14 @@ function MainMenu:enter()
     menuMusic()
     self.title = buildTitle()
     self.version = buildVersionLabel()
-    -- Cached alongside the labels so update() can tell when the heartbeat has
-    -- actually moved a number. Re-read on every enter because they may have
-    -- arrived (or been switched off in Options) while we were away.
     self.onlineCount = Stats.online
     self.starCount, self.goldenCount = Stats.stars, Stats.golden
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+    self.discordHover = false
+    self.discordPressed = false
     self.githubHover = false
     self.githubPressed = false
-    -- Seeded from the real pointer so hover feedback is right on the first
-    -- frame back from Options, before the player moves the mouse again.
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Globals.menu.Particles.starfield
     self.stars = inheritSky(self.stars, "stars", function()
@@ -141,23 +120,8 @@ function MainMenu:enter()
     end)
 
     -- The menu itself is stateless between visits, so build it just once.
-    -- Labels are functions so they re-read the active language every draw; a
-    -- language change from Options updates the menu with no rebuild.
     if not self.menu then
         self.menu = Menu.new({
-            -- Play button
-            { label = function() return I18n.t("menu.play") end, onSelect = function()
-                Audio.stopAll() -- stop the menu music before the game starts
-                UI.Sfx.select()
-                -- Stamped here rather than in Game:enter so the run clock starts
-                -- when Play was pressed, not when the fade finishes.
-                StateManager.fadeTo("game")
-            end },
-            -- Achievements button
-            { label = function() return I18n.t("menu.achievements") end, onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("achievements")
-            end },
             -- Options button
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
@@ -175,27 +139,21 @@ function MainMenu:enter()
     Presence.set{ details = "Main Menu", state = "Getting ready",
                   smallText = "In the menu" }
 
-    -- Options may have changed the resolution or the language while we were
-    -- away, and both move things here (menu width is driven by label widths).
     self:layout()
 end
 
--- Computes every rect this screen draws. Called on enter and on resize, never
--- from draw — the GitHub mark's hitbox and the menu's button bounds are read by
--- input handlers, which must not depend on a draw having happened first.
+-- Computes every rect this screen draws.
 function MainMenu:layout()
     local w, h = love.graphics.getDimensions()
     local pad = UI.Theme.px(CORNER_PAD)
     local iconSize = UI.Theme.px(GITHUB_ICON_SIZE)
+    local discordIconSize = UI.Theme.px(DISCORD_ICON_SIZE)
 
     self.title.y = h * GameTitle.MENU_Y_RATIO
     self.githubBounds = { x = pad, y = h - iconSize - pad, w = iconSize, h = iconSize }
+    self.discordBound = { x = pad, y = h - iconSize - pad - discordIconSize - pad, w = discordIconSize, h = discordIconSize }
 
-    -- The bottom-right stack, laid out from the floor upwards and right-aligned
-    -- to a shared margin. Built as a list rather than three hardcoded offsets
-    -- because the two world figures come and go independently — either can be
-    -- absent while the count is unknown, and a gap where one used to be would
-    -- leave the version label floating.
+
     local stack = { self.version }
     if self.onlinePlayers then stack[#stack + 1] = self.onlinePlayers end
     if self.starsPopped then stack[#stack + 1] = self.starsPopped end
@@ -216,11 +174,6 @@ function MainMenu:update(dt)
     self.title:update(dt)
     self.menu:update(dt)
 
-    -- The figures land from the heartbeat thread, at most once every few
-    -- minutes. TextFactory bakes a glyph mesh, so a label is rebuilt only when
-    -- its number actually changes rather than every frame — and re-laid out
-    -- with it, because a different number is a different width and the whole
-    -- stack is right-aligned.
     local moved = false
 
     if Stats.online ~= self.onlineCount then
@@ -238,10 +191,7 @@ function MainMenu:update(dt)
     if moved then self:layout() end
 end
 
--- Widgets resolve their fonts per draw, but TextFactory caches a glyph mesh
--- built from the font it was handed, so both of these have to be rebuilt by
--- hand whenever the UI scale changes (and the title on any resize, since its
--- wrap width is the window width).
+-- Widgets resolve their fonts per draw.
 function MainMenu:resize(w, h, rescaled)
     self.title = buildTitle()
     if rescaled then
@@ -256,19 +206,23 @@ function MainMenu:keypressed(key)
     self.menu:keypressed(key)
 end
 
--- Hit test for the clickable GitHub mark. Its bounds are recomputed every draw
--- (see below), so this is nil-safe before the first frame.
+-- Hit test for the clickable GitHub mark.
 function MainMenu:githubContains(x, y)
     local b = self.githubBounds
+    return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
+end
+
+-- Hit test for the clickable Discord mark.
+function MainMenu:discordContains(x, y)
+    local b = self.discordBound
     return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
 end
 
 function MainMenu:mousemoved(x, y)
     self.menu:mousemoved(x, y)
     self.githubHover = self:githubContains(x, y)
-    -- The cursor itself is requested from draw, not here: mousemoved stops
-    -- firing the moment the player holds still, so setting it here would drop
-    -- the hand as soon as they stopped moving over the mark.
+    self.discordHover = self:discordContains(x, y)
+    -- The cursor itself is requested from draw.
     self.mouseX, self.mouseY = x, y
 end
 
@@ -280,12 +234,19 @@ function MainMenu:mousepressed(x, y, button)
         UI.Sfx.press()
         return
     end
-    -- A popped star is the one thing on this screen that feeds the world
-    -- tally. Recording it is two integers on the main thread; it rides out on
-    -- the next heartbeat rather than costing a request of its own, and does
-    -- nothing at all if the player has opted out.
-    local hit, golden = self.starfield:mousepressed(x, y, button)
-    if hit then Stats.pop(golden) end
+    if button == 1 and self:discordContains(x, y) then
+        self.discordPressed = true
+        UI.Sfx.press()
+        return
+    end
+
+    local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
+    if hit then
+        Stats.pop(golden)
+        -- TODO: Stats.pop only distinguishes golden vs not right now. Once it
+        -- can track a third category, count rainbow pops here too:
+        -- if rainbow then Stats.popRainbow() end
+    end
 end
 
 function MainMenu:mousereleased(x, y, button)
@@ -298,24 +259,24 @@ function MainMenu:mousereleased(x, y, button)
             love.system.openURL(GITHUB_URL)
         end
     end
+    if button == 1 and self.discordPressed then
+        self.discordPressed = false
+        if self:discordContains(x, y) then
+            love.system.openURL(DISCORD_URL)
+        end
+    end
 end
 
 -- Draw only. Every rect here was computed by MainMenu:layout().
 function MainMenu:draw()
-    -- Back to front: gas, then the fixed sky on top of it, then the shooting
-    -- stars in front of both.
     self.nebula:draw()
 
     self.stars:draw()
 
     self.starfield:draw()
 
-    -- Version: a plain standalone label pinned to the bottom-right.
     self.version:draw()
 
-    -- The world figures: same treatment, stacked above the version. Both are
-    -- absent until the first heartbeat comes back, and gone again if the player
-    -- opts out.
     if self.onlinePlayers then
         self.onlinePlayers:draw()
     end
@@ -323,27 +284,27 @@ function MainMenu:draw()
         self.starsPopped:draw()
     end
 
-    -- GitHub mark: bottom-left, a link to the repo that lights up on hover.
-    -- Always carries a soft halo so it reads against the starfield, and lights
-    -- up to the accent color with a stronger glow while hovered.
     local mark = self.githubBounds
     GithubMark.draw(mark.x, mark.y, mark.w,
-        self.githubHover and UI.Theme.colors.accent or UI.Theme.colors.text,
+        self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
         self.githubHover and 1 or 0.45)
+    
+
+    local discordMark = self.discordBound
+    DiscordMark.draw(discordMark.x, discordMark.y, discordMark.w,
+        self.discordHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
+        self.discordHover and 1 or 0.45)
 
     self.title:drawChroma()
 
     self.menu:draw()
 
-    -- Shadowed: this sits directly on the starfield, where dim grey text
-    -- crossing a bright star or a constellation line stops being readable.
     UI.Label.hint(I18n.t("menu.hint"), true)
 
-    -- Asked for every frame the cursor is over something clickable (see
-    -- UI.Cursor for why this can't live in mousemoved).
-    if self.mouseX and (self.githubHover or self.menu:hovering(self.mouseX, self.mouseY)) then
-        UI.Cursor.want("hand")
-    end
+    -- self.githubHover never carries danger — the mark is a plain link, not a
+    -- destructive action — so the menu's own flag is what decides the color.
+    local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
+    UI.Cursor.setHover(self.mouseX ~= nil and (self.githubHover or overMenu), dangerous)
 end
 
 return MainMenu

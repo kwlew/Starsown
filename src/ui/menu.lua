@@ -113,8 +113,9 @@ function Menu:mousereleased(x, y, button)
     return self.group:mousereleased(x, y, button)
 end
 
--- Is the cursor over an interactive item? Screens use this to ask for the hand
--- cursor (see src/ui/cursor.lua for why it's a query, not a side effect).
+-- Is the cursor over an interactive item, and is it dangerous? Screens pass
+-- both straight to UI.Cursor.setHover (see there for why it's a query, not a
+-- side effect).
 function Menu:hovering(x, y)
     return self.group:hovering(x, y)
 end

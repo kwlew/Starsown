@@ -178,12 +178,17 @@ function FocusGroup:mousereleased(x, y, button)
     return true
 end
 
--- Is the cursor over something interactive? Screens use this to ask for the
--- hand cursor. It has to be a query rather than a side effect of mousemoved,
+-- Is the cursor over something interactive? Screens use this to drive the
+-- cursor. It has to be a query rather than a side effect of mousemoved,
 -- because the answer is needed every frame — see src/ui/cursor.lua.
+--
+-- Second return is the hovered widget's `danger` flag, so a screen can pass
+-- both straight to UI.Cursor.setHover without checking which widget it was.
 function FocusGroup:hovering(x, y)
     for _, widget in ipairs(self.widgets) do
-        if widget:isInteractive() and widget:contains(x, y) then return true end
+        if widget:isInteractive() and widget:contains(x, y) then
+            return true, widget.danger
+        end
     end
     return false
 end

@@ -4,8 +4,8 @@
 -- input — the screen underneath keeps drawing but stops responding.
 --
 --   self.dialog = Dialog.new{
---       title   = function() return I18n.t("dialog.quit.title") end,
---       message = function() return I18n.t("dialog.quit.message") end,
+--       title   = function() return I18n.t("dialog.revert.title") end,
+--       message = function() return I18n.t("dialog.revert.message") end,
 --       buttons = {
 --           { label = ..., onSelect = function() self.dialog:close() end },
 --           { label = ..., onSelect = function() ... end, danger = true },

@@ -55,9 +55,7 @@ function Toggle:draw()
     self:drawLabel(font, alpha)
     Theme.popFont()
 
-    -- Pill track, right-aligned; fills toward accent as the knob slides on.
-    -- Explicit segment counts: at these small radii LÖVE's defaults produce
-    -- visibly faceted "circles".
+    -- Pill track.
     local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
     local pillX = self.x + self.w - m.padding - pillW
     local pillY = self.y + (self.h - pillH) / 2
@@ -69,7 +67,7 @@ function Toggle:draw()
     local knobR = pillH / 2 - Theme.px(KNOB_INSET)
     local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
     Theme.setColor(c.text, alpha)
-    love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 32)
+    love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 4)
 
     love.graphics.setColor(1, 1, 1, 1)
 end

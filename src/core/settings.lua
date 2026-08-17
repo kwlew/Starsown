@@ -1,8 +1,4 @@
 -- src/core/settings.lua
--- Loads and saves player settings to the LÖVE save directory (keyed by the
--- `identity` set in conf.lua). The on-disk format is a plain Lua table so it
--- can be read back with love.filesystem.load; loading is defensive so a
--- missing, corrupt, or hand-edited file always falls back to defaults.
 
 local Audio = require "core.audio"
 
@@ -24,19 +20,11 @@ Settings.defaults = {
     shareStats = true,
 }
 
--- Allowed values for string settings; anything else in the file falls back
--- to the default (a bare type check isn't enough for enums).
+
 local VALID_WINDOW_MODES = { windowed = true, borderless = true, exclusive = true }
 
--- Multisample counts the game offers, in ascending order. Lives here rather
--- than in the Options screen because conf.lua feeds settings.msaa straight into
--- window creation at boot, long before any UI exists: a value off this list can
--- produce a broken framebuffer (a 6 here renders the whole window white), and
--- then there is no way for the player to reach Options and correct it. Load
--- must be the thing that guarantees a usable value.
---
--- No 1: LÖVE treats 0 and 1 alike, so it would duplicate "off".
-Settings.MSAA_LEVELS = { 0, 2, 4, 8, 16 }
+
+Settings.MSAA_LEVELS = { 0, 2, 4, 8, 16, }
 
 local VALID_MSAA = {}
 for _, samples in ipairs(Settings.MSAA_LEVELS) do VALID_MSAA[samples] = true end
@@ -138,9 +126,10 @@ end
 --
 -- Window modes: "windowed" (no fullscreen), "borderless" (desktop-type
 -- fullscreen at desktop resolution), "exclusive" (real fullscreen at
--- res_x x res_y — can change the display mode). The cursor is re-shown after
--- every mode change: exclusive fullscreen in particular can hide the OS
--- cursor on some Windows drivers.
+-- res_x x res_y — can change the display mode). The OS cursor is force-hidden
+-- again after every mode change: setMode recreates the window, which on some
+-- Windows drivers resets cursor visibility to shown — and the game draws its
+-- own cursor (see ui/cursor.lua), so the system one must never reappear.
 function Settings.applyGraphics(settings)
     local w, h, flags = love.window.getMode()
 
@@ -174,10 +163,20 @@ function Settings.applyGraphics(settings)
     -- capped to 8x or 4x). Store what we actually got: otherwise the comparison
     -- above never settles, so every later call recreates the window, and the
     -- request rather than the reality is what gets written to the save file.
-    local _, _, granted = love.window.getMode()
+    local w, h, granted = love.window.getMode()
     settings.msaa = granted.msaa or settings.msaa
 
-    love.mouse.setVisible(true)
+    -- love.window.setMode does NOT reliably fire love.resize on its own —
+    -- confirmed against this LÖVE build, which never calls it for a
+    -- programmatic setMode. That callback is the only thing that rescales the
+    -- UI and relays out the active screen (see love.resize in main.lua), so
+    -- without this, Options applying a new resolution would leave every
+    -- widget laid out for the window's old size. Triggered by hand, with
+    -- whatever size the window actually ended up at (getMode, not
+    -- settings.res_x/res_y — borderless fullscreen reports the desktop size).
+    if love.resize then love.resize(w, h) end
+
+    love.mouse.setVisible(false)
 end
 
 -- Pushes the settings into LÖVE (call once at boot and whenever they change).

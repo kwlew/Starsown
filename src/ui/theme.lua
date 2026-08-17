@@ -86,6 +86,10 @@ local SCRIM_ALPHA     = 0.62
 local SHADOW_DARKEN   = 0.25 -- of bg, for text drop shadows
 local SHADOW_ALPHA    = 0.75
 
+Theme.fixedColors = {
+    starPop = { 1, 0.5, 0.2 }, -- the debris from a popped star
+}
+
 -- Perceived brightness (Rec. 601), used to hold a neutral's lightness fixed
 -- while its hue is moved.
 local function luminance(r, g, b)
@@ -189,8 +193,7 @@ end
 -- (options.themeName.<id>).
 local PALETTES = {
     {
-        -- "Nebula" — the game's original cool neon, and the fallback for a
-        -- saved theme that no longer exists.
+        -- "Nebula" — the game's original.
         id        = "default",
         accent    = { 0.30, 0.70, 1.00 }, -- focus, fills, glow
         accentAlt = { 0.62, 0.40, 1.00 }, -- violet partner for gradients and gas
@@ -198,7 +201,7 @@ local PALETTES = {
         title     = { { 0.25, 0.60, 1.00 }, { 0.85, 0.92, 1.00 }, { 0.62, 0.40, 1.00 } },
     },
     {
-        -- Carbon - a black theme
+        -- Carbon
         id        = "carbon",
         accent    = { 0.25, 0.25, 0.25 }, -- focus, fills, glow
         accentAlt = { 0.9, 0.9, 0.9 }, -- violet partner for gradients and gas
@@ -206,7 +209,7 @@ local PALETTES = {
         title     = { { 0.4, 0.4, 0.4 }, { 0.85, 0.92, 1.00 }, { 0.2, 0.2, 0.2 } },
     },
     {
-        -- "Amethyst" — violet through magenta, the warmest of the cool themes.
+        -- "Amethyst"
         id        = "amethyst",
         accent    = { 0.4, 0.1, 0.6 },
         accentAlt = { 0.8, 0.2, 0.6 },
@@ -249,8 +252,7 @@ local PALETTES = {
         title     = { { 1.00, 0.72, 0.25 }, { 1.00, 0.95, 0.82 }, { 1.00, 0.38, 0.32 } },
     },
     {
-        -- "Slate" — near-monochrome, for players who'd rather the UI stayed out
-        -- of the way. The low tint is the point: it keeps the greys grey.
+        -- "Slate"
         id        = "slate",
         accent    = { 0.70, 0.78, 0.92 },
         accentAlt = { 0.52, 0.60, 0.76 },
@@ -258,15 +260,20 @@ local PALETTES = {
         title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
     },
     {
-        -- "Ruby" — pink through coral. Its accent sits closest of any theme to
-        -- the danger red, so danger is pushed to a deep crimson to keep a
-        -- destructive row telling itself apart from a merely focused one.
+        -- "Ruby"
         id        = "ruby",
         accent    = { 1.00, 0.30, 0.50 },
         accentAlt = { 1.00, 0.50, 0.30 },
         tint      = 0.5,
         danger    = { 0.95, 0.10, 0.14 },
         title     = { { 1.00, 0.30, 0.50 }, { 1.00, 0.90, 0.85 }, { 1.00, 0.50, 0.30 } },
+    },
+    {
+       id        = "diamond",
+       accent    = { 0.2, 1.00, 1.00 },
+       accentAlt = { 0.52, 0.60, 0.76 },
+       tint      = 0.40,
+       title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
     },
 
     -- a placeholder for a palette the player built in Options

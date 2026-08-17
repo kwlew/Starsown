@@ -28,6 +28,11 @@ function ProgressBar.new(config)
         -- Global opacity, so an owning screen can fade the bar out as part of
         -- a transition. Set the field directly before drawing.
         alpha = config.alpha or 1,
+        -- Fill colour, for a bar that means something other than "progress".
+        -- nil takes the accent, which is what every bar in the UI wants; the
+        -- wave timer switches to `warning` on a boss wave. Set the field
+        -- directly to change it between frames.
+        color = config.color,
         time = 0,
     }, ProgressBar)
 end
@@ -36,11 +41,6 @@ function ProgressBar:setProgress(t)
     self.target = Math.clamp01(t)
 end
 
--- True once the bar has visually reached a full target. The threshold is the
--- point where the fill is indistinguishable from full (a fraction of a pixel at
--- any real bar width), not where the ease has fully converged: an exponential
--- follower approaches 1 asymptotically, so waiting for 0.999 spends an extra
--- half-second on a bar the player already reads as finished.
 function ProgressBar:isComplete()
     return self.target >= 1 and self.shown >= 0.995
 end
@@ -64,11 +64,12 @@ function ProgressBar:draw(x, y, w, h)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
 
     -- Filled portion with a pulsing glow.
+    local fill = self.color or c.accent
     local fillW = self.w * self.shown
     if fillW > 0 then
-        local pulse = 0.6 + 0.4 * math.sin(self.time * self.pulseSpeed)
-        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha)
-        Theme.setColor(c.accent, alpha)
+        local pulse = 0.4 + 0.4 * math.sin(self.time * self.pulseSpeed)
+        Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha, fill)
+        Theme.setColor(fill, alpha)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)
     end
 
