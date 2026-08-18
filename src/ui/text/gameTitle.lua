@@ -29,7 +29,7 @@ function GameTitle.build()
         text = GameTitle.TEXT,
         y = love.graphics.getHeight() * GameTitle.MENU_Y_RATIO,
         align = "center",
-        font = UI.Theme.font("title"),
+        font = UI.Theme.font("title2"),
         gradient = UI.Theme.titleGradient(),
     }
 end

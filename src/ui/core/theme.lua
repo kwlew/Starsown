@@ -30,6 +30,7 @@ local Theme = {}
 -- open but always renders at a single default weight, so the static cuts are
 -- the ones worth pointing a role at.
 local FONT_FAMILIES = {
+    acme = "assets/fonts/Acme/",
     oxanium  = "assets/fonts/Oxanium/",
     orbitron = "assets/fonts/Orbitron/static/",
 }
@@ -371,6 +372,7 @@ local constantMetrics = {
 -- every role below can leave it out today without changing anything.
 local fontRoles = {
     title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 72 }, -- game title
+    title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 55  }, -- game title, alternate.
     heading = { file = "Oxanium-Bold.ttf",      size = 40 }, -- screen headings
     button  = { file = "Oxanium-SemiBold.ttf",  size = 26 }, -- buttons, tabs
     body    = { file = "Oxanium-Medium.ttf",    size = 26 }, -- widget labels/values

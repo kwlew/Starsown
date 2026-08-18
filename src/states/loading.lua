@@ -50,10 +50,21 @@ end
 -- The audio the game needs.
 local CLIPS = {
     { "assets/audio/bg/ambientmain_0.ogg", "mainMenuBG", "stream" },
+    { "assets/audio/bg/mainMenuBG2.flac", "mainMenuBG2", "stream" },
+    { "assets/audio/bg/mainMenuBG3_spooky.flac", "mainMenuBG3", "stream" },
     { "assets/audio/sfx/explosions/star_explosion.wav", "starExplosion" },
+    { "assets/audio/sfx/explosions/star_explosion2.wav", "starExplosion2" },
+    { "assets/audio/sfx/explosions/star_explosion3.wav", "starExplosion3" },
     { "assets/audio/sfx/explosions/golden_star_explosion.wav", "goldenStarExplosion" },
     { "assets/audio/sfx/menu/blipSelect.wav", "menuBlipSelect" },
     { "assets/audio/sfx/menu/blipSelect2.wav", "menuBlipSelect2" },
+    { "assets/audio/sfx/menu/menuButton.wav", "menuButton" },
+    { "assets/audio/sfx/menu/menuButton2.wav", "menuButton2" },
+    { "assets/audio/sfx/menu/menuButton3.wav", "menuButton3" },
+    { "assets/audio/sfx/menu/menuButton4.wav", "menuButton4" },
+    { "assets/audio/sfx/menu/menuButton5.wav", "menuButton5" },
+    { "assets/audio/sfx/menu/menuButton6.ogg", "menuButton6" },
+    { "assets/audio/sfx/menu/menuBeep.mp3", "menuBeep" },
 }
 
 -- Each task gets (yield, warn):
