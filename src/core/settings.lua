@@ -1,5 +1,3 @@
--- src/core/settings.lua
-
 local Audio = require "core.audio"
 
 local Settings = {}
@@ -9,14 +7,14 @@ Settings.FILENAME = "settings.lua"
 Settings.defaults = {
     windowMode = "windowed", -- "windowed" | "borderless" | "exclusive"
     vsync = 0,
-    msaa = 4,          -- multisample antialiasing samples (smooths circles/rounded corners)
-    volume = 0.8,      -- master: applied via love.audio.setVolume, scales every channel
-    musicVolume = 0.8, -- channel volume, see src/core/audio.lua
-    sfxVolume = 0.8,   -- channel volume, see src/core/audio.lua
+    msaa = 4,
+    volume = 0.8,      -- master, scales every channel via love.audio.setVolume
+    musicVolume = 0.8, -- channel volume, see core/audio.lua
+    sfxVolume = 0.8,   -- channel volume, see core/audio.lua
     res_x = 1280,
     res_y = 720,
-    language = "en", -- locale code; validated against available files by I18n
-    theme = "default", -- UI theme name; validated against available themes by UI.Theme
+    language = "en",   -- validated against available locale files by I18n
+    theme = "default", -- validated against available themes by UI.Theme
     shareStats = true,
 }
 
@@ -40,7 +38,7 @@ local function serializeValue(v)
 end
 
 local function serialize(settings)
-    -- Stable key order so the file diffs cleanly between saves.
+    -- stable key order so the file diffs cleanly between saves
     local keys = {}
     for key in pairs(Settings.defaults) do keys[#keys + 1] = key end
     table.sort(keys)
@@ -56,9 +54,8 @@ local function serialize(settings)
     return table.concat(lines, "\n")
 end
 
--- Returns a fresh settings table: defaults overlaid with any valid saved
--- values. Only keys present in defaults are accepted, and only when the saved
--- value's type matches, so junk in the file can never propagate into the game.
+-- defaults overlaid with valid saved values only; keys not in defaults, or
+-- with a type mismatch, are ignored, so junk in the file can't reach the game
 function Settings.load()
     local settings = {}
     for key, value in pairs(Settings.defaults) do
@@ -77,7 +74,7 @@ function Settings.load()
                     end
                 end
 
-                -- Migrate pre-windowMode files that stored `fullscreen = true`.
+                -- migrate pre-windowMode files that stored `fullscreen = true`
                 if data.windowMode == nil and data.fullscreen == true then
                     settings.windowMode = "borderless"
                 end
@@ -86,24 +83,18 @@ function Settings.load()
                     settings.windowMode = Settings.defaults.windowMode
                 end
 
-                -- An older build wrote the selector's *index* here rather than
-                -- the sample count, so files in the wild hold values like 6.
+                -- an older build stored the selector's *index* here, not the
+                -- sample count, so files in the wild can hold values like 6
                 if not VALID_MSAA[settings.msaa] then
                     settings.msaa = Settings.defaults.msaa
                 end
 
-                -- Language is validated for shape only here; I18n does the
-                -- authoritative check against the locale files it discovered
-                -- (unknown codes fall back to English at setLanguage time).
                 if type(settings.language) ~= "string" or settings.language == "" then
                     settings.language = Settings.defaults.language
                 end
 
-                -- Theme, likewise: UI.Theme owns the list of palettes it ships
-                -- and falls back to the default at setTheme time. Keeping that
-                -- knowledge out of here is what lets conf.lua require this file
-                -- during love.conf, before there is any graphics module for the
-                -- UI package to be loaded against.
+                -- kept out of I18n/Theme's own validation: this file loads
+                -- during love.conf, before the graphics module exists for UI to load against
                 if type(settings.theme) ~= "string" or settings.theme == "" then
                     settings.theme = Settings.defaults.theme
                 end
@@ -118,18 +109,10 @@ function Settings.save(settings)
     return love.filesystem.write(Settings.FILENAME, serialize(settings))
 end
 
--- Applies resolution + window mode + vsync in one setMode call. The current
--- window flags are fetched and carried over because a bare setMode(w, h)
--- RESETS every unspecified flag — it would silently drop msaa, resizable,
--- and highdpi from conf.lua. Skips the call entirely when nothing changed,
--- since setMode recreates the window (visible flicker).
---
--- Window modes: "windowed" (no fullscreen), "borderless" (desktop-type
--- fullscreen at desktop resolution), "exclusive" (real fullscreen at
--- res_x x res_y — can change the display mode). The OS cursor is force-hidden
--- again after every mode change: setMode recreates the window, which on some
--- Windows drivers resets cursor visibility to shown — and the game draws its
--- own cursor (see ui/cursor.lua), so the system one must never reappear.
+-- Applies resolution + window mode + vsync in one setMode call. Current flags
+-- are fetched and carried over because a bare setMode(w, h) RESETS every
+-- unspecified flag (would silently drop msaa/resizable/highdpi). Skips the
+-- call when nothing changed, since setMode recreates the window (visible flicker).
 function Settings.applyGraphics(settings)
     local w, h, flags = love.window.getMode()
 
@@ -140,8 +123,8 @@ function Settings.applyGraphics(settings)
         or (fullscreen and flags.fullscreentype ~= fullscreenType)
         or flags.vsync ~= settings.vsync
         or flags.msaa ~= settings.msaa
-        -- In borderless fullscreen, getMode reports the desktop size, so the
-        -- stored resolution only matters (and is only compared) outside it.
+        -- borderless fullscreen reports the desktop size via getMode, so the
+        -- stored resolution only matters outside of it
         or (settings.windowMode ~= "borderless" and (w ~= settings.res_x or h ~= settings.res_y))
     if not changed then return end
 
@@ -150,38 +133,26 @@ function Settings.applyGraphics(settings)
     flags.vsync = settings.vsync
     flags.msaa = settings.msaa
 
-    -- Center the window whenever the target is windowed: carrying over the
-    -- x/y captured while fullscreen (0,0) would park the title bar off the
-    -- top of the screen. With nil coordinates, setMode centers on the display.
+    -- carrying over x/y captured while fullscreen (0,0) would park the title
+    -- bar off-screen; nil coordinates center the window on the display
     if not fullscreen then
         flags.x, flags.y = nil, nil
     end
 
     love.window.setMode(settings.res_x, settings.res_y, flags)
 
-    -- A driver can grant fewer samples than were asked for (16x is commonly
-    -- capped to 8x or 4x). Store what we actually got: otherwise the comparison
-    -- above never settles, so every later call recreates the window, and the
-    -- request rather than the reality is what gets written to the save file.
+    -- a driver can grant fewer samples than asked (16x often caps to 8x/4x);
+    -- store what we actually got or the changed-check above never settles
     local w, h, granted = love.window.getMode()
     settings.msaa = granted.msaa or settings.msaa
 
-    -- love.window.setMode does NOT reliably fire love.resize on its own —
-    -- confirmed against this LÖVE build, which never calls it for a
-    -- programmatic setMode. That callback is the only thing that rescales the
-    -- UI and relays out the active screen (see love.resize in main.lua), so
-    -- without this, Options applying a new resolution would leave every
-    -- widget laid out for the window's old size. Triggered by hand, with
-    -- whatever size the window actually ended up at (getMode, not
-    -- settings.res_x/res_y — borderless fullscreen reports the desktop size).
+    -- love.resize doesn't reliably fire on a programmatic setMode on this
+    -- LÖVE build, so it's triggered by hand with the size we actually got
     if love.resize then love.resize(w, h) end
 
     love.mouse.setVisible(false)
 end
 
--- Pushes the settings into LÖVE (call once at boot and whenever they change).
--- Master multiplies every channel via love.audio.setVolume; music/sfx are
--- per-channel volumes applied through src/core/audio.lua (see there for why).
 function Settings.apply(settings)
     Settings.applyGraphics(settings)
     love.audio.setVolume(settings.volume)

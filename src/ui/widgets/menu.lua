@@ -1,14 +1,12 @@
--- src/ui/menu.lua
--- Vertical menu: a layout container over UI.Button. Focus, keyboard movement,
--- and mouse routing all come from a UI.FocusGroup — this file is only the
--- "stack them centered and size them to the widest label" part.
+-- Vertical menu: a layout container over UI.Button. Focus, keyboard
+-- movement, and mouse routing come from a UI.FocusGroup -- this file is
+-- only the "stack them centered, size to the widest label" part.
 --
 -- Each item is a table:
 --   label    : string, OR a function -> string for live values
 --   onSelect : function called when the item is activated
 --   enabled  : optional, false for a greyed-out entry (skipped by navigation)
---   danger   : optional, true for an entry that destroys something (it lights
---              up in the theme's danger red rather than its accent)
+--   danger   : optional, true for an entry that destroys something
 --
 -- Usage:
 --   self.menu = Menu.new({
@@ -30,8 +28,7 @@ local FocusGroup = require "ui.widgets.focusGroup"
 local Menu = {}
 Menu.__index = Menu
 
--- `font` is a Theme role name (or a Font object); resolved per draw so a
--- Theme.rescale is picked up without rebuilding the menu.
+-- `font` is a Theme role name (or a Font object); resolved per draw so a rescale is picked up without a rebuild
 function Menu.new(items, font)
     local self = setmetatable({
         group = FocusGroup.new(),
@@ -69,19 +66,14 @@ function Menu:setFocus(index)
     self.group:setFocus(index)
 end
 
--- fn(widget, index) fires when the player moves the focus, not when the menu is
--- built. Screens use it for the navigation blip.
+-- fn(widget, index) fires when the player moves the focus, not when the menu is built
 function Menu:onFocusChanged(fn)
     self.group.onFocusChanged = fn
 end
 
--- Lays the buttons out centered horizontally starting at y. All buttons share
--- one width (widest label wins) so the column reads as a unit; `spacing` is the
--- vertical step between button tops.
---
--- Called from the owning screen's layout(), not from draw: hit-testing has to
--- work off geometry that's already current, and label widths change with the
--- active language and the UI scale.
+-- lays buttons out centered, starting at y; all buttons share one width
+-- (widest label wins). Called from the owning screen's layout(), not draw --
+-- hit-testing needs current geometry, and label widths change with language/scale.
 function Menu:layout(y, spacing)
     local m = Theme.metrics
     local font = self:getFont()
@@ -103,8 +95,6 @@ function Menu:draw()              self.group:draw()                  end
 function Menu:keypressed(key)     return self.group:keypressed(key)  end
 function Menu:mousemoved(x, y)    return self.group:mousemoved(x, y) end
 
--- Returns true when the click landed on a button, so callers can tell whether
--- the menu consumed it before acting on the click themselves.
 function Menu:mousepressed(x, y, button)
     return self.group:mousepressed(x, y, button)
 end
@@ -113,9 +103,6 @@ function Menu:mousereleased(x, y, button)
     return self.group:mousereleased(x, y, button)
 end
 
--- Is the cursor over an interactive item, and is it dangerous? Screens pass
--- both straight to UI.Cursor.setHover (see there for why it's a query, not a
--- side effect).
 function Menu:hovering(x, y)
     return self.group:hovering(x, y)
 end

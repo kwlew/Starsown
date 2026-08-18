@@ -1,12 +1,10 @@
--- src/ui/button.lua
 -- Themed rounded-rect button. Focus (keyboard) and hover (mouse) share one
 -- `focused` flag; the visual eases toward the accent look with a soft glow.
 --
 --   local b = Button.new{ label = "Play", onSelect = function() ... end }
 --   -- a FocusGroup (or the owning layout) sets b's bounds and routes input
 --
--- Set b.enabled = false to grey it out and make it inert (ignores clicks and
--- Enter, never glows); a FocusGroup skips it when moving focus.
+-- b.enabled = false greys it out and makes it inert.
 
 local Theme = require "ui.core.theme"
 local Widget = require "ui.widgets.widget"
@@ -33,8 +31,7 @@ function Button:draw()
     local alpha, font = self:alpha(), self:getFont()
     self:drawRow(alpha)
 
-    -- Centered rather than left-aligned, so this doesn't use Widget:drawLabel.
-    Theme.pushFont(font)
+    Theme.pushFont(font) -- centered, not left-aligned, so this doesn't use Widget:drawLabel
     Theme.setColor(Theme.colors.text, alpha)
     love.graphics.printf(self:labelText(), self.x,
         Theme.centerY(self.y, self.h, font), self.w, "center")

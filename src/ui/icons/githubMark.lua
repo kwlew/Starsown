@@ -1,4 +1,3 @@
--- src/ui/githubMark.lua
 -- The official GitHub logo via SVG.
 
 local SvgIcon = require "ui.icons.svgIcon"
@@ -9,7 +8,6 @@ local mark = SvgIcon.new(PATH, 24)
 
 local GithubMark = {}
 
--- Draws the mark.
 function GithubMark.draw(x, y, size, color, glow)
     mark:draw(x, y, size, color, glow)
 end

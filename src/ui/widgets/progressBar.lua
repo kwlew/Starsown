@@ -1,4 +1,3 @@
--- src/ui/progressBar.lua
 -- The glowing progress bar (extracted from the loading state): eased fill,
 -- pulsing additive halo, optional percentage readout.
 --
@@ -25,14 +24,8 @@ function ProgressBar.new(config)
         fillSpeed = config.fillSpeed or 6,
         pulseSpeed = config.pulseSpeed or 4,
         showPercent = config.showPercent ~= false,
-        -- Global opacity, so an owning screen can fade the bar out as part of
-        -- a transition. Set the field directly before drawing.
-        alpha = config.alpha or 1,
-        -- Fill colour, for a bar that means something other than "progress".
-        -- nil takes the accent, which is what every bar in the UI wants; the
-        -- wave timer switches to `warning` on a boss wave. Set the field
-        -- directly to change it between frames.
-        color = config.color,
+        alpha = config.alpha or 1, -- set directly before drawing; lets an owning screen fade the bar out
+        color = config.color, -- nil takes the accent; the wave timer switches to `warning` on a boss wave
         time = 0,
     }, ProgressBar)
 end
@@ -59,11 +52,9 @@ function ProgressBar:draw(x, y, w, h)
     local alpha = self.alpha
     if alpha <= 0 then return end
 
-    -- Track.
     Theme.setColor(c.track, alpha)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
 
-    -- Filled portion with a pulsing glow.
     local fill = self.color or c.accent
     local fillW = self.w * self.shown
     if fillW > 0 then
@@ -73,7 +64,6 @@ function ProgressBar:draw(x, y, w, h)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)
     end
 
-    -- Outline.
     Theme.setColor(c.panelBorder, alpha)
     love.graphics.rectangle("line", self.x, self.y, self.w, self.h, radius, radius)
 

@@ -1,10 +1,7 @@
--- src/ui/focusGroup.lua
--- Owns a list of widgets and the one thing every screen kept reimplementing:
--- which widget has focus, how the keyboard moves it, and where a mouse event
--- goes. Options and Menu each had their own copy of this, and Options also
--- carried a hand-maintained list of its sliders purely so a drag could keep
--- tracking after the cursor left the widget's rect — a widget concern that had
--- leaked into a screen. That is generic mouse capture, and it lives here now.
+-- Owns a list of widgets and the thing every screen kept reimplementing:
+-- which widget has focus, how the keyboard moves it, and where a mouse
+-- event goes. Also owns generic mouse capture, so a drag can keep tracking
+-- after the cursor leaves the widget's rect.
 --
 --   self.group = FocusGroup.new()
 --   self.group:setWidgets{ tabBar, slider, selector, backButton }
@@ -16,11 +13,10 @@
 --   function State:mousereleased(x, y, b)  self.group:mousereleased(x, y, b)  end
 --
 -- Mouse capture: a widget whose `mousepressed` returns true owns every
--- subsequent move and the release, wherever the cursor goes. That is what lets
--- a slider drag continue off the end of its row, and what stops focus from
--- wandering to whatever the cursor passes over mid-drag.
+-- subsequent move and the release, wherever the cursor goes -- lets a
+-- slider drag continue off the end of its row without focus wandering.
 --
--- The input methods return true when the event was consumed, so a screen can
+-- Input methods return true when the event was consumed, so a screen can
 -- act on the ones the group ignored (Esc, a click on empty background).
 
 local Math = require "utils.math"
@@ -33,22 +29,15 @@ function FocusGroup.new()
         widgets = {},
         index = 0,     -- 0 = nothing focused (empty or all-disabled group)
         capture = nil, -- widget owning the mouse until it releases
-        -- Optional onFocusChanged(widget, index), set by the owning screen.
-        -- Fires only when the player moves the focus, never when the list is
-        -- rebuilt underneath it — see the `silent` argument below.
-        onFocusChanged = nil,
+        onFocusChanged = nil, -- optional onFocusChanged(widget, index); fires only on player-driven moves
     }, FocusGroup)
 end
 
--- Replaces the whole list — what a tab switch does. Any in-flight drag is
--- dropped, since the widget that owned it may not be on screen anymore.
+-- replaces the whole list (a tab switch); any in-flight drag is dropped, its owner may not be on screen anymore
 function FocusGroup:setWidgets(widgets)
     self.widgets = widgets
     self.capture = nil
-    -- Silent: rebuilding the list is the screen reconfiguring itself, not the
-    -- player navigating, and the caller has usually just played its own sound
-    -- for whatever caused it.
-    self:focusFirst(true)
+    self:focusFirst(true) -- silent: this is the screen reconfiguring itself, not the player navigating
 end
 
 function FocusGroup:focused()
@@ -73,13 +62,11 @@ function FocusGroup:focusFirst(silent)
             return
         end
     end
-    self:setFocus(0, silent) -- nothing here can take focus
+    self:setFocus(0, silent)
 end
 
--- Moves focus by delta, wrapping and skipping anything not interactive. The
--- loop is bounded by the widget count rather than "until we're back where we
--- started": from an unfocused group (index 0) that comparison never comes true
--- and would spin forever.
+-- bounded by widget count, not "until we're back where we started": from an
+-- unfocused group (index 0) that never comes true and would spin forever
 function FocusGroup:moveFocus(delta)
     local count = #self.widgets
     if count == 0 then return end
@@ -94,11 +81,8 @@ function FocusGroup:moveFocus(delta)
     end
 end
 
--- Re-checks the current focus after something has toggled a widget's `enabled`
--- flag. Focus left sitting on a row that just went inert reads as "nothing is
--- selected": the glow eases out and the arrow keys do nothing until the player
--- moves off it. Pressing Enter on Options' Apply button does exactly this —
--- committing the change is what greys the button out.
+-- re-checks focus after something toggled a widget's `enabled` -- a focused
+-- row that just went inert would otherwise look selected but do nothing
 function FocusGroup:refresh()
     local widget = self:focused()
     if widget and not widget:isInteractive() then
@@ -129,17 +113,12 @@ function FocusGroup:keypressed(key)
 end
 
 function FocusGroup:mousemoved(x, y)
-    -- A widget mid-drag owns the mouse: it keeps receiving moves even once the
-    -- cursor has left its rect, and focus doesn't wander to whatever it passes
-    -- over on the way.
-    if self.capture then
+    if self.capture then -- a widget mid-drag owns the mouse; focus doesn't wander mid-drag
         if self.capture.mousemoved then self.capture:mousemoved(x, y) end
         return true
     end
 
-    -- Hover feedback for widgets that track the cursor (selector chevrons, tab
-    -- segments). Widgets without hover state simply don't implement this.
-    for _, widget in ipairs(self.widgets) do
+    for _, widget in ipairs(self.widgets) do -- hover feedback (selector chevrons, tab segments)
         if widget.mousemoved then widget:mousemoved(x, y) end
     end
 
@@ -152,15 +131,14 @@ function FocusGroup:mousemoved(x, y)
     return false
 end
 
--- A press on a disabled widget is still consumed: it's an inert control, not a
--- hole through to whatever is behind the screen.
+-- a press on a disabled widget is still consumed: it's inert, not a hole through to what's behind the screen
 function FocusGroup:mousepressed(x, y, button)
     for i, widget in ipairs(self.widgets) do
         if widget:contains(x, y) then
             if widget:isInteractive() then
                 self:setFocus(i)
                 if widget:mousepressed(x, y, button) then
-                    self.capture = widget -- asked to own the mouse until release
+                    self.capture = widget
                 end
             end
             return true
@@ -178,12 +156,8 @@ function FocusGroup:mousereleased(x, y, button)
     return true
 end
 
--- Is the cursor over something interactive? Screens use this to drive the
--- cursor. It has to be a query rather than a side effect of mousemoved,
--- because the answer is needed every frame — see src/ui/cursor.lua.
---
--- Second return is the hovered widget's `danger` flag, so a screen can pass
--- both straight to UI.Cursor.setHover without checking which widget it was.
+-- second return is the hovered widget's `danger` flag, so a screen can pass
+-- both straight to UI.Cursor.setHover
 function FocusGroup:hovering(x, y)
     for _, widget in ipairs(self.widgets) do
         if widget:isInteractive() and widget:contains(x, y) then
@@ -199,9 +173,8 @@ function FocusGroup:update(dt)
     end
 end
 
--- Draws every widget in list order. Screens that interleave their widgets with
--- other art (Options draws a panel behind its rows) skip this and draw the
--- widgets themselves; the group is about focus and routing, not painting.
+-- screens that interleave widgets with other art (Options draws a panel
+-- behind its rows) skip this and draw widgets themselves
 function FocusGroup:draw()
     for _, widget in ipairs(self.widgets) do
         widget:draw()

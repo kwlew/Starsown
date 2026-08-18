@@ -1,20 +1,16 @@
--- src/ui/core/music.lua
 -- Background music for the menu: picks a random track, plays it through, and
--- crossfades smoothly into another random track (never a repeat of the one
--- that just played) as it nears its end -- forever, so the menu never falls
--- silent or cuts hard between songs.
+-- crossfades into another random track (never a repeat) as it nears its end
+-- -- forever, so the menu never falls silent or cuts hard between songs.
 --
 --   Music.start()      -- once, when the music should begin (MainMenu:enter())
---   Music.update(dt)   -- every frame, globally (main.lua) -- not just while
---                         the menu is the active screen, so a crossfade due
---                         while the player is on Options still happens on
---                         schedule instead of leaving the menu silent when
---                         they come back
---   Music.stop()       -- forgets what was playing; pair with Audio.stop or
---                         Audio.stopAll(), which is what actually silences it
+--   Music.update(dt)   -- every frame, globally (main.lua), not just while
+--                         the menu is active, so a crossfade due while on
+--                         Options still happens on schedule
+--   Music.stop()       -- forgets what was playing; pair with Audio.stop/stopAll
+--                         to actually silence it
 --
 -- Tracks are preloaded as streams by states/loading.lua's CLIPS list and
--- handed out by name through utils/audios.lua, the same as every other clip.
+-- handed out by name through utils/audios.lua, like every other clip.
 
 local Audio = require "core.audio"
 local Audios = require "utils.audios"
@@ -22,27 +18,20 @@ local Math = require "utils.math"
 
 local Music = {}
 
--- Names loading.lua preloads these under (see the CLIPS list there).
-local TRACKS = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" }
+local TRACKS = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" } -- names loading.lua preloads these under
 
--- Seconds before a track ends that the next one starts fading in underneath
--- it. The same span doubles as the fade's own length: the incoming track
--- needs exactly this long to reach full volume by the moment the outgoing
--- one would otherwise have gone silent.
+-- seconds before a track ends that the next starts fading in; also the fade's
+-- own length, so the incoming track reaches full volume exactly as the outgoing one would end
 local CROSSFADE = 4
 
--- The very first track of a session eases up from silence too, just faster --
--- an instant needle-drop to full volume the moment the menu appears reads as
--- a pop, not a start.
-local FADE_IN = 1.5
+local FADE_IN = 1.5 -- the very first track of a session eases up too, just faster, so it doesn't pop in
 
 local current = nil  -- { source, name }
 local next_   = nil  -- { source, name, fade = 0..1 }, set once a crossfade begins
 local introFade = 1  -- 0..1; only < 1 while the very first track eases in
 
--- A random track name, never `exclude` (the one currently playing) as long as
--- there's another to pick -- otherwise "the next track" would sometimes just
--- be the same one starting over, which reads as a stutter, not a change.
+-- never `exclude` (the one playing) as long as there's another to pick, or
+-- "the next track" sometimes reads as the same one stuttering back to the start
 local function pickTrack(exclude)
     if #TRACKS <= 1 then return TRACKS[1] end
     local name
@@ -52,9 +41,8 @@ local function pickTrack(exclude)
     return name
 end
 
--- Starts `name` playing (not looping -- update() decides what plays next) and
--- returns the {source, name} pair Music tracks it under, or nil if the clip
--- never loaded (best-effort, like every other clip -- see Audios.preload).
+-- starts `name` (not looping -- update() decides what plays next); nil if
+-- the clip never loaded (best-effort, see Audios.preload)
 local function playTrack(name)
     local source = Audios.get(name)
     if not source then return nil end
@@ -62,28 +50,23 @@ local function playTrack(name)
     return { source = source, name = name }
 end
 
--- Begins the menu music, or resumes it if a track finished while nothing was
--- polling update() -- the player was on another screen when it ended, so
--- `current` is still set but its Source has already gone quiet on its own.
--- A no-op while something is already audibly playing, so re-entering the menu
--- from Options doesn't restart the track from zero.
+-- begins the menu music, or resumes it if a track finished while nothing
+-- polled update() (player was on another screen). No-op while something's
+-- already playing, so re-entering the menu doesn't restart from zero.
 function Music.start()
     if current and current.source:isPlaying() then return end
 
     current = playTrack(pickTrack(current and current.name))
     if current then
         introFade = 0
-        -- Audio.play just set this to full channel volume; silence it before
-        -- update()'s fade-in gets a chance to run, so there's no one-frame
-        -- blip at full volume before the ease-in takes over.
+        -- Audio.play just set full channel volume; silence it before
+        -- update()'s fade-in runs, or there's a one-frame blip at full volume
         current.source:setVolume(0)
     end
 end
 
--- Forgets what was playing. Doesn't stop the Source itself -- pair with
--- Audio.stop("music") or Audio.stopAll() for that; this is for the case where
--- something else already silenced it and Music just needs to know, so the
--- next Music.start() picks a fresh track instead of thinking one's still due.
+-- forgets what was playing without stopping the Source -- for when something
+-- else already silenced it and Music just needs to know, so the next start() picks a fresh track
 function Music.stop()
     current, next_ = nil, nil
 end
@@ -101,10 +84,9 @@ function Music.update(dt)
         next_.source:setVolume(volume * next_.fade)
         current.source:setVolume(volume * (1 - next_.fade) * introFade)
 
-        -- Swap once the incoming track has fully taken over, or the outgoing
-        -- one has actually stopped -- whichever comes first. A track that
-        -- ends a little earlier than getDuration() claimed would otherwise
-        -- leave `current` pointing at a dead Source until the next check.
+        -- swap once the incoming track fully takes over or the outgoing one
+        -- actually stopped, whichever comes first (getDuration can be a hair
+        -- optimistic, which would otherwise leave `current` pointing at a dead Source)
         if next_.fade >= 1 or not current.source:isPlaying() then
             Audio.stop("music", current.source)
             current, next_ = next_, nil
@@ -115,21 +97,20 @@ function Music.update(dt)
     current.source:setVolume(volume * introFade)
 
     if not current.source:isPlaying() then
-        -- Ended before the crossfade window below ever caught it -- jump
-        -- straight to a new track rather than leaving the menu silent.
+        -- ended before the crossfade window caught it; jump to a new track rather than going silent
         current = playTrack(pickTrack(current.name))
         introFade = 1
         return
     end
 
     local duration = current.source:getDuration()
-    if duration <= 0 then return end -- LÖVE couldn't determine it; skip ahead to the isPlaying() check above instead
+    if duration <= 0 then return end -- LÖVE couldn't determine it; the isPlaying() check above covers it instead
 
     if duration - current.source:tell() <= CROSSFADE then
         next_ = playTrack(pickTrack(current.name))
         if next_ then
             next_.fade = 0
-            next_.source:setVolume(0) -- see the note in start() -- same reason
+            next_.source:setVolume(0) -- see start(), same reason
         end
     end
 end

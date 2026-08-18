@@ -1,4 +1,3 @@
--- src/ui/toggle.lua
 -- Labeled ON/OFF switch row: label on the left, sliding pill on the right.
 -- Enter/click flips it; left/right arrows set it explicitly (left = off).
 --
@@ -11,8 +10,7 @@ local Widget = require "ui.widgets.widget"
 local Toggle = {}
 Widget.extend(Toggle)
 
--- Design-space px, scaled through Theme.px at use.
-local PILL_W, PILL_H = 58, 26
+local PILL_W, PILL_H = 58, 26 -- design-space px, scaled through Theme.px at use
 local KNOB_INSET = 3
 
 function Toggle.new(config)
@@ -36,7 +34,6 @@ function Toggle:activate()
     self:set(not self.value)
 end
 
--- Keyboard left/right: right switches on, left switches off.
 function Toggle:adjust(direction)
     self:set(direction > 0)
 end
@@ -55,7 +52,6 @@ function Toggle:draw()
     self:drawLabel(font, alpha)
     Theme.popFont()
 
-    -- Pill track.
     local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
     local pillX = self.x + self.w - m.padding - pillW
     local pillY = self.y + (self.h - pillH) / 2
@@ -63,7 +59,6 @@ function Toggle:draw()
     love.graphics.setColor(tr, tg, tb, alpha)
     love.graphics.rectangle("fill", pillX, pillY, pillW, pillH, pillH / 2, pillH / 2, 64)
 
-    -- Knob.
     local knobR = pillH / 2 - Theme.px(KNOB_INSET)
     local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
     Theme.setColor(c.text, alpha)

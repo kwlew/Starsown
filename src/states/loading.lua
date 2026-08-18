@@ -1,5 +1,3 @@
--- src/states/loading.lua
-
 local StateManager = require "core.stateManager"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
@@ -17,13 +15,13 @@ local OUTRO_TIME = 0.8  -- length of the hand-off animation
 local MIN_FILL_TIME = 1.5
 
 local FURNITURE_FADE = 0.45
-local SKY_FADE_SPEED = 1.5 -- how fast the sky (nebula + stars) fades up, in alpha per second
+local SKY_FADE_SPEED = 1.5 -- alpha/sec the sky (nebula + stars) fades up
 
--- Loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1.
+-- loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1
 local TITLE_SCALE = 0.62
 local TITLE_Y_RATIO = 0.30
 
--- Vertical anchors for the loading furniture, as fractions of window height.
+-- vertical anchors for the loading furniture, as fractions of window height
 local HEADING_Y_RATIO = 0.52
 local BAR_Y_RATIO = 0.64
 local BAR_W_RATIO = 0.5
@@ -31,8 +29,7 @@ local BAR_H = 26 -- design-space px
 
 local Loading = {}
 
--- Ticks a background layer and eases its opacity up. nil until the task that
--- builds it has run, so both callers can fire from the first frame.
+-- nil until the task that builds it has run, so both callers can fire from the first frame
 local function fadeInSky(layer, dt)
     if not layer then return end
     layer:update(dt)
@@ -47,7 +44,6 @@ local function buildVersionLabel()
     }
 end
 
--- The audio the game needs.
 local CLIPS = {
     { "assets/audio/bg/ambientmain_0.ogg", "mainMenuBG", "stream" },
     { "assets/audio/bg/mainMenuBG2.flac", "mainMenuBG2", "stream" },
@@ -67,7 +63,7 @@ local CLIPS = {
     { "assets/audio/sfx/menu/menuBeep.mp3", "menuBeep" },
 }
 
--- Each task gets (yield, warn):
+-- each task gets (yield, warn):
 --   yield(fraction) -- optional 0..1 progress within this task; ends the frame
 --   warn(detail)    -- a non-fatal problem worth telling the player about
 function Loading:buildTasks()
@@ -210,14 +206,13 @@ function Loading:update(dt)
 
         self.bar:setProgress(math.min(self:progress(), self.elapsed / MIN_FILL_TIME))
 
-        -- Leave once every task is done and the bar has visually filled.
         if self:isLoaded() and self.bar:isComplete() then
             self.phase = "outro"
         end
     else
         self.outro = self.outro + dt
         if self.outro >= OUTRO_TIME then
-            Audio.stopAll() -- stop any loading music before the menu starts
+            Audio.stopAll()
             StateManager.switch("mainMenu")
             return
         end
@@ -228,7 +223,6 @@ function Loading:update(dt)
     fadeInSky(self.nebula, dt)
     fadeInSky(self.stars, dt)
 
-    -- Animated trailing dots on the heading.
     self.dotTimer = self.dotTimer + dt
     if self.dotTimer >= DOT_INTERVAL then
         self.dotTimer = self.dotTimer - DOT_INTERVAL
@@ -236,15 +230,14 @@ function Loading:update(dt)
     end
 end
 
--- 0 while loading, ramping to 1 across the outro.
 function Loading:outroProgress()
     if self.phase ~= "outro" then return 0 end
     return math.min(1, self.outro / OUTRO_TIME)
 end
 
--- Heading: "Loading" stays put and the dots grow to its right. Drawn as two
--- pieces because centering the whole string re-centers it on every dot, which
--- makes the word itself twitch left and right a few px per step.
+-- "Loading" stays put and the dots grow to its right; drawn as two pieces
+-- because centering the whole string re-centers it on every dot and makes
+-- the word itself twitch left/right
 local function drawHeading(text, dots, y, alpha)
     local font = UI.Theme.font("heading")
     local width = font:getWidth(text)
@@ -259,15 +252,12 @@ end
 function Loading:draw()
     local w, h = love.graphics.getDimensions()
     local outro = self:outroProgress()
-    -- The furniture clears out first so the title finishes its travel against
-    -- an otherwise empty screen.
+    -- furniture clears out first so the title finishes its travel against an empty screen
     local alpha = 1 - math.min(1, outro / FURNITURE_FADE)
 
-    -- Gas first: the stars are in front of it, not behind it.
     if self.nebula then self.nebula:draw() end
     if self.stars then self.stars:draw() end
 
-    -- Title, easing from its own smaller pose into the menu's exact one.
     local ease = Ease.outCubic(outro)
     local titleY = h * TITLE_Y_RATIO + (h * GameTitle.MENU_Y_RATIO - h * TITLE_Y_RATIO) * ease
     GameTitle.drawScaled(self.title, titleY, TITLE_SCALE + (1 - TITLE_SCALE) * ease)
@@ -280,8 +270,6 @@ function Loading:draw()
     local barH = UI.Theme.px(BAR_H)
     local barX, barY = (w - barW) / 2, h * BAR_Y_RATIO
 
-    -- Task label on the left, percentage on the right, both just above the bar,
-    -- so the readout reads as a caption rather than text floating inside it.
     local font = UI.Theme.font("small")
     local captionY = barY - font:getHeight() - UI.Theme.px(8)
     UI.Theme.pushFont(font)
@@ -293,8 +281,6 @@ function Loading:draw()
     self.bar.alpha = alpha
     self.bar:draw(barX, barY, barW, barH)
 
-    -- Non-fatal load failures: the game still boots, but silently missing audio
-    -- would otherwise look like a bug in the game rather than in its install.
     if #self.failures > 0 then
         UI.Label.draw{
             text = I18n.t("loading.failed", { n = #self.failures }),

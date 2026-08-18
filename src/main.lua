@@ -5,7 +5,6 @@ local Settings = require "core.settings"
 local I18n = require "core.i18n"
 local UI = require "ui"
 
--- Concrete game screens (live under src/, loaded via LÖVE's filesystem).
 local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
 local optionsState = require "states.options"
@@ -16,28 +15,22 @@ local Stats = require "services.stats"
 function love.load()
     love.window.setTitle(Globals.game.name)
 
-    -- Size the UI to this window before anything asks the theme for a font or a
-    -- metric — the loading screen warms the font cache on its very first task.
+    -- must run before anything else asks Theme for a font/metric
     UI.Theme.rescale()
-    -- Hides the OS arrow for the whole app; UI.Cursor.draw() replaces it every
-    -- frame from here on, on every screen.
+    -- hides the OS cursor; UI.Cursor.draw() replaces it every frame
     UI.Cursor.init()
 
     Globals.init()
 
-    -- Load translations and select the saved language and palette before any
-    -- screen draws, so even the loading screen is localized and wearing the
-    -- theme the player left the game in.
+    -- load settings/language/theme before any screen draws, so the
+    -- loading screen itself is already localized and themed
     local settings = Settings.load()
-    -- Read the opt-out before starting: the heartbeat must never fire for a
-    -- player who turned it off, not even once at boot.
     Stats.enabled = settings.shareStats
     Stats.start()
     I18n.load()
     I18n.setLanguage(settings.language)
     UI.Theme.setTheme(settings.theme)
 
-    -- Register every screen, then boot into the loading sequence.
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)
     StateManager.register("options", optionsState)
@@ -53,9 +46,7 @@ function love.update(dt)
     Presence.update(dt)
     Stats.update(dt)
     UI.Cursor.update(dt)
-    -- Global, not tied to whichever screen is active, so a crossfade due
-    -- while the player is sitting on Options still happens on schedule
-    -- instead of the menu coming back silent (see ui/core/music.lua).
+    -- global so a crossfade still happens while sitting on Options
     UI.Music.update(dt)
 end
 
