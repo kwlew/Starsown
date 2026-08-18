@@ -1,4 +1,3 @@
--- src/ui/tabBar.lua
 -- Horizontal segmented tab bar: equal-width clickable segments with an
 -- animated sliding highlight under the active tab. Keyboard left/right (via
 -- :adjust) or Enter (:activate, cycles) also switch tabs when focused.
@@ -49,17 +48,15 @@ function TabBar:setIndex(index)
     end
 end
 
--- Keyboard left/right when focused.
 function TabBar:adjust(direction)
     self:setIndex(self.index + direction)
 end
 
--- Enter when focused: cycle to the next tab.
 function TabBar:activate()
     self:adjust(1)
 end
 
--- Returns false: a tab bar has no drag, so it never captures the mouse.
+-- returns false: a tab bar has no drag, so it never captures the mouse
 function TabBar:mousepressed(px, py, mouseButton)
     if mouseButton ~= 1 or not self:isInteractive() then return false end
     for i = 1, #self.tabs do
@@ -93,7 +90,6 @@ function TabBar:draw()
     local c, m = Theme.colors, Theme.metrics
     local alpha = self:alpha()
 
-    -- Inactive segment backgrounds.
     for i = 1, #self.tabs do
         local sx, sy, sw, sh = self:segmentRect(i)
         love.graphics.setColor(c.panel)
@@ -102,7 +98,7 @@ function TabBar:draw()
         love.graphics.rectangle("line", sx, sy, sw, sh, m.radius, m.radius, 8)
     end
 
-    -- Sliding active highlight, drawn at the eased position between segments.
+    -- sliding active highlight, drawn at the eased position between segments
     local x1 = self:segmentRect(1)
     local x2, _, segW, segH = self:segmentRect(2)
     local stride = (#self.tabs > 1) and (x2 - x1) or 0
@@ -116,16 +112,13 @@ function TabBar:draw()
     Theme.setColor(c.accent, alpha)
     love.graphics.rectangle("line", hx, self.y, segW, segH, m.radius, m.radius, 8)
 
-    -- Labels on top.
     local font = self:getFont()
     Theme.pushFont(font)
     local textY = Theme.centerY(self.y, self.h, font)
     for i, name in ipairs(self.tabs) do
         local sx, _, sw = self:segmentRect(i)
         Theme.setColor((i == self.index or i == self.hovered) and c.text or c.textDim, alpha)
-        -- Tab entries may be plain strings or functions (for live-localized
-        -- labels); resolve each at draw time.
-        love.graphics.printf(Theme.resolveLabel(name, self), sx, textY, sw, "center")
+        love.graphics.printf(Theme.resolveLabel(name, self), sx, textY, sw, "center") -- tabs may be strings or functions
     end
     Theme.popFont()
 

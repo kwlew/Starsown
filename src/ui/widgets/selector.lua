@@ -1,10 +1,8 @@
--- src/ui/selector.lua
--- Labeled discrete-option cycler: label on the left, "< value >" on the right.
--- Left/right keyboard arrows step through the options list; Enter advances
--- forward. The mouse doesn't aim at the chevrons specifically — the whole
+-- Labeled discrete-option cycler: label on the left, "< value >" on the
+-- right. Left/right arrows step through the options; Enter advances
+-- forward. The mouse doesn't aim at the chevrons specifically -- the whole
 -- arrow+value+arrow cluster is one click target split down the middle, left
 -- half back, right half forward, so there's no thin sliver to miss.
--- Generic — use it for resolution, quality presets, difficulty, etc.
 --
 --   local s = Selector.new{
 --       label = "Resolution",
@@ -23,7 +21,7 @@ local Math = require "utils.math"
 local Selector = {}
 Widget.extend(Selector)
 
--- Design-space px, scaled through Theme.px at use.
+-- design-space px, scaled through Theme.px at use
 local ARROW_W = 28    -- hit/draw width of each chevron
 local ARROW_H = 8     -- half-height of the chevron triangle
 local ARROW_BACK = 5  -- chevron's flat edge, from its center
@@ -35,9 +33,9 @@ function Selector.new(config)
     local self = Widget.new(Selector, config)
     self.options = config.options or {}
     self.index = config.index or 1
-    self.format = config.format or tostring -- option -> display string
+    self.format = config.format or tostring
     self.onChange = config.onChange
-    self.wrap = config.wrap ~= false        -- cycle past the ends (default true)
+    self.wrap = config.wrap ~= false
     self.valueWidth = config.valueWidth or 190 -- fits "1920x1080" at the body font
     self.hoverLeft = false
     self.hoverRight = false
@@ -54,14 +52,10 @@ function Selector:displayText()
     return self.format(option)
 end
 
--- Width of the value column: `valueWidth` as a floor, grown to fit the widest
--- option once formatted, and capped so the label always keeps LABEL_MIN_W.
---
--- Sizing to the content is what keeps a long translation ("Pantalla Completa")
--- at the same size as a short one. Falling back to a fixed column and scaling
--- the text down to fit meant neighbouring rows rendered their values at visibly
--- different sizes; the down-scale in draw is now only a last resort for a row
--- too narrow to satisfy even this.
+-- valueWidth as a floor, grown to fit the widest formatted option, capped so
+-- the label always keeps LABEL_MIN_W. Sizing to content is what keeps a
+-- long translation ("Pantalla Completa") the same size as a short one; the
+-- draw-time down-scale is only a last resort for a row too narrow for even this.
 function Selector:valueColumnWidth(font)
     local m = Theme.metrics
     local width = Theme.px(self.valueWidth)
@@ -72,9 +66,8 @@ function Selector:valueColumnWidth(font)
     return Math.clamp(width, 0, available)
 end
 
--- Left chevron, value area, and right chevron rects (right-aligned in the
--- row). Purely for draw()'s positioning — see controlBounds for the actual
--- click/hover target, which doesn't follow these boundaries.
+-- left chevron, value area, right chevron rects (for draw() positioning; see
+-- controlBounds for the click/hover target, which doesn't follow these)
 function Selector:controlRects()
     local m = Theme.metrics
     local arrowW = Theme.px(ARROW_W)
@@ -88,7 +81,6 @@ function Selector:controlRects()
         { x = rightArrowX, y = self.y, w = arrowW, h = self.h }
 end
 
--- The whole arrow+value+arrow cluster as one.
 function Selector:controlBounds()
     local left, _, right = self:controlRects()
     return left.x, self.y, (right.x + right.w) - left.x, self.h
@@ -106,17 +98,15 @@ function Selector:setIndex(index)
     end
 end
 
--- Keyboard left/right (direction is -1 or 1).
 function Selector:adjust(direction)
     self:setIndex(self.index + direction)
 end
 
--- Enter/click on the value: advance forward.
 function Selector:activate()
     self:adjust(1)
 end
 
--- Returns false: a selector has no drag, so it never captures the mouse.
+-- returns false: a selector has no drag, so it never captures the mouse
 function Selector:mousepressed(px, py, mouseButton)
     if mouseButton ~= 1 then return false end
     local x, y, w, h = self:controlBounds()
@@ -137,7 +127,6 @@ function Selector:mousemoved(px, py)
     self.hoverRight = inside and not self.hoverLeft
 end
 
--- Draws a chevron centered in rect, pointing left (dir -1) or right (dir 1).
 local function drawChevron(rect, dir, active, alpha)
     local cx = rect.x + rect.w / 2
     local cy = rect.y + rect.h / 2
@@ -158,15 +147,13 @@ function Selector:draw()
     Theme.pushFont(font)
     self:drawLabel(font, alpha)
 
-    -- Right-side control: chevron, value, chevron.
     local left, value, right = self:controlRects()
     local live = self:isInteractive()
     drawChevron(left, -1, live and (self.hoverLeft or self.focused), alpha)
     drawChevron(right, 1, live and (self.hoverRight or self.focused), alpha)
     Theme.setColor(Theme.colors.text, alpha)
-    -- Draw the value on a single line, scaled down to fit the fixed value
-    -- column when a translated string is wider than it (e.g. Spanish
-    -- "Pantalla Completa") — printf would wrap it onto two lines instead.
+    -- scaled down to fit the value column when a translated string is wider
+    -- than it (e.g. Spanish "Pantalla Completa"); printf would wrap it to two lines instead
     local vtext = self:displayText()
     local vw = font:getWidth(vtext)
     local scale = vw > 0 and math.min(1, value.w / vw) or 1

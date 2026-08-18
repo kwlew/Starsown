@@ -1,6 +1,5 @@
--- src/particles/stars.lua
--- The fixed night sky behind the loading screen and the menu: a field of
--- twinkling points plus a few constellations linking some of them.
+-- Fixed night sky behind the loading screen and menu: twinkling points plus a
+-- few constellations linking some of them.
 
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
@@ -12,12 +11,8 @@ function Stars.new(config)
     config = config or {}
     return setmetatable({
         stars = {},
-        -- One flat {x, y, x, y, ...} polyline per constellation, since a
-        -- constellation's stars are consecutive by construction.
-        chains = {},
-        -- Per-star {x, y, r, g, b, a} entries for one batched points() call.
-        -- Built once by buildBatches and rewritten in place each frame.
-        points = {},
+        chains = {}, -- one flat {x,y,x,y,...} polyline per constellation
+        points = {}, -- per-star {x,y,r,g,b,a} for one batched points() call, rewritten each frame
         amountMin = config.amountMin or 150,
         amountMax = config.amountMax or 190,
         brightnessOscillation = config.brightnessOscillation or 0.7,
@@ -27,14 +22,10 @@ function Stars.new(config)
         constellationCountMax = config.constellationCountMax or 6,
         constellationStarsMin = config.constellationStarsMin or 6,
         constellationStarsMax = config.constellationStarsMax or 10,
-        -- Max distance a constellation "walks" between consecutive stars.
-        constellationSpread = config.constellationSpread or 160,
-        -- Max heading change per step; smaller = smoother, more flowing chains.
-        constellationTurn = config.constellationTurn or math.pi / 3,
+        constellationSpread = config.constellationSpread or 160, -- max walk distance between consecutive stars
+        constellationTurn = config.constellationTurn or math.pi / 3, -- max heading change per step
         lineAlpha = config.lineAlpha or 0.2,
-        -- Global opacity multiplier, so a screen can fade the whole sky in or
-        -- out without touching the per-star brightness the twinkle drives.
-        alpha = config.alpha or 1,
+        alpha = config.alpha or 1, -- global fade, on top of per-star twinkle brightness
     }, Stars)
 end
 
@@ -48,13 +39,11 @@ local function newStar(x, y, blinkSpeedMin, blinkSpeedMax, brightnessMin, bright
     }
 end
 
--- Random-walks a chain of stars across the screen and links each consecutive
--- pair. The walk keeps a heading and only turns gently each step, so the chain
--- flows like a real constellation instead of scribbling back over itself, and
--- it reflects off the screen edges rather than piling stars up on the border.
+-- random-walks a chain of stars across the screen, linking each consecutive
+-- pair; keeps a heading and turns gently each step so it flows like a real
+-- constellation, and reflects off screen edges instead of piling up on the border
 function Stars:spawnConstellation(w, h)
     local starCount = Math.randInt(self.constellationStarsMin, self.constellationStarsMax)
-    -- Start away from the edges so the chain has room to spread out.
     local margin = math.min(self.constellationSpread, math.min(w, h) / 3)
     local x = Math.randRange(margin, math.max(margin, w - margin))
     local y = Math.randRange(margin, math.max(margin, h - margin))
@@ -62,38 +51,32 @@ function Stars:spawnConstellation(w, h)
     local chain = {}
 
     for _ = 1, starCount do
-        -- Constellation stars read brighter than the scattered background ones.
-        local star = newStar(x, y, self.blinkSpeedMin, self.blinkSpeedMax, 0.85, 1.0)
+        local star = newStar(x, y, self.blinkSpeedMin, self.blinkSpeedMax, 0.85, 1.0) -- brighter than background stars
         self.stars[#self.stars + 1] = star
 
         chain[#chain + 1] = star.x
         chain[#chain + 1] = star.y
 
-        -- Turn only gently from the current heading, and keep the step lengths
-        -- fairly close together so consecutive stars stay visibly linked.
         heading = heading + Math.randRange(-self.constellationTurn, self.constellationTurn)
         local dist = Math.randRange(self.constellationSpread * 0.55, self.constellationSpread)
         local nx = x + math.cos(heading) * dist
         local ny = y + math.sin(heading) * dist
 
-        -- Reflect the heading off whichever edge the next step would cross so
-        -- the chain turns back inward instead of stacking on the border.
+        -- reflect off whichever edge the next step would cross, so the chain turns back inward
         if nx < margin or nx > w - margin then heading = math.pi - heading end
         if ny < margin or ny > h - margin then heading = -heading end
         x = Math.clamp(x + math.cos(heading) * dist, 0, w)
         y = Math.clamp(y + math.sin(heading) * dist, 0, h)
     end
 
-    -- love.graphics.line needs at least two points to draw anything.
-    if #chain >= 4 then
+    if #chain >= 4 then -- love.graphics.line needs at least two points
         self.chains[#self.chains + 1] = chain
     end
 end
 
 function Stars:spawnStars()
-    -- Deliberately a fixed 1920x1080 space rather than the window: it is the
-    -- largest supported resolution, so the sky never has to be regenerated when
-    -- the player changes resolution — the window is just a viewport onto it.
+    -- fixed 1920x1080 space, not the window: it's the largest supported
+    -- resolution, so the sky never regenerates on a resolution change
     local w, h = 1920, 1080
     self.stars = {}
     self.chains = {}
@@ -110,9 +93,8 @@ function Stars:spawnStars()
     self:buildBatches()
 end
 
--- Bakes the static half of the draw: star positions never move, so a frame only
--- has to rewrite each point's colour (see draw). Stars outside a smaller window
--- are kept rather than culled — culling was measured and made no difference.
+-- static half of the draw: positions never move, so a frame only rewrites
+-- color (see draw). Stars outside a smaller window aren't culled -- measured, no difference.
 function Stars:buildBatches()
     local points = {}
     for i, s in ipairs(self.stars) do
@@ -135,9 +117,9 @@ function Stars:draw()
         love.graphics.line(chain)
     end
 
-    -- One points() call for the whole sky, with each star's twinkle written into
-    -- its own vertex colour rather than into a setColor call of its own — this
-    -- loop runs ~190 times a frame, so the Lua->C crossings are the cost here.
+    -- one points() call for the whole sky; twinkle written into each vertex's
+    -- own color instead of a setColor per star, since this runs ~190x/frame
+    -- and the Lua->C crossings are the cost
     local oscillation = self.brightnessOscillation
     local alpha = self.alpha
     local points = self.points
@@ -150,9 +132,8 @@ function Stars:draw()
 
     local prevSize = love.graphics.getPointSize()
     love.graphics.setPointSize(2)
-    -- Per-point colours are multiplied by the draw colour, so the theme's star
-    -- tint applies to the whole sky at once (and overrides what the
-    -- constellation pass left behind).
+    -- per-point colors are multiplied by the draw color, so the theme's star
+    -- tint applies to the whole sky at once
     Theme.setColor(Theme.colors.star, 1)
     love.graphics.points(points)
     love.graphics.setPointSize(prevSize)

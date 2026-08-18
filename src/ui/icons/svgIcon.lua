@@ -1,30 +1,24 @@
--- src/ui/svgIcon.lua
 -- Renders a single-path SVG icon (square viewBox, e.g. 24x24) straight from
--- its path string, with no image asset — flattened to a triangle-fan mesh
--- once, then filled with an even-odd stencil each draw. Robust for concave
+-- its path string, no image asset -- flattened to a triangle-fan mesh once,
+-- then filled with an even-odd stencil each draw. Robust for concave
 -- silhouettes (unlike love.graphics.polygon, whose ear-clipping can throw on
--- near-collinear bezier points). Extracted from what used to be githubMark.lua
--- in full, once discordMark.lua needed the exact same pipeline for a
--- different glyph.
+-- near-collinear bezier points).
 --
--- One instance per glyph — its mesh and render cache are its own, so two
--- icons never share (or evict) each other's cached canvases:
+-- One instance per glyph, so two icons never share (or evict) each other's cache:
 --
 --   local mark = SvgIcon.new(PATH, 24)
 --   function GithubMark.draw(x, y, size, color, glow)
 --       mark:draw(x, y, size, color, glow)
 --   end
 --
--- Path commands supported: M/m, L/l, C/c, A/a (elliptical arc), Z/z. That
--- covers every glyph fed to it so far; add a case to flatten() if a future
--- icon's path needs one SVG doesn't already cover.
+-- Path commands supported: M/m, L/l, C/c, A/a (elliptical arc), Z/z --
+-- covers every glyph fed to it so far; add a case to flatten() for anything else.
 
 local Math = require "utils.math"
 
 local SvgIcon = {}
 SvgIcon.__index = SvgIcon
 
--- Halo tuning.
 local GLOW_LAYERS = 4
 local GLOW_SPREAD = 0.09
 local GLOW_ALPHA = 0.30
@@ -64,7 +58,7 @@ local function tokenize(d)
     return tokens
 end
 
--- Endpoint-to-center parameterization.
+-- endpoint-to-center parameterization
 local function arcPoints(x0, y0, rx, ry, rotDeg, largeArc, sweep, x, y, steps)
     rx, ry = math.abs(rx), math.abs(ry)
     if rx == 0 or ry == 0 or (x0 == x and y0 == y) then
@@ -97,9 +91,8 @@ local function arcPoints(x0, y0, rx, ry, rotDeg, largeArc, sweep, x, y, steps)
     local cx = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2
     local cy = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2
 
-    -- Signed angle from vector (ux,uy) to (vx,vy), via the 2D cross product
-    -- for sign and the dot product (clamped against float drift at +/-1) for
-    -- magnitude.
+    -- signed angle from (ux,uy) to (vx,vy): cross product for sign, dot
+    -- product (clamped against float drift) for magnitude
     local function angleBetween(ux, uy, vx, vy)
         local dot = ux * vx + uy * vy
         local len = math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
@@ -239,7 +232,6 @@ end
 
 function SvgIcon:paint(x, y, size, color, glowAmount)
     if glowAmount > 0 then
-        -- Glyph-shaped halo.
         love.graphics.setBlendMode("add")
         for i = self.glowLayers, 1, -1 do
             local grow = i * size * self.glowSpread
@@ -271,7 +263,6 @@ function SvgIcon:render(size, color, glowAmount)
     return { canvas = canvas, pad = pad }
 end
 
--- Draws the mark.
 function SvgIcon:draw(x, y, size, color, glowAmount)
     glowAmount = glowAmount or 0
     size = Math.round(size) -- integral, so the cache key is stable

@@ -1,4 +1,3 @@
--- src/ui/discordMark.lua
 -- The official Discord logo via SVG.
 
 local SvgIcon = require "ui.icons.svgIcon"
@@ -9,7 +8,6 @@ local mark = SvgIcon.new(PATH, 24)
 
 local DiscordMark = {}
 
--- Draws the mark.
 function DiscordMark.draw(x, y, size, color, glow)
     mark:draw(x, y, size, color, glow)
 end

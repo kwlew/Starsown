@@ -1,7 +1,6 @@
--- src/ui/dialog.lua
 -- Modal confirmation box: a scrim over the screen, a centered panel with a
--- title and a wrapped message, and a row of buttons. While open it owns all
--- input — the screen underneath keeps drawing but stops responding.
+-- title and wrapped message, and a row of buttons. While open it owns all
+-- input -- the screen underneath keeps drawing but stops responding.
 --
 --   self.dialog = Dialog.new{
 --       title   = function() return I18n.t("dialog.revert.title") end,
@@ -13,17 +12,12 @@
 --       onCancel = function() self.dialog:close() end,  -- Esc, and the scrim
 --   }
 --
--- Optionally counts down and acts on its own:
---
---       timeout = 10, onTimeout = function() ... end
---
--- which is what makes a graphics change safe to apply — a resolution the
--- monitor can't show leaves the player unable to click "revert", so the dialog
--- reverts itself. Message functions receive the dialog, so a countdown can read
--- `d.remaining`.
+-- Optionally counts down and acts on its own: timeout = 10, onTimeout = fn --
+-- what makes a graphics change safe to apply, since a resolution the monitor
+-- can't show leaves the player unable to click "revert". Message functions
+-- receive the dialog, so a countdown can read `d.remaining`.
 --
 -- The owning screen forwards input and calls layout() alongside its own:
---
 --   if self.dialog:isOpen() then self.dialog:keypressed(key) return end
 
 local Theme = require "ui.core.theme"
@@ -33,11 +27,10 @@ local FocusGroup = require "ui.widgets.focusGroup"
 local Dialog = {}
 Dialog.__index = Dialog
 
--- Design-space px, scaled through Theme.px at use.
-local PANEL_MAX_W = 460
+local PANEL_MAX_W = 460 -- design-space px, scaled through Theme.px at use
 local PANEL_PAD = 22
 local BUTTON_GAP = 12
-local TITLE_GAP = 10  -- title baseline to message
+local TITLE_GAP = 10    -- title baseline to message
 local BUTTON_GAP_Y = 18 -- message to button row
 
 function Dialog.new(config)
@@ -55,12 +48,10 @@ function Dialog.new(config)
 
     local buttons = {}
     for _, spec in ipairs(config.buttons or {}) do
-        -- `danger` marks the destructive choice: the button draws itself in the
-        -- theme's danger tone, red at rest and brighter under the cursor.
         buttons[#buttons + 1] = Button.new{
             label = spec.label,
             onSelect = spec.onSelect,
-            danger = spec.danger,
+            danger = spec.danger, -- destructive choice: draws red at rest, brighter under the cursor
         }
     end
     self.buttons = buttons
@@ -96,8 +87,7 @@ function Dialog:messageText()
     return Theme.resolveLabel(self.message, self)
 end
 
--- Panel is sized to its content: the message wraps to the panel's inner width,
--- and the panel grows to fit however many lines that produced.
+-- panel is sized to its content: message wraps to the panel's inner width, panel grows to fit
 function Dialog:layout()
     local w, h = love.graphics.getDimensions()
     local pad = Theme.px(PANEL_PAD)
@@ -125,7 +115,6 @@ function Dialog:layout()
     self.innerW = innerW
     self.messageH = messageH
 
-    -- Buttons share the inner width evenly along the bottom of the panel.
     local count = #self.buttons
     if count == 0 then return end
     local gap = Theme.px(BUTTON_GAP)
@@ -150,7 +139,7 @@ function Dialog:keypressed(key)
         self:cancel()
         return true
     end
-    -- Left/right feel more natural than up/down for a horizontal button row.
+    -- left/right feel more natural than up/down for a horizontal button row
     if key == "left" or key == "a" then return self.group:keypressed("up") end
     if key == "right" or key == "d" then return self.group:keypressed("down") end
     return self.group:keypressed(key)
@@ -160,7 +149,7 @@ function Dialog:mousemoved(x, y)
     return self.group:mousemoved(x, y)
 end
 
--- A click outside the panel cancels, the way clicking off a modal usually does.
+-- a click outside the panel cancels, the way clicking off a modal usually does
 function Dialog:mousepressed(x, y, button)
     if self.group:mousepressed(x, y, button) then return true end
     if button == 1 and not Theme.pointIn(x, y, self.panel.x, self.panel.y, self.panel.w, self.panel.h) then
@@ -194,9 +183,6 @@ function Dialog:draw()
     local pad = Theme.px(PANEL_PAD)
     local panel = self.panel
 
-    -- Scrim: darkens whatever screen is underneath so the panel reads as the
-    -- only thing that can be interacted with. Carries its own alpha, so this is
-    -- a plain setColor rather than a call that has to know the opacity.
     Theme.setColor(c.scrim)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getDimensions())
 

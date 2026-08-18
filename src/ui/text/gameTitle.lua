@@ -1,10 +1,8 @@
--- src/ui/gameTitle.lua
--- The game's chroma wordmark, shared by the loading screen and the main menu.
---
--- It lives here rather than privately inside mainMenu.lua so both screens draw
--- the *same* title at the *same* pose: the loading screen eases its copy into
--- the menu's position and size on the way out, so the state switch lands on an
--- identical frame instead of popping the title into existence.
+-- The game's chroma wordmark, shared by the loading screen and the main
+-- menu. Lives here rather than privately inside mainMenu.lua so both screens
+-- draw the *same* title at the *same* pose: the loading screen eases its
+-- copy into the menu's position/size on the way out, landing the state
+-- switch on an identical frame instead of popping the title into existence.
 
 local TextFactory = require "ui.text.textFactory"
 local UI = require "ui"
@@ -14,16 +12,11 @@ local GameTitle = {}
 
 GameTitle.TEXT = Globals.game.name
 
--- Vertical position on the main menu, as a fraction of the window height.
--- The loading screen's outro targets exactly this.
-GameTitle.MENU_Y_RATIO = 0.16
+GameTitle.MENU_Y_RATIO = 0.16 -- vertical position on the menu, as a fraction of window height
 
--- Rebuild on resize: the wrap width is baked in at construction, and it's what
--- keeps the text horizontally centered.
---
--- A theme change needs no rebuild: the gradient holds the theme's live color
--- tables and the shader is handed their current values every draw, so the
--- wordmark recolors itself the moment the palette does.
+-- rebuild on resize: wrap width is baked in at construction. A theme change
+-- needs no rebuild -- the gradient holds the theme's live color tables and
+-- the shader reads them fresh every draw.
 function GameTitle.build()
     return TextFactory:new{
         text = GameTitle.TEXT,
@@ -34,14 +27,11 @@ function GameTitle.build()
     }
 end
 
--- Draws `title` with its top at `y`, scaled about the window's horizontal
--- center so it grows in place.
---
--- A transform rather than TextFactory:setSize because setSize allocates a new
--- Font and re-rasterizes the glyph mesh — fine once, ruinous every frame of an
--- animation. The chroma shader keys its hue off screen coordinates, so the
--- gradient's period scales along with the text; at these scales that reads as
--- part of the effect.
+-- draws `title` with its top at `y`, scaled about the window's horizontal
+-- center. A transform rather than TextFactory:setSize, which reallocates a
+-- Font and re-rasterizes the glyph mesh -- fine once, not every animation
+-- frame. The chroma shader keys hue off screen coordinates, so the
+-- gradient's period scales with the text, which reads as part of the effect.
 function GameTitle.drawScaled(title, y, scale)
     local cx = love.graphics.getWidth() / 2
     title.y = y

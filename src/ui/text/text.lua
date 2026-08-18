@@ -1,27 +1,24 @@
--- src/ui/text.lua
--- Cache of love.graphics.Text meshes, so text that changes once a minute isn't
--- laid out and rasterized 500 times a second. TextFactory already does this for
--- the title; this is the same trick for the one-off labels every screen prints.
+-- Cache of love.graphics.Text meshes, so text that changes once a minute
+-- isn't laid out and rasterized 500 times a second. Same trick TextFactory
+-- does for the title, here for the one-off labels every screen prints.
 --
 --   local text = Text.get("OPTIONS", font, width, "center")
 --   love.graphics.draw(text, x, y)
 --
--- Entries are keyed by everything that affects the mesh, so a changed string,
--- font, wrap width, or alignment is a different entry rather than a stale one.
--- A rescale hands out new Font objects, so its entries miss naturally.
+-- Keyed by everything that affects the mesh, so a changed string, font,
+-- width, or align is a different entry rather than a stale one. A rescale
+-- hands out new Font objects, so its entries just miss naturally.
 
 local Text = {}
 
--- Above this many live entries the whole cache is dropped rather than evicted
--- one at a time. Screens hold a handful of labels, so passing this means the
--- text is genuinely dynamic (a counter, a timer) and caching it was never going
--- to pay off — a periodic wipe keeps that case bounded instead of leaking.
+-- above this many live entries the whole cache drops rather than evicting
+-- one at a time -- past this, the text is genuinely dynamic (a counter, a
+-- timer) and caching it was never going to pay off
 local MAX_ENTRIES = 64
 
 local cache = {}
 local count = 0
 
--- Drops every cached mesh, to release GPU memory on demand.
 function Text.clear()
     cache = {}
     count = 0

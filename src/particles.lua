@@ -1,11 +1,5 @@
--- src/particles.lua
--- Namespace for the background effects:
---
---   local Particles = require "particles"
---   Particles.Stars.new{ ... }
---
--- (A .lua file rather than src/particles/init.lua because these modules resolve
--- through plain package.path, which may not include ?/init.lua.)
+-- namespace: local Particles = require "particles"; Particles.Stars.new{...}
+-- .lua not particles/init.lua because package.path here has no ?/init.lua
 
 return {
     Stars = require "particles.stars",

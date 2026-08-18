@@ -1,9 +1,8 @@
 local TextFactory = {}
 
--- Max distinct color stops a gradient can hold (excludes the auto-added wrap slot).
-local MAX_GRADIENT_COLORS = 8
+local MAX_GRADIENT_COLORS = 8 -- excludes the auto-added wrap slot
 
--- Lazily built so each shader is only compiled if it's actually used.
+-- lazily built so each shader only compiles if actually used
 local chromaShader = nil
 local gradientShader = nil
 
@@ -32,9 +31,9 @@ local function getChromaShader()
     return chromaShader
 end
 
--- Cycles through an arbitrary list of colors (e.g. red -> blue -> repeat)
--- instead of the fixed rainbow. `colors[8]` holds the wrap-around slot back to
--- the first stop, so the loop index can always read `colors[i + 1]` safely.
+-- cycles through an arbitrary color list instead of the fixed rainbow;
+-- colors[8] holds the wrap-around slot back to the first stop, so the loop
+-- index can always read colors[i+1] safely
 local function getGradientShader()
     if not gradientShader then
         gradientShader = love.graphics.newShader([[
@@ -80,7 +79,7 @@ function TextFactory:new(config)
         y = config.y or 0,
         limit = config.limit or love.graphics.getWidth(),
         align = config.align or "left",
-        speed = config.speed or 1, -- how fast the chroma cycles
+        speed = config.speed or 1,   -- how fast the chroma cycles
         scale = config.scale or 200, -- pixel span of one full color cycle
         gradient = nil,
         gradientCount = 0,
@@ -95,8 +94,7 @@ function TextFactory:new(config)
 
     setmetatable(obj, { __index = self })
 
-    -- Cached glyph mesh: printf-style wrapping/rasterization is redone here
-    -- only when the text or font actually changes, not on every draw call.
+    -- cached glyph mesh: wrapping/rasterization redone only when text or font actually changes
     obj.textObject = love.graphics.newText(obj.font)
     obj.textObject:setf(obj.text, obj.limit, obj.align)
 
@@ -112,8 +110,6 @@ function TextFactory:setText(text)
     self.textObject:setf(self.text, self.limit, self.align)
 end
 
--- Rebuilds the font at the given point size, using fontPath if one was
--- set (via config or a prior call), otherwise LOVE's default font.
 function TextFactory:setSize(size)
     if self.fontPath then
         self.font = love.graphics.newFont(self.fontPath, size)
@@ -125,9 +121,8 @@ function TextFactory:setSize(size)
     self.textObject:setf(self.text, self.limit, self.align)
 end
 
--- Sets the list of colors (e.g. {{1,0,0},{0,0,1}} for red -> blue) that
--- drawChroma cycles through and repeats. Pass nil to fall back to the
--- default rainbow. Each color is {r, g, b} in the 0-1 range.
+-- colors drawChroma cycles through, e.g. {{1,0,0},{0,0,1}} for red -> blue;
+-- nil falls back to the default rainbow
 function TextFactory:setGradient(colors)
     if not colors then
         self.gradient = nil
@@ -164,10 +159,8 @@ function TextFactory:draw()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Draws the cached text mesh with a scrolling color cycle driven by a
--- shader: the custom gradient set via setGradient, or a rainbow if none
--- was set. Because the glyph mesh is cached (see setText/setSize), this
--- only re-runs the fragment shader per pixel, not the text layout/raster.
+-- scrolling color cycle via shader (custom gradient, or a rainbow if none
+-- set). Glyph mesh is cached, so this only re-runs the fragment shader, not text layout.
 function TextFactory:drawChroma()
     if self.text == "" then return end
 

@@ -1,15 +1,13 @@
--- src/states/options.lua
 -- Settings screen with two tabs:
 --   General  — volume slider; applies live and persists immediately.
---   Graphics — resolution / display mode / vsync; changes accumulate in a
---              `pending` table and only take effect (and persist) when the
---              Apply button is pressed. Leaving the screen discards pending.
+--   Graphics — resolution/display mode/vsync; changes accumulate in a
+--              `pending` table and only take effect (and persist) on Apply.
+--              Leaving the screen discards pending.
 --
 -- Esc or "Back" returns to whichever state opened this one:
---
 --   StateManager.fadeTo("options", { returnTo = "pause" })
 --
--- Abandoning a run is not offered here: during a run this screen is reached
+-- Abandoning a run isn't offered here: during a run this screen is reached
 -- through the pause menu, and that's where quitting lives.
 
 local StateManager = require "core.stateManager"
@@ -23,36 +21,25 @@ local Stats = require "services.stats"
 local Globals = require "globals"
 
 local HEADING_Y_RATIO = 0.12
--- Where the panel would like to start. It's pulled upward from here when the
--- stack below it wouldn't otherwise fit — see Options:layout.
-local PANEL_Y_RATIO   = 0.32
--- Design-space px, scaled through Theme.px at use.
-local PANEL_PAD       = 20
+local PANEL_Y_RATIO   = 0.32 -- preferred start; pulled up if the stack wouldn't fit, see Options:layout
+local PANEL_PAD       = 20   -- design-space px, scaled through Theme.px
 local PANEL_MAX_W     = 560
 
--- How long the player has to confirm a graphics change before it reverts on its
--- own. A resolution or fullscreen mode the monitor can't display leaves them
--- unable to see, let alone click, a revert button — so the game has to do it.
+-- seconds before an unconfirmed graphics change reverts on its own -- a mode
+-- the monitor can't display leaves the player unable to click a revert button
 local REVERT_SECONDS = 10
 
 local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
 
--- Owned by Settings, not this screen: conf.lua has to validate against the same
--- list at boot (see the comment there). A driver may grant fewer samples than
--- asked for — Settings.applyGraphics writes back what it actually got.
-local MSAA = Settings.MSAA_LEVELS
+local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates against the same list at boot
 
--- Window modes in selector order. Display names come from the active locale
--- (options.windowMode.<mode>): "Borderless" is desktop-type fullscreen,
--- "Fullscreen" is exclusive.
+-- selector order; display names come from options.windowMode.<mode> in the locale
 local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
 
 local Options = {}
 
--- Index of the first entry `matches` accepts, or 1 when nothing does. Every
--- selector here has to point at the saved value, and a saved value no longer on
--- offer (a resolution the monitor lost) falls back to the first option rather
--- than to nothing.
+-- index of the first entry `matches` accepts, or 1 -- a saved value no
+-- longer on offer (a resolution the monitor lost) falls back to the first option
 local function indexWhere(list, matches)
     for i, entry in ipairs(list) do
         if matches(entry) then return i end
@@ -82,21 +69,15 @@ local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
 
--- Keeps derived enabled-states in sync with the pending graphics changes.
--- Call after any mutation of `pending`. Two rules:
---   * The resolution row is inert in borderless (the game always runs at the
---     desktop resolution there).
---   * The Apply button is greyed out when there's nothing to apply, so its
---     label can stay a constant "Apply" instead of changing text.
+-- keeps derived enabled-states in sync with pending; call after any mutation
+-- of `pending`. Resolution row is inert in borderless (always desktop res
+-- there); Apply greys out when there's nothing to apply.
 function Options:syncEnabledStates()
     self.resolutionSelector.enabled = self.pending.windowMode ~= "borderless"
     self.applyButton.enabled = self:isDirty()
-    -- Applying is what greys Apply out, so the row under the focus can go inert
-    -- beneath it; move focus along rather than leaving it on a dead control.
-    self.group:refresh()
+    self.group:refresh() -- move focus off a row that just went inert
 end
 
--- True when the graphics widgets differ from what's actually in effect.
 function Options:isDirty()
     return self.pending.resIndex ~= resolutionIndexFor(self.settings)
         or self.pending.msaa ~= self.settings.msaa
@@ -104,22 +85,13 @@ function Options:isDirty()
         or self.pending.vsync ~= self.settings.vsync
 end
 
--- Resets pending graphics changes back to the live settings and syncs the
--- widget displays (setting fields directly never fires onChange).
+-- resets pending graphics changes to the live settings and syncs widget
+-- displays (setting fields directly never fires onChange)
 function Options:resetPending()
-    -- Both the pending value and the selector's position come from the same
-    -- index, so they can never disagree. That matters for a saved msaa we don't
-    -- offer (an older build wrote an index here, and a driver can grant an
-    -- off-list count): the row falls back to the first option and Apply lights
-    -- up, which is the player's way out, rather than displaying one thing while
-    -- pending holds another.
     local msaaIndex = msaaIndexFor(self.settings)
     self.pending = {
         resIndex = resolutionIndexFor(self.settings),
-        -- The sample count itself, not an index — like windowMode and vsync,
-        -- and unlike resIndex, which has to stay an index because a resolution
-        -- is a pair.
-        msaa = MSAA[msaaIndex],
+        msaa = MSAA[msaaIndex], -- the sample count itself, not an index, unlike resIndex (a resolution is a pair)
         windowMode = self.settings.windowMode,
         vsync = self.settings.vsync,
     }
@@ -130,7 +102,6 @@ function Options:resetPending()
     self:syncEnabledStates()
 end
 
--- A copy of the graphics settings currently in effect, for reverting to.
 function Options:graphicsSnapshot()
     return {
         res_x = self.settings.res_x,
@@ -141,9 +112,9 @@ function Options:graphicsSnapshot()
     }
 end
 
--- Commits pending graphics changes: settings <- pending, apply, then ask the
--- player to confirm before persisting. Nothing is written to disk until they
--- do — an unusable mode must not survive a restart.
+-- commits pending: settings <- pending, apply, then ask the player to
+-- confirm before persisting -- nothing hits disk until they do, since an
+-- unusable mode must not survive a restart
 function Options:applyPending()
     if not self:isDirty() then return end
 
@@ -156,36 +127,30 @@ function Options:applyPending()
     self.settings.vsync = self.pending.vsync
 
     Settings.applyGraphics(self.settings)
-    -- Re-read rather than just re-checking dirtiness: applyGraphics writes back
-    -- the msaa the driver actually granted, which can be lower than what was
-    -- asked for. Without this the selector would keep showing the request, and
-    -- Apply would stay lit forever because pending never matches settings.
+    -- re-read, not just re-check dirtiness: applyGraphics writes back the
+    -- msaa the driver actually granted, which can be lower than requested
     self:resetPending()
     self.revertDialog:openDialog()
 end
 
--- Player confirmed the new mode is usable: now it's safe to persist.
 function Options:keepGraphics()
     self.revertDialog:close()
     self.revertTo = nil
     Settings.save(self.settings)
 
-    -- They were already on their way out when they chose Apply (see
-    -- buildDialogs), so a change that's now confirmed carries them the rest of
-    -- the way rather than parking them back on a screen they'd finished with.
+    -- they were already leaving when they chose Apply (see buildDialogs), so
+    -- a confirmed change carries them the rest of the way out
     if self.leaveAfterApply then
         self.leaveAfterApply = false
         self:leave()
     end
 end
 
--- Player declined, or the countdown ran out (which is the case that matters —
--- it's what a player who can't see anything is relying on).
+-- declined, or the countdown ran out (the case that matters: it's what a
+-- player who can't see anything is relying on)
 function Options:revertGraphics()
     self.revertDialog:close()
-    -- The mode they picked didn't stick, so any exit queued behind it is
-    -- dropped: they stay here, where they can try a different one.
-    self.leaveAfterApply = false
+    self.leaveAfterApply = false -- the mode didn't stick, so any queued exit is dropped
     if not self.revertTo then return end
 
     for key, value in pairs(self.revertTo) do
@@ -197,12 +162,10 @@ function Options:revertGraphics()
     self:resetPending()
 end
 
--- Switches the UI palette and rebuilds the one thing that can't simply re-read
--- it. Everything drawn from Theme.colors picks the new palette up on its next
--- frame — but the nebula stamps its gas into canvases with the accent colors
--- burnt in at bake time, so the backdrop would keep the old theme's hues until
--- something else forced a bake. It's the shared instance from Assets, so
--- re-baking it here also recolors the copy the main menu is holding.
+-- switches the UI palette and rebuilds the one thing that can't just re-read
+-- it: the nebula stamps accent colors into its canvases at bake time, so it
+-- keeps the old theme's hues until re-baked. Shared instance from Assets, so
+-- this also recolors the main menu's copy.
 function Options:applyTheme(id)
     if not UI.Theme.setTheme(id) then return end
 
@@ -210,17 +173,15 @@ function Options:applyTheme(id)
     if nebula and nebula:isBaked() then nebula:bake() end
 end
 
--- Buttons stacked under the panel, in draw order. Both the layout and the focus
--- list read this, so a footer button can never be visible-but-unfocusable (or
--- vice versa) — which is why it stays a list for the one button there is today.
+-- both layout and the focus list read this, so a footer button can never be
+-- visible-but-unfocusable or vice versa
 function Options:footerButtons()
     return { self.backButton }
 end
 
--- Back, or Esc. Graphics edits only take effect on Apply, so walking away from
--- them is the one action on this screen that silently throws work out — and the
--- Apply button greying itself out once it's been pressed is not much of a
--- reminder that it hasn't been. So leaving with edits outstanding asks first.
+-- Back/Esc: graphics edits only take effect on Apply, and the greyed-out
+-- Apply button isn't much of a reminder that edits are outstanding, so
+-- leaving with pending edits asks first.
 function Options:goBack()
     UI.Sfx.select()
     if self:isDirty() then
@@ -230,18 +191,13 @@ function Options:goBack()
     self:leave()
 end
 
--- The actual exit, for whichever state opened this screen. Anything still
--- pending is dropped here (resetPending on the next visit); by this point the
--- player has been asked about it.
 function Options:leave()
     StateManager.fadeTo(self.returnTo)
 end
 
--- One of the three volume rows. They differ only in how the value reaches the
--- audio system and whether the release blips: Music passes blip = false because
--- it retunes live and is already its own preview, so an sfx click on top would
--- demo the wrong channel. The i18n key, description key and settings field are
--- all `key` by construction.
+-- Music passes blip = false: it retunes live and is already its own preview,
+-- so an sfx click on top would demo the wrong channel. i18n key, description
+-- key and settings field are all `key` by construction.
 function Options:buildVolumeSlider(key, apply, blip)
     local slider = UI.Slider.new{
         label = function() return I18n.t("options." .. key) end,
@@ -260,12 +216,11 @@ function Options:buildVolumeSlider(key, apply, blip)
     return slider
 end
 
--- The two modals this screen owns. Built once with the widgets.
 function Options:buildDialogs()
     local blip = UI.Sfx.focus
 
-    -- The countdown is the whole point: if the new mode is unreadable, doing
-    -- nothing has to be the safe choice, so a timeout reverts.
+    -- the countdown is the whole point: if the new mode is unreadable, doing
+    -- nothing has to be the safe choice
     self.revertDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.revert.title") end,
         message = function(dialog)
@@ -283,28 +238,26 @@ function Options:buildDialogs()
         },
     }
 
-    -- Raised by Back/Esc when graphics edits are still pending. Cancelling
-    -- (Esc, or a click off the panel) keeps the player here with the edits
-    -- intact, so the way out of this prompt is never the way that loses them.
+    -- raised by Back/Esc when graphics edits are still pending; cancelling
+    -- keeps the player here with the edits intact
     self.unappliedDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.unapplied.title") end,
         message = function() return I18n.t("dialog.unapplied.message") end,
         onCancel = function() self.unappliedDialog:close() end,
         buttons = {
-            -- Discard first, matching the revert dialog's "the option that
-            -- commits nothing comes first" order.
+            -- discard first, matching the revert dialog's "commits nothing" order
             { label = function() return I18n.t("dialog.unapplied.discard") end,
               danger = true,
               onSelect = function()
                   self.unappliedDialog:close()
-                  self:resetPending() -- drop the edits, then go
+                  self:resetPending()
                   self:leave()
               end },
             { label = function() return I18n.t("dialog.unapplied.apply") end,
               onSelect = function()
                   self.unappliedDialog:close()
-                  -- applyPending raises the revert countdown, so the exit waits
-                  -- on the player confirming the new mode is actually usable.
+                  -- applyPending raises the revert countdown, so the exit
+                  -- waits on the player confirming the new mode works
                   self.leaveAfterApply = true
                   self:applyPending()
               end },
@@ -315,21 +268,17 @@ function Options:buildDialogs()
     self.unappliedDialog:setFocusSound(blip)
 end
 
--- The modal currently showing, if any. Everything routes around this.
 function Options:activeDialog()
     if self.revertDialog and self.revertDialog:isOpen() then return self.revertDialog end
     if self.unappliedDialog and self.unappliedDialog:isOpen() then return self.unappliedDialog end
     return nil
 end
 
--- Rebuilds the focus list for the active tab: tab bar first, then the tab's
--- widgets, then the footer buttons. The list drives both focus order and the
--- layout below, so the two can never disagree about what's on screen.
+-- rebuilds the focus list for the active tab: tab bar, then the tab's
+-- widgets, then footer buttons -- drives both focus order and layout below
 function Options:selectTab(index)
     self.activeTab = index
-    -- Keep the bar display in sync when switched programmatically (a direct
-    -- field set never fires onChange, so no recursion).
-    self.tabBar.index = index
+    self.tabBar.index = index -- direct field set never fires onChange, so no recursion
 
     local widgets = { self.tabBar }
     for _, widget in ipairs(self.tabs[index].widgets) do
@@ -340,22 +289,13 @@ function Options:selectTab(index)
     end
     self.group:setWidgets(widgets)
 
-    -- A different tab means a different number of rows, so the panel resizes.
-    self:layout()
+    self:layout() -- a different tab has a different row count
 end
 
--- Computes every rect this screen draws and hands each widget its bounds.
--- Called on enter, on resize, and on tab switch — never from draw. Hit-testing
--- reads these bounds, so laying out during draw meant input for a frame was
--- answered against the *previous* frame's geometry.
--- Lines the description area has to be able to hold: the longest description in
--- this tab, wrapped to the panel width. Measured over the whole tab rather than
--- over the focused row, so the stack is a property of the tab and the panel
--- doesn't jump every time the focus moves onto a wordier setting.
---
--- Capped, because one runaway string shouldn't be able to squeeze the rows it
--- is describing; a description longer than the cap is clipped by draw instead.
-local DESC_MAX_LINES = 3
+-- lines the description area needs: the longest description in this tab,
+-- wrapped to the panel width. Measured over the whole tab, not the focused
+-- row, so the panel doesn't jump every time focus lands on a wordier row.
+local DESC_MAX_LINES = 3 -- caps one runaway string from squeezing the rows it describes; draw clips past this
 
 function Options:descriptionLines(width)
     local font = UI.Theme.font("small")
@@ -367,8 +307,7 @@ function Options:descriptionLines(width)
             most = math.max(most, #wrapped)
         end
     end
-    -- The conditional line the resolution row shows while it's inert. It is
-    -- never any widget's descKey, so nothing above would have measured it.
+    -- the resolution row's inert-state line isn't any widget's descKey
     if self.activeTab == 2 then
         local _, wrapped = font:getWrap(I18n.t("options.desc.resolutionBorderless"), width)
         most = math.max(most, #wrapped)
@@ -377,22 +316,18 @@ function Options:descriptionLines(width)
     return math.min(most, DESC_MAX_LINES)
 end
 
--- Computes every rect this screen draws and hands each widget its bounds.
--- Called on enter, on resize, and on tab switch — never from draw. Hit-testing
--- reads these bounds, so laying out during draw meant input for a frame was
--- answered against the *previous* frame's geometry.
+-- Computes every rect this screen draws. Called on enter/resize/tab switch,
+-- never from draw -- hit-testing reads these bounds, and laying out during
+-- draw meant input for a frame was answered against the previous geometry.
 --
--- The screen is laid out to FIT rather than to a fixed pose. Every row is sized
--- from Theme.metrics, which scales with the window height — so a taller window
--- buys no extra rows, it just draws the same rows bigger, and the stack ran off
--- the bottom at every supported resolution once the General tab reached seven
--- rows. Worse on big screens, not better: at 1920x1080 it overshot by 71px
--- against 39px at 1024x768.
---
--- So: measure the space actually available between the heading and the hint
--- line, and shrink to fit. Whitespace goes first and row height only if that
--- wasn't enough, because a full-height row with less air around it still reads
--- as a control while a squashed one stops looking clickable.
+-- Laid out to FIT rather than a fixed pose: every row scales with window
+-- height via Theme.metrics, so a taller window just draws bigger rows, not
+-- more of them -- the stack ran off the bottom at every resolution once
+-- General reached seven rows (worse on big screens: 1920x1080 overshot by
+-- 71px vs 39px at 1024x768). So: measure the space between heading and hint
+-- line and shrink to fit, whitespace first and row height only if that's not
+-- enough (a full-height row with less air still reads as a control; a
+-- squashed one stops looking clickable).
 function Options:layout()
     local w, h = love.graphics.getDimensions()
     local m = UI.Theme.metrics
@@ -405,23 +340,18 @@ function Options:layout()
     local descH = UI.Theme.font("small"):getHeight()
         * self:descriptionLines(panelW - UI.Theme.px(PANEL_PAD) * 2)
 
-    -- What the stack is made of, independent of how big each piece ends up:
-    -- the tab bar, the tab's rows and the footer buttons are all one row tall,
-    -- and a gap sits after every one of them except the last.
+    -- tab bar + tab rows + footer buttons are all one row tall, with a gap after each but the last
     local rowCount = 1 + rows + #footer
     local gapCount = rows + #footer + 1
     local function stackHeight(rowH, gap, pad)
         return rowCount * rowH + gapCount * gap + pad * 2 + descH
     end
 
-    -- The room there is for it. Measured from under the heading to the hint
-    -- line, which is the real ceiling and floor of this screen.
     local headingBottom = h * HEADING_Y_RATIO + UI.Theme.font("heading"):getHeight()
     local stackTop = headingBottom + m.rowGap
     local budget = UI.Label.hintY() - m.rowGap - stackTop
 
-    -- Floors. Derived from the font rather than hardcoded, so a row can never
-    -- be shorter than the label inside it however the type scale is retuned.
+    -- floors derived from the font, not hardcoded, so a row can't shrink past its own label
     local minRow = UI.Theme.font("body"):getHeight() + UI.Theme.px(8)
     local minGap = UI.Theme.px(4)
     local minPad = UI.Theme.px(6)
@@ -429,7 +359,7 @@ function Options:layout()
     local rowH, gap, pad = m.rowHeight, m.rowGap, UI.Theme.px(PANEL_PAD)
 
     if stackHeight(rowH, gap, pad) > budget then
-        -- Whitespace first, all of it proportionally, down to the floors.
+        -- whitespace first, all of it proportionally, down to the floors
         local slack = gapCount * (gap - minGap) + 2 * (pad - minPad)
         local need = stackHeight(rowH, gap, pad) - budget
         if slack > 0 then
@@ -438,7 +368,7 @@ function Options:layout()
             pad = minPad + math.floor((pad - minPad) * keep)
         end
 
-        -- Then, and only then, the rows themselves.
+        -- then, only then, the rows themselves
         if stackHeight(rowH, gap, pad) > budget then
             local forRows = budget - gapCount * gap - pad * 2 - descH
             rowH = math.max(minRow, math.floor(forRows / rowCount))
@@ -448,8 +378,7 @@ function Options:layout()
     local panelH = pad * 2 + rows * rowH + (rows - 1) * gap
     local stackH = stackHeight(rowH, gap, pad)
 
-    -- Preferred pose, clamped so the whole stack stays inside the budget. When
-    -- it fits with room to spare this still sits where it always did.
+    -- preferred pose, clamped so the whole stack stays inside the budget
     local aboveH = rowH + gap -- tab bar and its gap
     local top = math.max(stackTop,
         math.min(h * PANEL_Y_RATIO - aboveH, stackTop + budget - stackH))
@@ -457,7 +386,6 @@ function Options:layout()
 
     self.panel = { x = panelX, y = panelY, w = panelW, h = panelH }
 
-    -- Tab bar sits one row above the panel.
     self.tabBar:setBounds(panelX, panelY - rowH - gap, panelW, rowH)
 
     for i, widget in ipairs(self.tabs[self.activeTab].widgets) do
@@ -468,7 +396,6 @@ function Options:layout()
             rowH)
     end
 
-    -- Footer stack below the panel, full panel width, one row apart.
     for i, button in ipairs(footer) do
         button:setBounds(
             panelX,
@@ -477,8 +404,7 @@ function Options:layout()
             rowH)
     end
 
-    -- Description for the focused row, under the last footer button. Its height
-    -- is the reserved one, so draw can tell whether it reaches the hint line.
+    -- height is the reserved one, so draw can tell whether it reaches the hint line
     local footerBottom = panelY + panelH + gap + #footer * (rowH + gap)
     self.descRect = { x = panelX, y = footerBottom, w = panelW, h = descH }
 
@@ -490,9 +416,7 @@ function Options:resize()
     self:layout()
 end
 
--- Description key for the focused widget. The resolution row gets a different
--- line when it's inert, because "greyed out with no reason given" is exactly
--- the confusion this is here to fix.
+-- resolution row gets a different line when inert, since "greyed out with no reason" is the confusion to avoid
 function Options:focusedDescription()
     local widget = self.group:focused()
     if not widget or not widget.descKey then return nil end
@@ -502,24 +426,17 @@ function Options:focusedDescription()
     return widget.descKey
 end
 
--- StateManager calls enter(previousName, ...), so `opts` is whatever the
--- caller passed to switch(). An explicit opts.returnTo wins; otherwise we fall
--- back to the state we actually came from. The guard stops Options from
--- targeting itself if it's ever re-entered.
+-- StateManager calls enter(previousName, ...); opts.returnTo wins, else
+-- wherever we came from. Guard stops Options targeting itself if re-entered.
 function Options:enter(previousName, opts)
     Presence.set{ details = "Options", state = "Changing settings",
                     smallText = "Options", startedAt = Globals.game.startedAt }
     self.returnTo = StateManager.returnTarget(previousName, opts, "options")
 
-    -- Shared settings table, loaded and applied at boot by the loading state.
     self.settings = Assets.get("settings") or Settings.load()
 
-    -- Seeded from the real pointer so hover feedback is right on the first
-    -- frame, before the player moves the mouse again.
     self.mouseX, self.mouseY = love.mouse.getPosition()
 
-    -- Owns focus order, keyboard navigation, and mouse routing (including the
-    -- drag capture that keeps a slider tracking off-widget).
     if not self.group then
         self.group = UI.FocusGroup.new()
         self.group.onFocusChanged = UI.Sfx.focus
@@ -530,22 +447,18 @@ function Options:enter(previousName, opts)
     end
 
     if not self.tabs then
-        -- Labels are functions (or format-time lookups) so they re-read the
-        -- active language every draw — changing language updates the screen
-        -- live, no rebuild.
+        -- labels are functions so they re-read the active language every
+        -- draw -- changing language updates the screen live, no rebuild
 
-        -- General tab: all three volume sliders apply live and persist
-        -- immediately. Master scales every channel via love.audio.setVolume;
-        -- Music/SFX are independent channels (see src/core/audio.lua) so lowering
-        -- one doesn't affect the other.
+        -- General tab: all three sliders apply live and persist immediately.
+        -- Master scales every channel via love.audio.setVolume; Music/SFX
+        -- are independent channels (core/audio.lua).
         self.volumeSlider = self:buildVolumeSlider("volume", love.audio.setVolume, true)
         self.musicVolumeSlider = self:buildVolumeSlider("musicVolume",
             function(v) Audio.setVolume("music", v) end, false)
         self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
             function(v) Audio.setVolume("sfx", v) end, true)
 
-        -- Language also applies live and persists immediately (General-tab
-        -- behavior, like Volume). Options are the {code, name} locale entries.
         self.languageSelector = UI.Selector.new{
             label = function() return I18n.t("options.language") end,
             options = I18n.available(),
@@ -559,10 +472,8 @@ function Options:enter(previousName, opts)
         }
         self.languageSelector.descKey = 'options.desc.language'
 
-        -- Theme is General-tab behavior too: live and persisted immediately.
-        -- Nothing is staged, because unlike a resolution a palette can't leave
-        -- the player unable to see the screen — the worst case is a look they
-        -- don't like, which the same selector undoes.
+        -- live and persisted immediately too: unlike a resolution a palette
+        -- can't leave the player unable to see the screen
         self.themeSelector = UI.Selector.new{
             label = function() return I18n.t("options.theme") end,
             options = UI.Theme.available(),
@@ -626,10 +537,8 @@ function Options:enter(previousName, opts)
         }
         self.vsyncToggle.descKey = 'options.desc.vsync'
 
-        -- General-tab behavior: live and persisted immediately, like Language
-        -- and Theme. setEnabled starts or stops the heartbeat thread on the
-        -- spot — a privacy switch that only takes effect after a restart isn't
-        -- really one.
+        -- live and persisted immediately, like Language/Theme: a privacy
+        -- switch that waits for a restart isn't really one
         self.shareStatsToggle = UI.Toggle.new{
             label = function() return I18n.t("options.shareStats") end,
             value = self.settings.shareStats,
@@ -642,8 +551,6 @@ function Options:enter(previousName, opts)
         }
         self.shareStatsToggle.descKey = 'options.desc.shareStats'
 
-        -- Label is a constant "Apply"; the button greys out (via
-        -- syncEnabledStates -> enabled = isDirty) when there's nothing to apply.
         self.applyButton = UI.Button.new{
             label = function() return I18n.t("options.apply") end,
             onSelect = function()
@@ -653,10 +560,8 @@ function Options:enter(previousName, opts)
         }
         self.applyButton.descKey = 'options.desc.apply'
 
-        -- Both footer buttons are built once, like every other widget here,
-        -- and read self.returnTo when clicked rather than capturing it — this
-        -- block only runs on the first visit, so a captured value would pin
-        -- every later visit to wherever Options was opened from first.
+        -- reads self.returnTo when clicked rather than capturing it, since
+        -- this block only runs on the first visit
         self.backButton = UI.Button.new{
             label = function() return I18n.t("options.back") end,
             onSelect = function() self:goBack() end,
@@ -685,14 +590,12 @@ function Options:enter(previousName, opts)
         }
     end
 
-    -- Every exit path closes its own modal, but a modal left open would make
-    -- this screen unusable, so a fresh visit never inherits one.
+    -- a fresh visit never inherits an open modal
     self.revertDialog:close()
     self.unappliedDialog:close()
     self.revertTo = nil
     self.leaveAfterApply = false
 
-    -- Fresh visit: discard any stale pending edits, re-sync live values.
     self.volumeSlider.value = self.settings.volume
     self.musicVolumeSlider.value = self.settings.musicVolume
     self.sfxVolumeSlider.value = self.settings.sfxVolume
@@ -703,9 +606,9 @@ function Options:enter(previousName, opts)
     self:selectTab(self.tabBar.index)
 end
 
--- A modal owns every input while it's up; the screen behind keeps drawing but
--- stops responding. Dialog presents the same verbs a FocusGroup does, so routing
--- is a choice of receiver rather than a branch per verb.
+-- a modal owns every input while open; the screen behind keeps drawing but
+-- stops responding. Dialog exposes the same verbs FocusGroup does, so
+-- routing is just a choice of receiver.
 function Options:inputTarget()
     return self:activeDialog() or self.group
 end
@@ -719,8 +622,7 @@ function Options:mousemoved(x, y)
     self:inputTarget():mousemoved(x, y)
 end
 
--- Written out rather than routed, because Esc sits between the two receivers: a
--- modal's own Esc cancels the modal, and only an unmodal screen leaves.
+-- written out, not routed: a modal's own Esc cancels the modal, only an unmodal screen leaves
 function Options:keypressed(key)
     local dialog = self:activeDialog()
     if dialog then return dialog:keypressed(key) end
@@ -728,7 +630,6 @@ function Options:keypressed(key)
     return self.group:keypressed(key)
 end
 
--- Draw only. Every rect here was computed by Options:layout().
 function Options:draw()
     local h = love.graphics.getHeight()
     local panel = self.panel
@@ -739,9 +640,8 @@ function Options:draw()
         font = UI.Theme.font("heading"),
     }
 
-    -- The tab bar and footer buttons sit outside the panel, the tab's rows
-    -- inside it, so the widgets are drawn in three passes around it rather
-    -- than through the focus group's own draw.
+    -- tab bar and footer sit outside the panel, tab rows inside it, so
+    -- drawing happens in three passes rather than through the focus group's own draw
     self.tabBar:draw()
 
     UI.Theme.panel(panel.x, panel.y, panel.w, panel.h)
@@ -753,15 +653,11 @@ function Options:draw()
         button:draw()
     end
 
-    -- What the focused row actually does. Also the only place the resolution
-    -- selector can explain why it greys out in Borderless.
     local desc = self.descRect
     local descKey = self:focusedDescription()
     if descKey then
-        -- Clipped to the height layout reserved. That height is the longest
-        -- description in this tab, so in practice nothing is cut — the scissor
-        -- is here so that a future string longer than DESC_MAX_LINES loses its
-        -- tail instead of spilling over the hint line and out of the window.
+        -- clipped to the reserved height; the scissor only matters if a
+        -- future string exceeds DESC_MAX_LINES
         love.graphics.setScissor(math.floor(desc.x), math.floor(desc.y),
             math.ceil(desc.w), math.ceil(desc.h))
         UI.Label.draw{
@@ -775,15 +671,12 @@ function Options:draw()
         love.graphics.setScissor()
     end
 
-    -- The description and the hint are both a single grey line at the bottom of
-    -- the screen, and the tallest stack (a five-row tab with Quit in the footer)
-    -- leaves room for only one of them. The description is about the row under
-    -- the focus, so it wins; the static control hint is what gives way.
+    -- description and hint share one line at the bottom; the tallest stack
+    -- leaves room for only one, and description (about the focused row) wins
     if desc.y + desc.h <= UI.Label.hintY() then
         UI.Label.hint(I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general"))
     end
 
-    -- Modals paint over everything, including the hint.
     local dialog = self:activeDialog()
     if dialog then dialog:draw() end
 

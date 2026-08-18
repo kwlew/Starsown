@@ -1,6 +1,5 @@
--- conf.lua
 function love.conf(t)
-    t.identity = "TD-Idle"          -- save-directory name (love.filesystem writes here)
+    t.identity = "TD-Idle"
     t.version = "11.5"
     t.console = true
 
@@ -9,12 +8,12 @@ function love.conf(t)
     t.window.width = 1280
     t.window.height = 720
     t.window.resizable = false
-    t.window.vsync = 0            -- 0 = off, 1 = on, -1 = adaptive
-    t.window.msaa = 4     -- multisample antialiasing samples (smooths circles/rounded corners)
+    t.window.vsync = 0
+    t.window.msaa = 4
     t.window.fullscreen = false
-    t.window.highdpi = true         -- retina/hidpi support
+    t.window.highdpi = true
 
-    -- Update settings to match the saved ones.
+    -- override the defaults above with whatever's saved
     local ok, settings = pcall(function()
         love.filesystem.setIdentity(t.identity)
         return require("core.settings").load()

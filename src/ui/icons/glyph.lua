@@ -1,34 +1,22 @@
--- src/ui/glyph.lua
--- Small procedural icons, drawn from primitives inside a 0..1 unit box scaled
--- to whatever size the caller asks for. No image assets, for the same reasons
--- src/ui/githubMark draws its logo from a path: they stay crisp at every UI
--- scale, cost nothing to ship, and recolor with the theme for free.
+-- Small procedural icons, drawn from primitives inside a 0..1 unit box
+-- scaled to whatever size the caller asks for. No image assets, same reason
+-- githubMark draws from a path: crisp at every UI scale, free to ship, and recolor with the theme.
 --
 --   Theme.setColor(Theme.colors.accent)
 --   Glyph.draw("tower", x, y, 48)
 --
--- Everything is drawn in the *current* color, so tinting is the caller's job —
--- which is what lets one glyph read as earned, available, or locked without
--- three copies of it.
+-- Everything draws in the *current* color, so tinting is the caller's job.
 
 local Glyph = {}
 
--- Stroke weight as a fraction of the glyph's size, so an icon drawn at 24px and
--- the same icon at 72px read as the same weight rather than the big one looking
--- spindly.
-local STROKE = 0.075
+local STROKE = 0.075 -- stroke weight as a fraction of size, so 24px and 72px read as the same weight
 
--- Segment counts are given explicitly: at these radii LÖVE's default picks few
--- enough that a circle reads as a visible polygon.
-local CIRCLE_SEGMENTS = 32
+local CIRCLE_SEGMENTS = 32 -- explicit: LÖVE's default picks too few at these radii
 
--- Scratch for the glyphs built from a point list. Reused rather than
--- reallocated per call: a screen can draw thirty of these in a frame, and
--- polygon() has copied what it was given by the time it returns, so one buffer
--- serves them all.
+-- scratch for point-list glyphs, reused rather than reallocated per call
+-- (polygon() has copied its args by the time it returns)
 local scratch = {}
 
--- Maps a unit-box point list into the target box and fills or strokes it.
 local function poly(mode, x, y, s, unit)
     local n = #unit
     for i = 1, n, 2 do
@@ -46,14 +34,12 @@ local function line(x, y, s, x1, y1, x2, y2)
     love.graphics.line(x + x1 * s, y + y1 * s, x + x2 * s, y + y2 * s)
 end
 
--- Axis-aligned box given as unit corners.
 local function box(mode, x, y, s, x1, y1, x2, y2, radius)
     love.graphics.rectangle(mode, x + x1 * s, y + y1 * s,
         (x2 - x1) * s, (y2 - y1) * s, (radius or 0) * s, (radius or 0) * s)
 end
 
--- Five-pointed star, built once at load: the alternating outer/inner radii are
--- trigonometry, not something worth hand-listing as twenty literals.
+-- five-pointed star, built once at load
 local STAR = {}
 do
     for i = 0, 9 do
@@ -70,11 +56,9 @@ local FLAME  = { 0.50, 0.04, 0.72, 0.30, 0.63, 0.43, 0.80, 0.63, 0.62, 0.94,
 local TOWER_BASE = { 0.20, 0.94, 0.80, 0.94, 0.70, 0.74, 0.30, 0.74 }
 local CUP = { 0.26, 0.10, 0.74, 0.10, 0.66, 0.52, 0.34, 0.52 }
 
--- Each glyph draws inside (x, y) .. (x + size, y + size). The caller owns the
--- color; line width is set per glyph and restored by Glyph.draw.
+-- each glyph draws inside (x, y) .. (x+size, y+size); caller owns the color
 local glyphs = {}
 
--- A turret: splayed base, shaft, and a barrel pointing up.
 function glyphs.tower(x, y, s)
     poly("fill", x, y, s, TOWER_BASE)
     box("fill", x, y, s, 0.38, 0.42, 0.62, 0.76)
@@ -82,7 +66,6 @@ function glyphs.tower(x, y, s)
     box("fill", x, y, s, 0.44, 0.06, 0.56, 0.38)
 end
 
--- Concentric arcs: the incoming wave.
 function glyphs.wave(x, y, s)
     for _, r in ipairs({ 0.20, 0.33, 0.46 }) do
         love.graphics.arc("line", "open", x + 0.22 * s, y + 0.5 * s, r * s, -0.85, 0.85, 16)
@@ -96,7 +79,6 @@ function glyphs.shield(x, y, s)
     line(x, y, s, 0.32, 0.45, 0.68, 0.45)
 end
 
--- A coin on edge: ring plus the slot through it.
 function glyphs.coin(x, y, s)
     circle("line", x, y, s, 0.5, 0.5, 0.38)
     box("fill", x, y, s, 0.45, 0.20, 0.55, 0.80)
@@ -104,7 +86,6 @@ function glyphs.coin(x, y, s)
     line(x, y, s, 0.34, 0.66, 0.66, 0.66)
 end
 
--- Ring, hub, and eight teeth.
 function glyphs.gear(x, y, s)
     circle("line", x, y, s, 0.5, 0.5, 0.30)
     circle("fill", x, y, s, 0.5, 0.5, 0.11)
@@ -132,14 +113,12 @@ function glyphs.flame(x, y, s)
     poly("fill", x, y, s, FLAME)
 end
 
--- Six-spoke asterisk with barbs: frost.
 function glyphs.frost(x, y, s)
     for i = 0, 2 do
         local a = i * math.pi / 3
         local c, sn = math.cos(a), math.sin(a)
         line(x, y, s, 0.5 - c * 0.44, 0.5 - sn * 0.44, 0.5 + c * 0.44, 0.5 + sn * 0.44)
-        -- Barbs near each tip, angled off the spoke.
-        for _, dir in ipairs({ 1, -1 }) do
+        for _, dir in ipairs({ 1, -1 }) do -- barbs near each tip, angled off the spoke
             local tipX, tipY = 0.5 + c * 0.44 * dir, 0.5 + sn * 0.44 * dir
             local b = a + math.pi / 3
             line(x, y, s, tipX, tipY,
@@ -152,7 +131,6 @@ function glyphs.trophy(x, y, s)
     poly("fill", x, y, s, CUP)
     box("fill", x, y, s, 0.44, 0.52, 0.56, 0.74)
     box("fill", x, y, s, 0.28, 0.74, 0.72, 0.88, 0.03)
-    -- Handles.
     love.graphics.arc("line", "open", x + 0.26 * s, y + 0.24 * s, 0.14 * s, -1.4, 1.4, 12)
     love.graphics.arc("line", "open", x + 0.74 * s, y + 0.24 * s, 0.14 * s, 1.74, 4.54, 12)
 end
@@ -163,15 +141,12 @@ function glyphs.clock(x, y, s)
     line(x, y, s, 0.5, 0.5, 0.70, 0.60)
 end
 
--- The stand-in for anything not yet revealed.
 function glyphs.lock(x, y, s)
     love.graphics.arc("line", "open", x + 0.5 * s, y + 0.44 * s, 0.20 * s, math.pi, 2 * math.pi, 16)
     box("fill", x, y, s, 0.24, 0.44, 0.76, 0.90, 0.06)
 end
 
--- Draws `name` filling the square at (x, y) with side `size`, in the current
--- color. An unknown name falls back to the lock rather than throwing: a node
--- that names an icon nobody drew yet should look unfinished, not crash a screen.
+-- unknown name falls back to the lock instead of throwing: an unfinished icon should look unfinished, not crash
 function Glyph.draw(name, x, y, size)
     local draw = glyphs[name] or glyphs.lock
     local previous = love.graphics.getLineWidth()
@@ -180,7 +155,6 @@ function Glyph.draw(name, x, y, size)
     love.graphics.setLineWidth(previous)
 end
 
--- Is this a name we actually draw? For asserting placeholder data stays honest.
 function Glyph.has(name)
     return glyphs[name] ~= nil
 end

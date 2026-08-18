@@ -1,7 +1,4 @@
--- src/core/assets.lua
--- Tiny name -> resource cache. The loading state creates resources (fonts,
--- images, audio, settings) once and stores them here; every other state
--- fetches them by name instead of rebuilding them.
+-- name -> resource cache; loading state fills it once, everyone else reads by name
 
 local Assets = { store = {} }
 

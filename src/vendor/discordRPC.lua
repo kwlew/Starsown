@@ -1,32 +1,21 @@
 --[[
-    discordrpc.lua
-    ------------------------------------------------------------------
-    A from-scratch Discord Rich Presence client for LÖVE2D.
-
-    No external Discord libraries are used. This talks directly to
-    Discord's local IPC transport:
-      - Windows: a named pipe  \\.\pipe\discord-ipc-N
-      - macOS/Linux: a Unix domain socket  $XDG_RUNTIME_DIR/discord-ipc-N
+    A from-scratch Discord Rich Presence client for LÖVE2D. No external
+    Discord libraries -- talks directly to Discord's local IPC transport:
+      - Windows: named pipe  \\.\pipe\discord-ipc-N
+      - macOS/Linux: Unix domain socket  $XDG_RUNTIME_DIR/discord-ipc-N
                      (falls back to $TMPDIR, $TMP, $TEMP, /tmp)
 
-    It relies only on:
-      - LuaJIT's built-in `ffi` and `bit` libraries (ship with LÖVE)
-      - `love.system.getOS()` for platform detection (optional — falls
-        back to `jit.os` if you ever run this outside LÖVE)
+    Needs LuaJIT's `ffi`/`bit` (ship with LÖVE) and love.system.getOS() for
+    platform detection (falls back to jit.os outside LÖVE).
 
-    Protocol notes (Discord IPC, informally documented, stable for years):
-      Each message is a binary frame:
-          [4 bytes opcode, little-endian][4 bytes length, little-endian][JSON payload]
-      Opcodes:
-          0 = HANDSHAKE   1 = FRAME   2 = CLOSE   3 = PING   4 = PONG
+    Discord IPC protocol (informally documented, stable for years): each
+    message is [4B opcode LE][4B length LE][JSON payload]. Opcodes: 0
+    HANDSHAKE, 1 FRAME, 2 CLOSE, 3 PING, 4 PONG. Client sends opcode 0 with
+    {v=1, client_id}; Discord replies opcode 1 with a DISPATCH/READY event;
+    after that opcode 1 frames carry commands like SET_ACTIVITY.
 
-      Handshake: client sends opcode 0 with {"v":1,"client_id":"..."}.
-      Discord responds with opcode 1 containing a DISPATCH/READY event.
-      After that, opcode 1 frames carry commands like SET_ACTIVITY.
-
-    USAGE: nothing in the game talks to this directly — src/services/presence.lua owns
-    the connection, the payload shape and the retry, and is what screens call.
-    This module's surface is:
+    USAGE: nothing else in the game talks to this directly --
+    services/presence.lua owns the connection, payload shape, and retry.
 
         RPC.initialize(applicationId)  -- once, at load
         RPC.update(dt)                 -- every frame; drives connect + retry
@@ -36,25 +25,18 @@
         RPC.shutdown()                 -- on quit, so the presence clears now
         RPC.getLastError()
 
-    CAVEATS (read before shipping):
-      - This only implements local Rich Presence (details/state/images/
-        timestamps/buttons). Join/Spectate/ask-to-join requires you to
-        also handle ACTIVITY_JOIN / ACTIVITY_SPECTATE events and a
-        running lobby system — not included here.
-      - Requires LuaJIT (which LÖVE uses), NOT plain Lua/Lua 5.4 — `ffi`
-        does not exist outside LuaJIT.
-      - Discord must be running locally. If it's not, RPC.update() will
-        just keep retrying quietly every few seconds — your game never
-        blocks or crashes waiting for it.
-      - pid is sent so Discord can clear the presence automatically if
-        your game process dies without calling RPC.shutdown().
+    CAVEATS:
+      - Only local Rich Presence (details/state/images/timestamps/buttons).
+        Join/Spectate/ask-to-join needs ACTIVITY_JOIN/ACTIVITY_SPECTATE
+        handling and a lobby system -- not included.
+      - Requires LuaJIT, not plain Lua -- `ffi` doesn't exist elsewhere.
+      - If Discord isn't running, RPC.update() just retries quietly every
+        few seconds; the game never blocks or crashes waiting for it.
+      - pid is sent so Discord can clear the presence if the game dies
+        without calling RPC.shutdown().
 --]]
 
 local ffi = require("ffi")
-
-------------------------------------------------------------------
--- Platform detection
-------------------------------------------------------------------
 
 local isWindows, isMac, isLinux = false, false, false
 
@@ -64,16 +46,13 @@ if love and love.system then
     isMac     = (osName == "OS X")
     isLinux   = (osName == "Linux")
 else
-    -- Fallback if this is ever loaded outside LÖVE (e.g. a quick luajit test script)
+    -- fallback if ever loaded outside LÖVE (e.g. a quick luajit test script)
     isWindows = (jit and jit.os == "Windows")
     isMac     = (jit and jit.os == "OSX")
     isLinux   = (jit and jit.os == "Linux")
 end
 
-------------------------------------------------------------------
--- Tiny JSON encoder/decoder (just enough for Discord's payloads —
--- no external JSON library dependency)
-------------------------------------------------------------------
+-- tiny JSON encoder/decoder, just enough for Discord's payloads
 
 local json = {}
 
@@ -224,9 +203,7 @@ function json.decode(str)
     return nil
 end
 
-------------------------------------------------------------------
--- Frame packing helpers (4-byte little-endian uint32 headers)
-------------------------------------------------------------------
+-- frame packing helpers (4-byte little-endian uint32 headers)
 
 local function packU32LE(n)
     return string.char(
@@ -242,9 +219,7 @@ local function unpackU32LE(s, offset)
     return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
 end
 
-------------------------------------------------------------------
 -- Pipe: platform-specific transport (Windows named pipe / Unix socket)
-------------------------------------------------------------------
 
 local Pipe = {}
 Pipe.__index = Pipe
@@ -305,7 +280,7 @@ if isWindows then
         return ok ~= 0
     end
 
-    -- returns number of bytes currently sitting in the pipe, without blocking
+    -- bytes currently sitting in the pipe, without blocking
     function Pipe:available()
         local totalAvail = ffi.new("DWORD[1]")
         local ok = kernel32.PeekNamedPipe(self.handle, nil, 0, nil, totalAvail, nil)
@@ -345,8 +320,7 @@ elseif isLinux or isMac then
     local SOCK_STREAM = 1
     local F_GETFL     = 3
     local F_SETFL     = 4
-    -- O_NONBLOCK differs between Linux and Darwin (macOS) libc:
-    local O_NONBLOCK  = isMac and 0x0004 or 0x800
+    local O_NONBLOCK  = isMac and 0x0004 or 0x800 -- differs between Linux and Darwin libc
 
     getCurrentPid = function() return tonumber(C.getpid()) end
 
@@ -387,9 +361,7 @@ elseif isLinux or isMac then
         return n == #data
     end
 
-    -- Unix path: socket is already non-blocking, so we just attempt reads;
-    -- there's no cheap "peek" equivalent, so the connection layer above
-    -- calls read() in a loop until it comes back empty.
+    -- already non-blocking; no cheap "peek" on Unix, so the connection layer loops read() until it's empty
     function Pipe:available() return nil end
 
     function Pipe:read(n)
@@ -407,9 +379,7 @@ else
     error("discordrpc.lua: unsupported platform")
 end
 
-------------------------------------------------------------------
 -- Connection: buffers raw bytes into complete frames
-------------------------------------------------------------------
 
 local Connection = {}
 Connection.__index = Connection
@@ -420,14 +390,14 @@ end
 
 function Connection:pump()
     if self.pipe.available and self.pipe:available() ~= nil then
-        -- Windows path: ask how many bytes are waiting, then read exactly that many
+        -- Windows: ask how many bytes are waiting, read exactly that many
         local avail = self.pipe:available()
         if avail > 0 then
             local chunk = self.pipe:read(avail)
             if chunk then self.buffer = self.buffer .. chunk end
         end
     else
-        -- Unix path: non-blocking socket, keep reading chunks until empty
+        -- Unix: non-blocking socket, keep reading chunks until empty
         while true do
             local chunk = self.pipe:read(4096)
             if not chunk or #chunk == 0 then break end
@@ -455,9 +425,7 @@ function Connection:close()
     self.pipe:close()
 end
 
-------------------------------------------------------------------
 -- Public API
-------------------------------------------------------------------
 
 local RPC = {
     connected = false,
@@ -509,7 +477,6 @@ local function handleFrame(opcode, payload)
     end
 end
 
--- Call this every frame from love.update(dt)
 function RPC.update(dt)
     dt = dt or 0
 

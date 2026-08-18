@@ -1,9 +1,8 @@
--- src/vendor/json.lua
--- Minimal, self-contained JSON decoder (decode only — locale files are read
--- only). Standard recursive-descent parser: objects, arrays, strings with the
--- full escape set including \uXXXX, numbers, and true/false/null. On malformed
--- input it raises an error with the byte position, so callers can pcall it and
--- fall back gracefully (see src/core/i18n.lua).
+-- Minimal, self-contained JSON decoder (decode only -- locale files are
+-- read-only). Recursive-descent: objects, arrays, strings with the full
+-- escape set including \uXXXX, numbers, true/false/null. Raises on
+-- malformed input with the byte position, so callers can pcall and fall
+-- back gracefully (see core/i18n.lua).
 
 local Json = {}
 
@@ -12,13 +11,12 @@ local escapes = {
     b = '\b', f = '\f', n = '\n', r = '\r', t = '\t',
 }
 
--- Returns the next index at or after i that isn't JSON whitespace.
 local function skipWhitespace(str, i)
     local _, j = str:find("^[ \t\r\n]*", i)
     return j + 1
 end
 
--- Encodes a Unicode code point as UTF-8 (LÖVE renders UTF-8 strings directly).
+-- encodes a Unicode code point as UTF-8 (LÖVE renders UTF-8 strings directly)
 local function utf8Encode(cp)
     if cp < 0x80 then
         return string.char(cp)
@@ -40,7 +38,7 @@ end
 local parseValue -- forward declaration (values nest recursively)
 
 local function parseString(str, i)
-    -- i points at the opening quote.
+    -- i points at the opening quote
     local out = {}
     local j = i + 1
     while j <= #str do
@@ -55,7 +53,7 @@ local function parseString(str, i)
                 if not cp or #hex < 4 then
                     error(("json: bad \\u escape at %d"):format(j))
                 end
-                -- Combine a UTF-16 surrogate pair if one follows.
+                -- combine a UTF-16 surrogate pair if one follows
                 if cp >= 0xD800 and cp <= 0xDBFF and str:sub(j + 6, j + 7) == "\\u" then
                     local lo = tonumber(str:sub(j + 8, j + 11), 16)
                     if lo and lo >= 0xDC00 and lo <= 0xDFFF then
@@ -157,7 +155,6 @@ function parseValue(str, i)
     error(("json: unexpected character '%s' at %d"):format(c, i))
 end
 
--- Decodes a JSON string into a Lua value. Raises on malformed input.
 function Json.decode(str)
     assert(type(str) == "string", "json.decode: expected a string")
     local value, i = parseValue(str, 1)

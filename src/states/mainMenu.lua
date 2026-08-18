@@ -1,6 +1,4 @@
--- src/states/mainMenu.lua
--- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
--- themed buttons.
+-- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of themed buttons.
 
 local StateManager  = require "core.stateManager"
 local Assets        = require "core.assets"
@@ -17,29 +15,22 @@ local Globals       = require "globals"
 
 local Stats         = require "services.stats"
 
--- Layout is expressed as fractions of the window so it survives resizing and
--- runs at any resolution, instead of hardcoded pixel offsets. The title's ratio
--- lives in gameTitle.lua, since the loading screen animates to it.
+-- fractions of window size, so layout survives resizing at any resolution;
+-- the title's ratio lives in gameTitle.lua since loading animates to it
 local MENU_Y_RATIO = 0.44
 
--- Repo that the clickable GitHub mark opens.
 local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
 local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
--- Side length of the GitHub mark in the bottom-left corner, and the margin
--- around the bottom-corner furniture. Design-space px (see Theme.px).
 local GITHUB_ICON_SIZE = 26
 local DISCORD_ICON_SIZE = 26
 local CORNER_PAD = 12
 
 local MainMenu = {}
 
--- Rebuilt on enter/resize so its wrap width matches the current window and the
--- text stays horizontally centered. Shared with the loading screen, which eases
--- its own copy into this exact pose on the way here.
+-- rebuilt on enter/resize so wrap width matches the window; shared with the
+-- loading screen, which eases its own copy into this exact pose on the way here
 local buildTitle = GameTitle.build
 
--- A small dim standalone label, positioned bottom-right in draw (no position
--- baked in here so it can track window resizes).
 local function buildVersionLabel()
     return TextFactory:new{
         text = "v" .. Globals.game.version,
@@ -59,8 +50,6 @@ local function grouped(n)
     return text
 end
 
--- A small dim standalone label for the bottom-right stack. Shared by the two
--- world figures so they get identical treatment.
 local function buildCornerLabel(text)
     return TextFactory:new{
         text = text,
@@ -111,15 +100,12 @@ function MainMenu:enter()
         return Particles.Nebula.new{}:bake()
     end)
 
-    -- The menu itself is stateless between visits, so build it just once.
-    if not self.menu then
+    if not self.menu then -- stateless between visits, so build it just once
         self.menu = Menu.new({
-            -- Options button
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
             end },
-            -- Quit button
             { label = function() return I18n.t("menu.quit") end, danger = true,
               onSelect = function()
                 love.event.quit()
@@ -134,7 +120,6 @@ function MainMenu:enter()
     self:layout()
 end
 
--- Computes every rect this screen draws.
 function MainMenu:layout()
     local w, h = love.graphics.getDimensions()
     local pad = UI.Theme.px(CORNER_PAD)
@@ -183,7 +168,6 @@ function MainMenu:update(dt)
     if moved then self:layout() end
 end
 
--- Widgets resolve their fonts per draw.
 function MainMenu:resize(w, h, rescaled)
     self.title = buildTitle()
     if rescaled then
@@ -198,13 +182,11 @@ function MainMenu:keypressed(key)
     self.menu:keypressed(key)
 end
 
--- Hit test for the clickable GitHub mark.
 function MainMenu:githubContains(x, y)
     local b = self.githubBounds
     return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
 end
 
--- Hit test for the clickable Discord mark.
 function MainMenu:discordContains(x, y)
     local b = self.discordBound
     return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
@@ -214,13 +196,11 @@ function MainMenu:mousemoved(x, y)
     self.menu:mousemoved(x, y)
     self.githubHover = self:githubContains(x, y)
     self.discordHover = self:discordContains(x, y)
-    -- The cursor itself is requested from draw.
     self.mouseX, self.mouseY = x, y
 end
 
 function MainMenu:mousepressed(x, y, button)
-    -- UI wins the click; only clicks on empty sky reach the starfield.
-    if self.menu:mousepressed(x, y, button) then return end
+    if self.menu:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
     if button == 1 and self:githubContains(x, y) then
         self.githubPressed = true
         UI.Sfx.press()
@@ -243,8 +223,7 @@ end
 
 function MainMenu:mousereleased(x, y, button)
     self.menu:mousereleased(x, y, button)
-    -- Open the repo only on a full press+release on the mark, so a click that
-    -- starts elsewhere or drags off doesn't fire it.
+    -- only fires on a full press+release on the mark, not a click that drags off
     if button == 1 and self.githubPressed then
         self.githubPressed = false
         if self:githubContains(x, y) then
@@ -259,7 +238,6 @@ function MainMenu:mousereleased(x, y, button)
     end
 end
 
--- Draw only. Every rect here was computed by MainMenu:layout().
 function MainMenu:draw()
     self.nebula:draw()
 
@@ -280,7 +258,7 @@ function MainMenu:draw()
     GithubMark.draw(mark.x, mark.y, mark.w,
         self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
         self.githubHover and 1 or 0.45)
-    
+
 
     local discordMark = self.discordBound
     DiscordMark.draw(discordMark.x, discordMark.y, discordMark.w,
@@ -293,8 +271,7 @@ function MainMenu:draw()
 
     UI.Label.hint(I18n.t("menu.hint"), true)
 
-    -- self.githubHover never carries danger — the mark is a plain link, not a
-    -- destructive action — so the menu's own flag is what decides the color.
+    -- githubHover never carries danger (it's a plain link), so the menu's own flag decides the color
     local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
     UI.Cursor.setHover(self.mouseX ~= nil and (self.githubHover or overMenu), dangerous)
 end
