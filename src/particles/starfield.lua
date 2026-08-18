@@ -474,6 +474,16 @@ local function drawStar(s, dyingThreshold)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- A normal pop's sound, picked fresh each time so the same click doesn't
+-- always ring out identically. Golden keeps its own single sound -- it's
+-- meant to stand apart as the rare one, not blend into the variety.
+local POP_SOUNDS = { "starExplosion", "starExplosion2", "starExplosion3" }
+
+local function popSound(golden)
+    if golden then return "goldenStarExplosion" end
+    return POP_SOUNDS[Math.randInt(1, #POP_SOUNDS)]
+end
+
 -- Returns info about the star clicked.
 function Starfield:clickAt(x, y)
     local radius = self.clickRadius
@@ -483,8 +493,7 @@ function Starfield:clickAt(x, y)
         local dx, dy = s.x - x, s.y - y
         if not s.popped and dx * dx + dy * dy <= radius * radius then
             -- Faster stars throw a slightly bigger blast.
-            local pop = s.golden and "goldenStarExplosion" or "starExplosion"
-            Audio.play("sfx", Audios.clone(pop))
+            Audio.play("sfx", Audios.clone(popSound(s.golden)))
             local speed = Math.length(s.vx, s.vy)
             -- Keep color consistent.
             local debris = s.golden and s.color or Theme.fixedColors.starPop

@@ -53,6 +53,10 @@ function love.update(dt)
     Presence.update(dt)
     Stats.update(dt)
     UI.Cursor.update(dt)
+    -- Global, not tied to whichever screen is active, so a crossfade due
+    -- while the player is sitting on Options still happens on schedule
+    -- instead of the menu coming back silent (see ui/core/music.lua).
+    UI.Music.update(dt)
 end
 
 function love.quit()

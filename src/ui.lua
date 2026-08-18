@@ -12,6 +12,7 @@ return {
     Theme       = require "ui.core.theme",
     Cursor      = require "ui.core.cursor",
     Sfx         = require "ui.core.sfx",
+    Music       = require "ui.core.music",
     Glyph       = require "ui.icons.glyph",
     Widget      = require "ui.widgets.widget",
     FocusGroup  = require "ui.widgets.focusGroup",

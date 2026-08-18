@@ -13,8 +13,6 @@ local Particles     = require "particles"
 local DiscordMark   = require "ui.icons.discordMark"
 local GithubMark    = require "ui.icons.githubMark"
 local GameTitle     = require "ui.text.gameTitle"
-local Audio         = require "core.audio"
-local Audios        = require "utils.audios"
 local Globals       = require "globals"
 
 local Stats         = require "services.stats"
@@ -90,14 +88,8 @@ local function inheritSky(existing, name, build)
     return layer
 end
 
-local function menuMusic()
-    local source = Audios.get("mainMenuBG")
-    if not source or source:isPlaying() then return end
-    Audio.play("music", source, { loop = true })
-end
-
 function MainMenu:enter()
-    menuMusic()
+    UI.Music.start()
     self.title = buildTitle()
     self.version = buildVersionLabel()
     self.onlineCount = Stats.online
