@@ -4,9 +4,7 @@
     "code": "pt"
   },
   "menu": {
-    "play": "Jogar",
     "options": "Opções",
-    "achievements": "Conquistas",
     "quit": "Sair",
     "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
     "onlinePlayers": "{n} jogando agora",
@@ -48,7 +46,8 @@
       "topaz": "Topázio",
       "lavender": "Lavenda",
       "slate": "Ardósia",
-      "ruby": "Rubi"
+      "ruby": "Rubi",
+      "diamond": "Diamante"
     },
     "hint": {
       "general": "Setas: ajustar    Enter ou Clique: alterar    Esc: voltar",
@@ -72,11 +71,6 @@
   },
   "dialog": {
     "cancel": "Cancelar",
-    "quit": {
-      "title": "Sair para o menu?",
-      "message": "A partida atual será perdida.",
-      "confirm": "Abandonar"
-    },
     "revert": {
       "title": "Manter estas configurações?",
       "message": "Revertendo em {n}s se você não confirmar.",
@@ -88,36 +82,6 @@
       "message": "Você ainda não aplicou suas alterações gráficas.",
       "apply": "Aplicar",
       "discard": "Descartar"
-    }
-  },
-  "pause": {
-    "title": "PAUSADO",
-    "resume": "Retomar",
-    "options": "Opções",
-    "quit": "Sair para o Menu",
-    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar    Esc: retomar"
-  },
-  "achievements": {
-    "title": "CONQUISTAS",
-    "back": "Voltar",
-    "progress": "{done} de {total} conquistadas",
-    "categoryProgress": "{name} — {done} de {total}",
-    "reward": "RECOMPENSA",
-    "hiddenTitle": "Oculta",
-    "hiddenDesc": "Esta você terá que descobrir sozinho.",
-    "hiddenReward": "Desconhecida",
-    "hint": "Setas ou Mouse: explorar    Arraste ou role: mover    Esc: voltar",
-    "status": {
-      "earned": "Conquistada",
-      "available": "Disponível agora",
-      "locked": "Bloqueada"
-    },
-    "category": {
-      "foundations": "Alicerces",
-      "arsenal": "Arsenal",
-      "economy": "Economia",
-      "conquest": "Conquista",
-      "secrets": "Segredos"
     }
   },
   "loading": {

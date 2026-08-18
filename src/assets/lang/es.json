@@ -4,9 +4,7 @@
     "code": "es"
   },
   "menu": {
-    "play": "Jugar",
     "options": "Opciones",
-    "achievements": "Logros",
     "quit": "Salir",
     "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar",
     "onlinePlayers": "{n} jugando ahora",
@@ -48,7 +46,8 @@
       "topaz": "Topacio",
       "lavender": "Lavendera",
       "slate": "Pizarra",
-      "ruby": "Rubí"
+      "ruby": "Rubí",
+      "diamond": "Diamante"
     },
     "hint": {
       "general": "Flechas: ajustar    Enter o Clic: cambiar    Esc: volver",
@@ -72,11 +71,6 @@
   },
   "dialog": {
     "cancel": "Cancelar",
-    "quit": {
-      "title": "¿Salir al menú?",
-      "message": "Se perderá la partida actual.",
-      "confirm": "Abandonar"
-    },
     "revert": {
       "title": "¿Mantener esta configuración?",
       "message": "Se revertirá en {n}s si no confirmas.",
@@ -88,36 +82,6 @@
       "message": "Todavía no has aplicado tus cambios gráficos.",
       "apply": "Aplicar",
       "discard": "Descartar"
-    }
-  },
-  "pause": {
-    "title": "EN PAUSA",
-    "resume": "Reanudar",
-    "options": "Opciones",
-    "quit": "Salir al Menú",
-    "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar    Esc: reanudar"
-  },
-  "achievements": {
-    "title": "LOGROS",
-    "back": "Volver",
-    "progress": "{done} de {total} conseguidos",
-    "categoryProgress": "{name} — {done} de {total}",
-    "reward": "RECOMPENSA",
-    "hiddenTitle": "Oculto",
-    "hiddenDesc": "Este tendrás que descubrirlo por tu cuenta.",
-    "hiddenReward": "Desconocida",
-    "hint": "Flechas o Ratón: explorar    Arrastra o desplaza: mover    Esc: volver",
-    "status": {
-      "earned": "Conseguido",
-      "available": "Disponible ya",
-      "locked": "Bloqueado"
-    },
-    "category": {
-      "foundations": "Cimientos",
-      "arsenal": "Arsenal",
-      "economy": "Economía",
-      "conquest": "Conquista",
-      "secrets": "Secretos"
     }
   },
   "loading": {

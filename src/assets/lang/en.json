@@ -4,9 +4,7 @@
     "code": "en"
   },
   "menu": {
-    "play": "Play",
     "options": "Options",
-    "achievements": "Achievements",
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select",
     "onlinePlayers": "{n} playing now",
@@ -48,7 +46,8 @@
       "topaz": "Topaz",
       "lavender": "Lavender",
       "slate": "Slate",
-      "ruby": "Ruby"
+      "ruby": "Ruby",
+      "diamond": "Diamond"
     },
     "hint": {
       "general": "Arrows: adjust    Enter or Click: change    Esc: back",
@@ -72,11 +71,6 @@
   },
   "dialog": {
     "cancel": "Cancel",
-    "quit": {
-      "title": "Quit to Menu?",
-      "message": "Your current run will be lost.",
-      "confirm": "Quit Run"
-    },
     "revert": {
       "title": "Keep these settings?",
       "message": "Reverting in {n}s if you don't confirm.",
@@ -88,36 +82,6 @@
       "message": "Your graphics changes haven't been applied yet.",
       "apply": "Apply",
       "discard": "Discard"
-    }
-  },
-  "pause": {
-    "title": "PAUSED",
-    "resume": "Resume",
-    "options": "Options",
-    "quit": "Quit to Menu",
-    "hint": "W/S or Mouse: navigate    Enter or Click: select    Esc: resume"
-  },
-  "achievements": {
-    "title": "ACHIEVEMENTS",
-    "back": "Back",
-    "progress": "{done} of {total} earned",
-    "categoryProgress": "{name} — {done} of {total}",
-    "reward": "REWARD",
-    "hiddenTitle": "Hidden",
-    "hiddenDesc": "This one you'll have to find on your own.",
-    "hiddenReward": "Unknown",
-    "hint": "Arrows or Mouse: browse    Drag or scroll: pan    Esc: back",
-    "status": {
-      "earned": "Earned",
-      "available": "Available now",
-      "locked": "Locked"
-    },
-    "category": {
-      "foundations": "Foundations",
-      "arsenal": "Arsenal",
-      "economy": "Economy",
-      "conquest": "Conquest",
-      "secrets": "Secrets"
     }
   },
   "loading": {
