@@ -1,10 +1,14 @@
 -- The game's cursor, everywhere: a small dot, white at rest, that eases to
 -- the theme's accent color over something interactive, or danger red over
--- something destructive (Quit, Discard). Replaces the OS arrow app-wide.
+-- something destructive (Quit, Discard). Replaces the OS arrow app-wide --
+-- unless the player has turned it off in Options (options.customCursor),
+-- in which case the OS pointer shows instead and this draws nothing.
 --
---   UI.Cursor.init()          -- once, at boot (main.lua)
---   UI.Cursor.update(dt)      -- once a frame, before draw
---   UI.Cursor.draw()          -- once a frame, last -- always on top
+--   UI.Cursor.init()             -- once, at boot (main.lua)
+--   UI.Cursor.setEnabled(bool)   -- once at boot with the saved setting, and
+--                                   again whenever the Options toggle changes
+--   UI.Cursor.update(dt)         -- once a frame, before draw
+--   UI.Cursor.draw()             -- once a frame, last -- always on top
 --
 -- A screen reports hover state via FocusGroup:hovering's second return
 -- (Menu/Dialog forward to it), whether the hovered widget is `danger = true`:
@@ -31,9 +35,17 @@ local WHITE = Globals.cursor.color
 local hovering = false      -- the latest setHover request
 local danger = false        -- true when the hovered thing is destructive
 local current = { 1, 1, 1 } -- eased toward this frame's target color
+local enabled = true        -- whether the custom cursor draws at all
 
 function Cursor.init()
-    love.mouse.setVisible(false)
+    Cursor.setEnabled(true) -- hidden by default until the saved setting overrides it
+end
+
+-- the OS pointer and this drawn one are never both visible: turning this
+-- off has to show the system cursor again, not leave the player with none
+function Cursor.setEnabled(isEnabled)
+    enabled = isEnabled
+    love.mouse.setVisible(not enabled)
 end
 
 function Cursor.setHover(isHovering, isDanger)
@@ -55,6 +67,8 @@ function Cursor.update(dt)
 end
 
 function Cursor.draw()
+    if not enabled then return end
+
     local x, y = love.mouse.getPosition()
     local radius = Theme.px(RADIUS)
 

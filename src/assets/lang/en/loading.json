@@ -1,0 +1,12 @@
+{
+  "loading": {
+    "title": "Loading",
+    "failed": "{n} asset(s) failed to load — check the log",
+    "task": {
+      "interface": "Preparing interface",
+      "settings": "Loading settings",
+      "world": "Preparing the night sky",
+      "audio": "Loading audio"
+    }
+  }
+}

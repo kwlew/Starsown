@@ -1,4 +1,6 @@
--- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of themed buttons.
+-- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
+-- themed buttons. Also the Minecraft-style splash text hanging off the title
+-- (see ui/text/splash.lua).
 
 local StateManager  = require "core.stateManager"
 local Assets        = require "core.assets"
@@ -11,6 +13,7 @@ local Particles     = require "particles"
 local DiscordMark   = require "ui.icons.discordMark"
 local GithubMark    = require "ui.icons.githubMark"
 local GameTitle     = require "ui.text.gameTitle"
+local Splash        = require "ui.text.splash"
 local Globals       = require "globals"
 
 local Stats         = require "services.stats"
@@ -100,8 +103,24 @@ function MainMenu:enter()
         return Particles.Nebula.new{}:bake()
     end)
 
+    -- picked once per session, like the menu below, so it doesn't reroll
+    -- every time the player bounces back from Options
+    self.splash = self.splash or Splash.pick()
+
     if not self.menu then -- stateless between visits, so build it just once
         self.menu = Menu.new({
+            { label = function() return I18n.t("menu.play") end, onSelect = function()
+                UI.Sfx.select()
+                --StateManager.fadeTo("play")
+            end },
+            { label = function() return I18n.t("menu.stats") end, onSelect = function()
+                UI.Sfx.select()
+                --StateManager.fadeTo("stats")
+            end },
+            { label = function() return I18n.t("menu.achievements") end, onSelect = function()
+                UI.Sfx.select()
+                --StateManager.fadeTo("achievements")
+            end },
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
@@ -149,6 +168,7 @@ function MainMenu:update(dt)
     self.stars:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)
+    self.splash:update(dt)
     self.menu:update(dt)
 
     local moved = false
@@ -266,6 +286,7 @@ function MainMenu:draw()
         self.discordHover and 1 or 0.45)
 
     self.title:drawChroma()
+    self.splash:drawNear(self.title, love.graphics.getWidth())
 
     self.menu:draw()
 

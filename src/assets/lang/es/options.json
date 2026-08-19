@@ -1,18 +1,4 @@
 {
-  "language": {
-    "name": "Español",
-    "code": "es"
-  },
-  "menu": {
-    "options": "Opciones",
-    "quit": "Salir",
-    "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar",
-    "onlinePlayers": "{n} jugando ahora",
-    "starsPopped": "{n} estrellas reventadas · {g} doradas"
-  },
-  "format": {
-    "thousands": "."
-  },
   "options": {
     "title": "OPCIONES",
     "back": "Volver",
@@ -22,6 +8,8 @@
     "sfxVolume": "SFX",
     "language": "Idioma",
     "theme": "Tema",
+    "titleFont": "Fuente del Título",
+    "customCursor": "Cursor Personalizado",
     "resolution": "Resolución",
     "msaa": "Suavizado",
     "msaaOff": "Desactivado",
@@ -29,7 +17,8 @@
     "vsync": "VSync",
     "shareStats": "Compartir estadísticas",
     "tab": {
-      "general": "General",
+      "audio": "Audio",
+      "interface": "Interfaz",
       "graphics": "Gráficos"
     },
     "windowMode": {
@@ -49,6 +38,10 @@
       "ruby": "Rubí",
       "diamond": "Diamante"
     },
+    "titleFontName": {
+      "acme": "Acme",
+      "orbitron": "Orbitron"
+    },
     "hint": {
       "general": "Flechas: ajustar    Enter o Clic: cambiar    Esc: volver",
       "graphics": "Los cambios gráficos se aplican al pulsar Aplicar    Esc: volver"
@@ -59,6 +52,8 @@
       "sfxVolume": "Clics del menú y efectos del juego.",
       "language": "Idioma de la interfaz. Se aplica de inmediato.",
       "theme": "Esquema de color de la interfaz y del cielo nocturno. Se aplica de inmediato.",
+      "titleFont": "Fuente usada en el título del juego. Se aplica de inmediato.",
+      "customCursor": "Reemplaza el puntero de tu sistema con el cursor propio del juego. Se aplica de inmediato.",
       "resolution": "Tamaño de la ventana del juego.",
       "resolutionBorderless": "No disponible en Sin bordes: el juego usa la resolución de tu escritorio.",
       "msaa": "Suaviza los bordes dentados. Los valores altos cuestan más rendimiento.",
@@ -67,31 +62,6 @@
       "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando y cuántas estrellas ha reventado todo el mundo. Ningún dato personal.",
       "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
       "back": "Vuelve a la pantalla anterior."
-    }
-  },
-  "dialog": {
-    "cancel": "Cancelar",
-    "revert": {
-      "title": "¿Mantener esta configuración?",
-      "message": "Se revertirá en {n}s si no confirmas.",
-      "keep": "Mantener",
-      "revert": "Revertir"
-    },
-    "unapplied": {
-      "title": "Cambios sin aplicar",
-      "message": "Todavía no has aplicado tus cambios gráficos.",
-      "apply": "Aplicar",
-      "discard": "Descartar"
-    }
-  },
-  "loading": {
-    "title": "Cargando",
-    "failed": "No se pudieron cargar {n} recurso(s) — revisa el registro",
-    "task": {
-      "interface": "Preparando la interfaz",
-      "settings": "Cargando configuración",
-      "world": "Preparando el cielo nocturno",
-      "audio": "Cargando audio"
     }
   }
 }

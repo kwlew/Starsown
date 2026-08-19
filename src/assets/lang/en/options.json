@@ -1,18 +1,4 @@
 {
-  "language": {
-    "name": "English",
-    "code": "en"
-  },
-  "menu": {
-    "options": "Options",
-    "quit": "Quit",
-    "hint": "W/S or Mouse: navigate    Enter or Click: select",
-    "onlinePlayers": "{n} playing now",
-    "starsPopped": "{n} stars popped · {g} golden"
-  },
-  "format": {
-    "thousands": ","
-  },
   "options": {
     "title": "OPTIONS",
     "back": "Back",
@@ -22,6 +8,8 @@
     "sfxVolume": "SFX",
     "language": "Language",
     "theme": "Theme",
+    "titleFont": "Title Font",
+    "customCursor": "Custom Cursor",
     "resolution": "Resolution",
     "msaa": "Antialiasing",
     "msaaOff": "Off",
@@ -29,7 +17,8 @@
     "vsync": "VSync",
     "shareStats": "Share Play Stats",
     "tab": {
-      "general": "General",
+      "audio": "Audio",
+      "interface": "Interface",
       "graphics": "Graphics"
     },
     "windowMode": {
@@ -49,6 +38,10 @@
       "ruby": "Ruby",
       "diamond": "Diamond"
     },
+    "titleFontName": {
+      "acme": "Acme",
+      "orbitron": "Orbitron"
+    },
     "hint": {
       "general": "Arrows: adjust    Enter or Click: change    Esc: back",
       "graphics": "Graphics changes take effect when you press Apply    Esc: back"
@@ -59,6 +52,8 @@
       "sfxVolume": "Menu clicks and in-game effects.",
       "language": "Interface language. Applies immediately.",
       "theme": "Color scheme for the interface and the night sky. Applies immediately.",
+      "titleFont": "Font used for the game's title. Applies immediately.",
+      "customCursor": "Replaces your system pointer with the game's own cursor. Applies immediately.",
       "resolution": "Size of the game window.",
       "resolutionBorderless": "Unavailable in Borderless — the game matches your desktop resolution.",
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
@@ -67,31 +62,6 @@
       "shareStats": "Sends an anonymous ping so the menu can show how many people are playing and how many stars everyone has popped. No personal data.",
       "apply": "Applies the graphics changes above. You'll be asked to confirm.",
       "back": "Returns to the previous screen."
-    }
-  },
-  "dialog": {
-    "cancel": "Cancel",
-    "revert": {
-      "title": "Keep these settings?",
-      "message": "Reverting in {n}s if you don't confirm.",
-      "keep": "Keep",
-      "revert": "Revert"
-    },
-    "unapplied": {
-      "title": "Unapplied changes",
-      "message": "Your graphics changes haven't been applied yet.",
-      "apply": "Apply",
-      "discard": "Discard"
-    }
-  },
-  "loading": {
-    "title": "Loading",
-    "failed": "{n} asset(s) failed to load — check the log",
-    "task": {
-      "interface": "Preparing interface",
-      "settings": "Loading settings",
-      "world": "Preparing the night sky",
-      "audio": "Loading audio"
     }
   }
 }

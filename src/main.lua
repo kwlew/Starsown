@@ -4,6 +4,7 @@ local Presence = require "services.presence"
 local Settings = require "core.settings"
 local I18n = require "core.i18n"
 local UI = require "ui"
+local GameTitle = require "ui.text.gameTitle"
 
 local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
@@ -30,6 +31,8 @@ function love.load()
     I18n.load()
     I18n.setLanguage(settings.language)
     UI.Theme.setTheme(settings.theme)
+    GameTitle.setFont(settings.titleFont)
+    UI.Cursor.setEnabled(settings.customCursor)
 
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)

@@ -1,8 +1,10 @@
--- Settings screen with two tabs:
---   General  — volume slider; applies live and persists immediately.
---   Graphics — resolution/display mode/vsync; changes accumulate in a
---              `pending` table and only take effect (and persist) on Apply.
---              Leaving the screen discards pending.
+-- Settings screen with three tabs:
+--   Audio     — volume sliders; apply live and persist immediately.
+--   Interface — language/theme/title font/cursor/stats sharing; apply live
+--               and persist immediately, same as Audio.
+--   Graphics  — resolution/display mode/vsync; changes accumulate in a
+--               `pending` table and only take effect (and persist) on Apply.
+--               Leaving the screen discards pending.
 --
 -- Esc or "Back" returns to whichever state opened this one:
 --   StateManager.fadeTo("options", { returnTo = "pause" })
@@ -19,6 +21,7 @@ local Audio = require "core.audio"
 local Presence = require "services.presence"
 local Stats = require "services.stats"
 local Globals = require "globals"
+local GameTitle = require "ui.text.gameTitle"
 
 local HEADING_Y_RATIO = 0.12
 local PANEL_Y_RATIO   = 0.32 -- preferred start; pulled up if the stack wouldn't fit, see Options:layout
@@ -53,6 +56,10 @@ end
 
 local function themeIndexFor(id)
     return indexWhere(UI.Theme.available(), function(e) return e.id == id end)
+end
+
+local function titleFontIndexFor(id)
+    return indexWhere(GameTitle.available(), function(e) return e.id == id end)
 end
 
 local function resolutionIndexFor(settings)
@@ -308,7 +315,7 @@ function Options:descriptionLines(width)
         end
     end
     -- the resolution row's inert-state line isn't any widget's descKey
-    if self.activeTab == 2 then
+    if self.tabs[self.activeTab].name == "graphics" then
         local _, wrapped = font:getWrap(I18n.t("options.desc.resolutionBorderless"), width)
         most = math.max(most, #wrapped)
     end
@@ -450,7 +457,7 @@ function Options:enter(previousName, opts)
         -- labels are functions so they re-read the active language every
         -- draw -- changing language updates the screen live, no rebuild
 
-        -- General tab: all three sliders apply live and persist immediately.
+        -- Audio tab: all three sliders apply live and persist immediately.
         -- Master scales every channel via love.audio.setVolume; Music/SFX
         -- are independent channels (core/audio.lua).
         self.volumeSlider = self:buildVolumeSlider("volume", love.audio.setVolume, true)
@@ -459,6 +466,8 @@ function Options:enter(previousName, opts)
         self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
             function(v) Audio.setVolume("sfx", v) end, true)
 
+        -- Interface tab: language/theme/title font/cursor/stats sharing,
+        -- all live and persisted immediately, same as Audio.
         self.languageSelector = UI.Selector.new{
             label = function() return I18n.t("options.language") end,
             options = I18n.available(),
@@ -486,6 +495,48 @@ function Options:enter(previousName, opts)
             end,
         }
         self.themeSelector.descKey = 'options.desc.theme'
+
+        -- also live/immediate: a font swap can't strand the player either,
+        -- and only touches the wordmark, so nothing else needs a rebuild
+        self.titleFontSelector = UI.Selector.new{
+            label = function() return I18n.t("options.titleFont") end,
+            options = GameTitle.available(),
+            format = function(entry) return I18n.t("options.titleFontName." .. entry.id) end,
+            onChange = function(entry)
+                UI.Sfx.select()
+                self.settings.titleFont = entry.id
+                GameTitle.setFont(entry.id)
+                persist()
+            end,
+        }
+        self.titleFontSelector.descKey = 'options.desc.titleFont'
+
+        -- live/immediate too; UI.Cursor owns actually swapping the OS
+        -- pointer back in, this just tells it to
+        self.customCursorToggle = UI.Toggle.new{
+            label = function() return I18n.t("options.customCursor") end,
+            value = self.settings.customCursor,
+            onChange = function(value)
+                UI.Sfx.select()
+                self.settings.customCursor = value
+                UI.Cursor.setEnabled(value)
+                persist()
+            end,
+        }
+        self.customCursorToggle.descKey = 'options.desc.customCursor'
+
+        -- a privacy switch that waited for a restart wouldn't really be one
+        self.shareStatsToggle = UI.Toggle.new{
+            label = function() return I18n.t("options.shareStats") end,
+            value = self.settings.shareStats,
+            onChange = function(value)
+                UI.Sfx.select()
+                self.settings.shareStats = value
+                Stats.setEnabled(value)
+                persist()
+            end,
+        }
+        self.shareStatsToggle.descKey = 'options.desc.shareStats'
 
         -- Graphics tab: writes to pending only; Apply commits.
         self.resolutionSelector = UI.Selector.new{
@@ -537,20 +588,6 @@ function Options:enter(previousName, opts)
         }
         self.vsyncToggle.descKey = 'options.desc.vsync'
 
-        -- live and persisted immediately, like Language/Theme: a privacy
-        -- switch that waits for a restart isn't really one
-        self.shareStatsToggle = UI.Toggle.new{
-            label = function() return I18n.t("options.shareStats") end,
-            value = self.settings.shareStats,
-            onChange = function(value)
-                UI.Sfx.select()
-                self.settings.shareStats = value
-                Stats.setEnabled(value)
-                persist()
-            end,
-        }
-        self.shareStatsToggle.descKey = 'options.desc.shareStats'
-
         self.applyButton = UI.Button.new{
             label = function() return I18n.t("options.apply") end,
             onSelect = function()
@@ -571,16 +608,19 @@ function Options:enter(previousName, opts)
         self:buildDialogs()
 
         self.tabs = {
-            { name = "general",  widgets = { self.volumeSlider, self.musicVolumeSlider,
-                                             self.sfxVolumeSlider, self.languageSelector,
-                                             self.themeSelector, self.shareStatsToggle, } },
-            { name = "graphics", widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
-                                             self.vsyncToggle, self.applyButton, } },
+            { name = "audio",     widgets = { self.volumeSlider, self.musicVolumeSlider,
+                                               self.sfxVolumeSlider, } },
+            { name = "interface", widgets = { self.languageSelector, self.themeSelector,
+                                               self.titleFontSelector, self.customCursorToggle,
+                                               self.shareStatsToggle, } },
+            { name = "graphics",  widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
+                                               self.vsyncToggle, self.applyButton, } },
         }
 
         self.tabBar = UI.TabBar.new{
             tabs = {
-                function() return I18n.t("options.tab.general") end,
+                function() return I18n.t("options.tab.audio") end,
+                function() return I18n.t("options.tab.interface") end,
                 function() return I18n.t("options.tab.graphics") end,
             },
             onChange = function(_, index)
@@ -601,6 +641,8 @@ function Options:enter(previousName, opts)
     self.sfxVolumeSlider.value = self.settings.sfxVolume
     self.languageSelector.index = languageIndexFor(self.settings.language)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
+    self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
+    self.customCursorToggle.value = self.settings.customCursor
     self.shareStatsToggle.value = self.settings.shareStats
     self:resetPending()
     self:selectTab(self.tabBar.index)
@@ -674,7 +716,8 @@ function Options:draw()
     -- description and hint share one line at the bottom; the tallest stack
     -- leaves room for only one, and description (about the focused row) wins
     if desc.y + desc.h <= UI.Label.hintY() then
-        UI.Label.hint(I18n.t(self.activeTab == 2 and "options.hint.graphics" or "options.hint.general"))
+        local onGraphics = self.tabs[self.activeTab].name == "graphics"
+        UI.Label.hint(I18n.t(onGraphics and "options.hint.graphics" or "options.hint.general"))
     end
 
     local dialog = self:activeDialog()

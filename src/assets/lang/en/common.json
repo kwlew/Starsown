@@ -1,0 +1,20 @@
+{
+  "format": {
+    "thousands": ","
+  },
+  "dialog": {
+    "cancel": "Cancel",
+    "revert": {
+      "title": "Keep these settings?",
+      "message": "Reverting in {n}s if you don't confirm.",
+      "keep": "Keep",
+      "revert": "Revert"
+    },
+    "unapplied": {
+      "title": "Unapplied changes",
+      "message": "Your graphics changes haven't been applied yet.",
+      "apply": "Apply",
+      "discard": "Discard"
+    }
+  }
+}
