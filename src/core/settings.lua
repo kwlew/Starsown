@@ -15,6 +15,8 @@ Settings.defaults = {
     res_y = 720,
     language = "en",   -- validated against available locale files by I18n
     theme = "default", -- validated against available themes by UI.Theme
+    titleFont = "acme", -- validated against available fonts by GameTitle
+    customCursor = true, -- draws the game's own cursor; off shows the OS pointer instead
     shareStats = true,
 }
 
@@ -150,7 +152,10 @@ function Settings.applyGraphics(settings)
     -- LÖVE build, so it's triggered by hand with the size we actually got
     if love.resize then love.resize(w, h) end
 
-    love.mouse.setVisible(false)
+    -- setMode recreates the window, which on some Windows drivers resets
+    -- cursor visibility to shown -- reassert whichever one the player
+    -- actually wants rather than hardcoding hidden
+    love.mouse.setVisible(not settings.customCursor)
 end
 
 function Settings.apply(settings)

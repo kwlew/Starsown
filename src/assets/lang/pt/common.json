@@ -1,0 +1,20 @@
+{
+  "format": {
+    "thousands": "."
+  },
+  "dialog": {
+    "cancel": "Cancelar",
+    "revert": {
+      "title": "Manter estas configurações?",
+      "message": "Revertendo em {n}s se você não confirmar.",
+      "keep": "Manter",
+      "revert": "Reverter"
+    },
+    "unapplied": {
+      "title": "Alterações não aplicadas",
+      "message": "Você ainda não aplicou suas alterações gráficas.",
+      "apply": "Aplicar",
+      "discard": "Descartar"
+    }
+  }
+}

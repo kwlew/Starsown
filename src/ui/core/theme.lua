@@ -317,13 +317,13 @@ local baseMetrics = {
     padding    = 14,
     rowHeight  = 48,
     rowGap     = 14,
-    glowSpread = 4, -- px each glow layer grows beyond the last
+    glowSpread = 3, -- px each glow layer grows beyond the last
 }
 
 -- unitless: counts, alphas, rates -- must NOT scale with resolution (a glow
 -- getting more opaque on a bigger monitor is a bug)
 local constantMetrics = {
-    glowLayers = 4,
+    glowLayers = 3,
     glowAlpha  = 0.16,
     focusSpeed = 10, -- how fast widgets ease toward their focused look
 }
@@ -331,8 +331,8 @@ local constantMetrics = {
 -- point sizes at scale 1, plus the weight each role is cut from (weight is
 -- what separates a heading from the body text under it, not size alone)
 local fontRoles = {
-    title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 72 }, -- game title
-    title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 55  }, -- game title, alternate
+    title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 80 }, -- game title
+    title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 52  }, -- game title, alternate
     heading = { file = "Oxanium-Bold.ttf",      size = 40 },
     button  = { file = "Oxanium-SemiBold.ttf",  size = 26 },
     body    = { file = "Oxanium-Medium.ttf",    size = 26 },

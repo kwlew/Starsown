@@ -1,0 +1,31 @@
+{
+  "menu": {
+    "play": "Jugar",
+    "stats": "Estadísticas",
+    "achievements": "Logros",
+    "options": "Opciones",
+    "quit": "Salir",
+    "hint": "W/S o Ratón: navegar    Enter o Clic: seleccionar",
+    "onlinePlayers": "{n} jugando ahora",
+    "starsPopped": "{n} estrellas reventadas · {g} doradas",
+    "splashes": [
+      "¡Prueba a hacer clic en las estrellas!",
+      "¡Ahora con más inactividad!",
+      "¡Juega ahora!",
+      "¡Todavía en fase de diseño!",
+      "¡Hecho con LÖVE (el motor)!",
+      "¡Cuidado con las estrellas doradas!",
+      "¡Las estrellas arcoíris son más raras de lo que crees!",
+      "¡Nueve temas, cero torres (por ahora)!",
+      "¡La nebulosa nunca duerme!",
+      "¡100% libre de microtransacciones!",
+      "¡Pop va la estrella!",
+      "¡Ya disponible en tres idiomas!",
+      "¡Tu imperio inactivo te espera!",
+      "¡Discord sabe lo que estás haciendo!",
+      "¡Con la potencia de LuaJIT!",
+      "¡Pantallas de carga sorprendentemente bonitas!",
+      "¡Ninguna torre fue dañada en esta versión!"
+    ]
+  }
+}

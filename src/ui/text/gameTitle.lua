@@ -14,15 +14,49 @@ GameTitle.TEXT = Globals.game.name
 
 GameTitle.MENU_Y_RATIO = 0.16 -- vertical position on the menu, as a fraction of window height
 
+-- the wordmark's two font choices, each its own Theme role (see
+-- ui/core/theme.lua's fontRoles) so it can carry its own size/weight; picked
+-- from Options (options.titleFont), "acme" is the original look
+GameTitle.FONTS = {
+    { id = "acme",     role = "title2" },
+    { id = "orbitron", role = "title" },
+}
+GameTitle.current = "acme"
+
+function GameTitle.available()
+    return GameTitle.FONTS
+end
+
+-- unknown ids are ignored (GameTitle.current stays whatever it was), same
+-- fall-back-to-current shape as an unrecognized saved setting elsewhere
+function GameTitle.setFont(id)
+    for _, entry in ipairs(GameTitle.FONTS) do
+        if entry.id == id then
+            GameTitle.current = id
+            return true
+        end
+    end
+    return false
+end
+
+local function currentFontRole()
+    for _, entry in ipairs(GameTitle.FONTS) do
+        if entry.id == GameTitle.current then return entry.role end
+    end
+    return "title2"
+end
+
 -- rebuild on resize: wrap width is baked in at construction. A theme change
 -- needs no rebuild -- the gradient holds the theme's live color tables and
--- the shader reads them fresh every draw.
+-- the shader reads them fresh every draw. A font change does need a rebuild
+-- (see GameTitle.setFont), which happens naturally next time a screen calls
+-- this from its own enter()/resize().
 function GameTitle.build()
     return TextFactory:new{
         text = GameTitle.TEXT,
         y = love.graphics.getHeight() * GameTitle.MENU_Y_RATIO,
         align = "center",
-        font = UI.Theme.font("title2"),
+        font = UI.Theme.font(currentFontRole()),
         gradient = UI.Theme.titleGradient(),
     }
 end

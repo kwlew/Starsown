@@ -1,0 +1,12 @@
+{
+  "loading": {
+    "title": "Carregando",
+    "failed": "Falha ao carregar {n} recurso(s) — verifique o log",
+    "task": {
+      "interface": "Preparando a interface",
+      "settings": "Carregando configurações",
+      "world": "Preparando o céu noturno",
+      "audio": "Carregando áudio"
+    }
+  }
+}

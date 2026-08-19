@@ -1,0 +1,31 @@
+{
+  "menu": {
+    "play": "Jogar",
+    "stats": "Estatísticas",
+    "achievements": "Conquistas",
+    "options": "Opções",
+    "quit": "Sair",
+    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
+    "onlinePlayers": "{n} jogando agora",
+    "starsPopped": "{n} estrelas estouradas · {g} douradas",
+    "splashes": [
+      "Tente clicar nas estrelas!",
+      "Agora com mais ociosidade!",
+      "Jogue agora!",
+      "Ainda em fase de design!",
+      "Feito com LÖVE (o motor)!",
+      "Cuidado com as estrelas douradas!",
+      "Estrelas arco-íris são mais raras do que você imagina!",
+      "Nove temas, zero torres (por enquanto)!",
+      "A nebulosa nunca dorme!",
+      "100% livre de microtransações!",
+      "Pop vai a estrela!",
+      "Já disponível em três idiomas!",
+      "Seu império ocioso espera por você!",
+      "O Discord sabe o que você está fazendo!",
+      "Movido a LuaJIT!",
+      "Telas de carregamento surpreendentemente bonitas!",
+      "Nenhuma torre foi ferida nesta versão!"
+    ]
+  }
+}

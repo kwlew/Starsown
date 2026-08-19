@@ -441,7 +441,7 @@ function Starfield:clickAt(x, y)
         local s = self.stars[i]
         local dx, dy = s.x - x, s.y - y
         if not s.popped and dx * dx + dy * dy <= radius * radius then
-            Audio.play("sfx", Audios.clone(popSound(s.golden)))
+            Audio.play("sfx", Audios.clone(popSound(s.golden)), { volume = 0.50 })
             local speed = Math.length(s.vx, s.vy)
             local debris = s.golden and s.color or Theme.fixedColors.starPop
             self.burst:spawn(s.x, s.y, debris, -- faster stars throw a bigger blast
