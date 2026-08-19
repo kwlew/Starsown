@@ -1,4 +1,6 @@
 /docs
-/.claude
+.claude
 .env
 dist/
+/LOVE
+/.tools

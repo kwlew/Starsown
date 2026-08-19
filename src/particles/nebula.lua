@@ -6,6 +6,7 @@
 
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
+local Motion = require "ui.core.motion"
 
 -- authoring space + fraction it's baked at (gas is low-frequency detail, so
 -- baking at half size is visually free and a lot cheaper)
@@ -243,14 +244,19 @@ function Nebula:draw()
     local fx, fy = w / DESIGN_W, h / DESIGN_H
     local sx, sy = fx / CANVAS_SCALE, fy / CANVAS_SCALE
 
+    -- reduced motion: freeze drift/breathing at their resting position
+    -- (sin term's own average) rather than cycling through it
+    local driftAmount = Motion.reduced and 0 or 1
+    local breatheAmount = Motion.reduced and 0 or self.breatheAmount
+
     love.graphics.setBlendMode("alpha", "premultiplied")
     for _, layer in ipairs(self.layers) do
         -- amplitude capped at half the slack so the canvas still covers the design space through the whole drift
-        local dx = -SLACK_X / 2 + math.sin(self.time * layer.driftRateX + layer.phaseX) * SLACK_X / 2 * layer.parallax
-        local dy = -SLACK_Y / 2 + math.sin(self.time * layer.driftRateY + layer.phaseY) * SLACK_Y / 2 * layer.parallax
+        local dx = -SLACK_X / 2 + math.sin(self.time * layer.driftRateX + layer.phaseX) * SLACK_X / 2 * layer.parallax * driftAmount
+        local dy = -SLACK_Y / 2 + math.sin(self.time * layer.driftRateY + layer.phaseY) * SLACK_Y / 2 * layer.parallax * driftAmount
 
         local a = self.alpha * layer.alpha
-            * (1 + self.breatheAmount * math.sin(self.time * self.breatheRate + layer.breathePhase))
+            * (1 + breatheAmount * math.sin(self.time * self.breatheRate + layer.breathePhase))
         a = Math.clamp01(a)
         love.graphics.setColor(a, a, a, a) -- premultiplied: alpha has to go into all 4 channels
         love.graphics.draw(layer.canvas, fx * dx, fy * dy, 0, sx, sy)

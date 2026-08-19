@@ -1,7 +1,7 @@
 -- Settings screen with three tabs:
 --   Audio     — volume sliders; apply live and persist immediately.
---   Interface — language/theme/title font/cursor/stats sharing; apply live
---               and persist immediately, same as Audio.
+--   Interface — language/theme/title font/cursor/motion/stats sharing;
+--               apply live and persist immediately, same as Audio.
 --   Graphics  — resolution/display mode/vsync; changes accumulate in a
 --               `pending` table and only take effect (and persist) on Apply.
 --               Leaving the screen discards pending.
@@ -466,8 +466,8 @@ function Options:enter(previousName, opts)
         self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
             function(v) Audio.setVolume("sfx", v) end, true)
 
-        -- Interface tab: language/theme/title font/cursor/stats sharing,
-        -- all live and persisted immediately, same as Audio.
+        -- Interface tab: language/theme/title font/cursor/motion/stats
+        -- sharing, all live and persisted immediately, same as Audio.
         self.languageSelector = UI.Selector.new{
             label = function() return I18n.t("options.language") end,
             options = I18n.available(),
@@ -524,6 +524,20 @@ function Options:enter(previousName, opts)
             end,
         }
         self.customCursorToggle.descKey = 'options.desc.customCursor'
+
+        -- live/immediate; UI.Motion is the one thing every ambient-animation
+        -- module reads to dampen itself, see ui/core/motion.lua
+        self.reducedMotionToggle = UI.Toggle.new{
+            label = function() return I18n.t("options.reducedMotion") end,
+            value = self.settings.reducedMotion,
+            onChange = function(value)
+                UI.Sfx.select()
+                self.settings.reducedMotion = value
+                UI.Motion.setReduced(value)
+                persist()
+            end,
+        }
+        self.reducedMotionToggle.descKey = 'options.desc.reducedMotion'
 
         -- a privacy switch that waited for a restart wouldn't really be one
         self.shareStatsToggle = UI.Toggle.new{
@@ -612,7 +626,7 @@ function Options:enter(previousName, opts)
                                                self.sfxVolumeSlider, } },
             { name = "interface", widgets = { self.languageSelector, self.themeSelector,
                                                self.titleFontSelector, self.customCursorToggle,
-                                               self.shareStatsToggle, } },
+                                               self.reducedMotionToggle, self.shareStatsToggle, } },
             { name = "graphics",  widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
                                                self.vsyncToggle, self.applyButton, } },
         }
@@ -643,6 +657,7 @@ function Options:enter(previousName, opts)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
     self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
     self.customCursorToggle.value = self.settings.customCursor
+    self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats
     self:resetPending()
     self:selectTab(self.tabBar.index)

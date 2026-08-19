@@ -17,6 +17,7 @@ Settings.defaults = {
     theme = "default", -- validated against available themes by UI.Theme
     titleFont = "acme", -- validated against available fonts by GameTitle
     customCursor = true, -- draws the game's own cursor; off shows the OS pointer instead
+    reducedMotion = false, -- dampens ambient animation (starfield, nebula, twinkle, splash, title)
     shareStats = true,
 }
 

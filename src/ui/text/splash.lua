@@ -10,6 +10,7 @@
 local Theme = require "ui.core.theme"
 local I18n = require "core.i18n"
 local Math = require "utils.math"
+local Motion = require "ui.core.motion"
 
 local Splash = {}
 Splash.__index = Splash
@@ -41,7 +42,8 @@ function Splash:drawNear(title, windowW)
     if self.text == "" then return end
 
     local font = Theme.font(FONT_ROLE)
-    local scale = 1 + math.sin(self.time * PULSE_SPEED) * PULSE_AMOUNT
+    local pulse = Motion.reduced and 0 or PULSE_AMOUNT -- reduced motion: no breathing bounce
+    local scale = 1 + math.sin(self.time * PULSE_SPEED) * pulse
     local ox, oy = font:getWidth(self.text) / 2, font:getHeight() / 2
 
     local titleW, titleH = title.textObject:getWidth(), title.textObject:getHeight()

@@ -33,6 +33,7 @@ function love.load()
     UI.Theme.setTheme(settings.theme)
     GameTitle.setFont(settings.titleFont)
     UI.Cursor.setEnabled(settings.customCursor)
+    UI.Motion.setReduced(settings.reducedMotion)
 
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)

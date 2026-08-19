@@ -7,6 +7,12 @@ local Math = require "utils.math"
 local Burst = require "particles.burst"
 local Audio = require "core.audio"
 local Audios = require "utils.audios"
+local Motion = require "ui.core.motion"
+
+-- reduced motion: shooting stars stay clickable, just calmer -- fewer of
+-- them, and slower, rather than turning the feature off outright
+local REDUCED_SPAWN_SCALE = 2.5
+local REDUCED_SPEED_SCALE = 0.5
 
 local GOLD       = { 1, 0.82, 0.35 }
 local GOLD_FLARE = { 1, 0.60, 0.12 }
@@ -111,6 +117,7 @@ function Starfield:spawnStar()
     local y = Math.randRange(-0.05 * h, 0.03 * h)
     local angle = math.rad(Math.randRange(42, 48))
     local speed = Math.randRange(speedMin, speedMax)
+    if Motion.reduced then speed = speed * REDUCED_SPEED_SCALE end
     self.stars[#self.stars + 1] = {
         x = x, y = y,
         spawnX = x, spawnY = y,
@@ -178,6 +185,7 @@ function Starfield:update(dt)
     self.timer = self.timer - dt
     if self.timer <= 0 then
         self.timer = Math.randRange(self.spawnMin, self.spawnMax)
+        if Motion.reduced then self.timer = self.timer * REDUCED_SPAWN_SCALE end
         self:spawnStar()
     end
 

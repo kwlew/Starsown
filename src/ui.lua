@@ -4,6 +4,7 @@
 return {
     Theme       = require "ui.core.theme",
     Cursor      = require "ui.core.cursor",
+    Motion      = require "ui.core.motion",
     Sfx         = require "ui.core.sfx",
     Music       = require "ui.core.music",
     Glyph       = require "ui.icons.glyph",

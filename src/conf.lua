@@ -1,10 +1,10 @@
 function love.conf(t)
     t.identity = "TD-Idle"
     t.version = "11.5"
-    t.console = true
+    t.console = false
 
     t.window.title = "TD Idle"
-    t.window.icon = "assets/icon.png"
+    t.window.icon = "assets/TD-Idle.png"
     t.window.width = 1280
     t.window.height = 720
     t.window.resizable = false

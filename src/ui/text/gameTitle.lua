@@ -48,9 +48,9 @@ end
 
 -- rebuild on resize: wrap width is baked in at construction. A theme change
 -- needs no rebuild -- the gradient holds the theme's live color tables and
--- the shader reads them fresh every draw. A font change does need a rebuild
--- (see GameTitle.setFont), which happens naturally next time a screen calls
--- this from its own enter()/resize().
+-- the shader reads them fresh every draw. A font or reduced-motion change
+-- does need a rebuild (see GameTitle.setFont), which happens naturally next
+-- time a screen calls this from its own enter()/resize().
 function GameTitle.build()
     return TextFactory:new{
         text = GameTitle.TEXT,
@@ -58,6 +58,7 @@ function GameTitle.build()
         align = "center",
         font = UI.Theme.font(currentFontRole()),
         gradient = UI.Theme.titleGradient(),
+        speed = UI.Motion.reduced and 0 or 1, -- reduced motion: color holds still instead of cycling
     }
 end
 
