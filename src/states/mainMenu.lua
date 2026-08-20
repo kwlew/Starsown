@@ -66,11 +66,12 @@ local function buildOnlinePlayersLabel(count)
     return buildCornerLabel(I18n.t("menu.onlinePlayers", { n = grouped(count) }))
 end
 
-local function buildStarsPoppedLabel(stars, golden)
+local function buildStarsPoppedLabel(stars, golden, rainbow)
     if not stars then return nil end
     return buildCornerLabel(I18n.t("menu.starsPopped", {
         n = grouped(stars),
         g = grouped(golden or 0),
+        r = grouped(rainbow or 0),
     }))
 end
 
@@ -85,9 +86,9 @@ function MainMenu:enter()
     self.title = buildTitle()
     self.version = buildVersionLabel()
     self.onlineCount = Stats.online
-    self.starCount, self.goldenCount = Stats.stars, Stats.golden
+    self.starCount, self.goldenCount, self.rainbowCount = Stats.stars, Stats.golden, Stats.rainbow
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-    self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+    self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
     self.discordHover = false
     self.discordPressed = false
     self.githubHover = false
@@ -179,9 +180,9 @@ function MainMenu:update(dt)
         moved = true
     end
 
-    if Stats.stars ~= self.starCount or Stats.golden ~= self.goldenCount then
-        self.starCount, self.goldenCount = Stats.stars, Stats.golden
-        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+    if Stats.stars ~= self.starCount or Stats.golden ~= self.goldenCount or Stats.rainbow ~= self.rainbowCount then
+        self.starCount, self.goldenCount, self.rainbowCount = Stats.stars, Stats.golden, Stats.rainbow
+        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
         moved = true
     end
 
@@ -193,7 +194,7 @@ function MainMenu:resize(w, h, rescaled)
     if rescaled then
         self.version = buildVersionLabel()
         self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount)
+        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
     end
     self:layout()
 end
@@ -233,12 +234,8 @@ function MainMenu:mousepressed(x, y, button)
     end
 
     local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
-    if hit then
-        Stats.pop(golden)
-        -- TODO: Stats.pop only distinguishes golden vs not right now. Once it
-        -- can track a third category, count rainbow pops here too:
-        -- if rainbow then Stats.popRainbow() end
-    end
+    if not hit then return end -- a click on empty sky is not a pop
+    Stats.pop(rainbow and "rainbow" or golden and "golden" or "normal")
 end
 
 function MainMenu:mousereleased(x, y, button)

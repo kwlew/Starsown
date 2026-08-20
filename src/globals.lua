@@ -4,7 +4,7 @@ local Globals   = {}
 
 Globals.game = {
     name        = "TD Idle",
-    version     = "0.0.3a",
+    version     = "0.0.5",
     startedAt   = 0,
 }
 
@@ -41,8 +41,8 @@ Globals.menu = {
 }
 
 Globals.cursor = {
-    color = { 0.90, 0.90, 0.90 },
-    size = 3,
+    color = { 0.90, 0.80, 1.00 },
+    size = 2,
 }
 
 function Globals.init()

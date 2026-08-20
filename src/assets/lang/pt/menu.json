@@ -7,7 +7,7 @@
     "quit": "Sair",
     "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
     "onlinePlayers": "{n} jogando agora",
-    "starsPopped": "{n} estrelas estouradas · {g} douradas",
+    "starsPopped": "{n} estrelas estouradas · {g} douradas · {r} arco-íris",
     "splashes": [
       "Tente clicar nas estrelas!",
       "Agora com mais ociosidade!",

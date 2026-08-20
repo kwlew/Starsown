@@ -45,5 +45,6 @@ while true do
         body = sent and body or nil,
         stars = job.stars,
         golden = job.golden,
+        rainbow = job.rainbow,
     }
 end
