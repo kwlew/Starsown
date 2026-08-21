@@ -16,6 +16,7 @@
     "msaaOff": "Desactivado",
     "displayMode": "Modo de Pantalla",
     "vsync": "VSync",
+    "showNebula": "Mostrar Nebulosa",
     "shareStats": "Compartir estadísticas",
     "tab": {
       "audio": "Audio",
@@ -61,6 +62,7 @@
       "msaa": "Suaviza los bordes dentados. Los valores altos cuestan más rendimiento.",
       "displayMode": "En ventana, pantalla completa sin bordes o pantalla completa exclusiva.",
       "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el desgarro.",
+      "showNebula": "Activa o desactiva la nube de gas a la deriva detrás del menú. Se aplica de inmediato.",
       "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando y cuántas estrellas ha reventado todo el mundo. Ningún dato personal.",
       "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
       "back": "Vuelve a la pantalla anterior."

@@ -18,6 +18,7 @@ Settings.defaults = {
     titleFont = "acme", -- validated against available fonts by GameTitle
     customCursor = true, -- draws the game's own cursor; off shows the OS pointer instead
     reducedMotion = false, -- dampens ambient animation (starfield, nebula, twinkle, splash, title)
+    showNebula = true, -- drifting gas-cloud backdrop behind the menu; off just skips drawing it, still baked
     shareStats = true,
 }
 

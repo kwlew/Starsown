@@ -98,7 +98,9 @@ function Loading:buildTasks()
                 self.stars = stars
                 yield(0.5)
 
-                local nebula = Particles.Nebula.new{ alpha = 0 }
+                -- settings task above already ran, so this respects a saved showNebula = false from the first frame
+                local settings = Assets.get("settings")
+                local nebula = Particles.Nebula.new{ alpha = 0, enabled = settings.showNebula }
                 nebula:bake()
                 Assets.set("nebula", nebula)
                 self.nebula = nebula

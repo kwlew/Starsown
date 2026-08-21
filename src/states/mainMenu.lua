@@ -10,8 +10,6 @@ local TextFactory   = require "ui.text.textFactory"
 local UI            = require "ui"
 local I18n          = require "core.i18n"
 local Particles     = require "particles"
-local DiscordMark   = require "ui.icons.discordMark"
-local GithubMark    = require "ui.icons.githubMark"
 local GameTitle     = require "ui.text.gameTitle"
 local Splash        = require "ui.text.splash"
 local Globals       = require "globals"
@@ -24,8 +22,7 @@ local MENU_Y_RATIO = 0.44
 
 local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
 local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
-local GITHUB_ICON_SIZE = 26
-local DISCORD_ICON_SIZE = 26
+local SOCIAL_ICON_SIZE = 26
 local CORNER_PAD = 12
 
 local MainMenu = {}
@@ -89,10 +86,11 @@ function MainMenu:enter()
     self.starCount, self.goldenCount, self.rainbowCount = Stats.stars, Stats.golden, Stats.rainbow
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
-    self.discordHover = false
-    self.discordPressed = false
-    self.githubHover = false
-    self.githubPressed = false
+    -- bottom-left stack, github lowest; order here is stacking order (see layout)
+    self.links = self.links or {
+        UI.IconLink.new{ mark = "github", url = GITHUB_URL },
+        UI.IconLink.new{ mark = "discord", url = DISCORD_URL },
+    }
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Globals.menu.Particles.starfield
     self.stars = inheritSky(self.stars, "stars", function()
@@ -143,13 +141,16 @@ end
 function MainMenu:layout()
     local w, h = love.graphics.getDimensions()
     local pad = UI.Theme.px(CORNER_PAD)
-    local iconSize = UI.Theme.px(GITHUB_ICON_SIZE)
-    local discordIconSize = UI.Theme.px(DISCORD_ICON_SIZE)
+    local iconSize = UI.Theme.px(SOCIAL_ICON_SIZE)
 
     self.title.y = h * GameTitle.MENU_Y_RATIO
-    self.githubBounds = { x = pad, y = h - iconSize - pad, w = iconSize, h = iconSize }
-    self.discordBound = { x = pad, y = h - iconSize - pad - discordIconSize - pad, w = discordIconSize, h = discordIconSize }
 
+    local iconY = h - pad
+    for _, link in ipairs(self.links) do
+        iconY = iconY - iconSize
+        link:setBounds(pad, iconY, iconSize, iconSize)
+        iconY = iconY - pad
+    end
 
     local stack = { self.version }
     if self.onlinePlayers then stack[#stack + 1] = self.onlinePlayers end
@@ -203,34 +204,24 @@ function MainMenu:keypressed(key)
     self.menu:keypressed(key)
 end
 
-function MainMenu:githubContains(x, y)
-    local b = self.githubBounds
-    return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
-end
-
-function MainMenu:discordContains(x, y)
-    local b = self.discordBound
-    return b ~= nil and UI.Theme.pointIn(x, y, b.x, b.y, b.w, b.h)
+-- true if the pointer is over any corner icon link -- used to color the cursor
+function MainMenu:anyLinkHover()
+    for _, link in ipairs(self.links) do
+        if link.hover then return true end
+    end
+    return false
 end
 
 function MainMenu:mousemoved(x, y)
     self.menu:mousemoved(x, y)
-    self.githubHover = self:githubContains(x, y)
-    self.discordHover = self:discordContains(x, y)
+    for _, link in ipairs(self.links) do link:mousemoved(x, y) end
     self.mouseX, self.mouseY = x, y
 end
 
 function MainMenu:mousepressed(x, y, button)
     if self.menu:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
-    if button == 1 and self:githubContains(x, y) then
-        self.githubPressed = true
-        UI.Sfx.press()
-        return
-    end
-    if button == 1 and self:discordContains(x, y) then
-        self.discordPressed = true
-        UI.Sfx.press()
-        return
+    for _, link in ipairs(self.links) do
+        if link:mousepressed(x, y, button) then return end
     end
 
     local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
@@ -240,19 +231,7 @@ end
 
 function MainMenu:mousereleased(x, y, button)
     self.menu:mousereleased(x, y, button)
-    -- only fires on a full press+release on the mark, not a click that drags off
-    if button == 1 and self.githubPressed then
-        self.githubPressed = false
-        if self:githubContains(x, y) then
-            love.system.openURL(GITHUB_URL)
-        end
-    end
-    if button == 1 and self.discordPressed then
-        self.discordPressed = false
-        if self:discordContains(x, y) then
-            love.system.openURL(DISCORD_URL)
-        end
-    end
+    for _, link in ipairs(self.links) do link:mousereleased(x, y, button) end
 end
 
 function MainMenu:draw()
@@ -271,16 +250,7 @@ function MainMenu:draw()
         self.starsPopped:draw()
     end
 
-    local mark = self.githubBounds
-    GithubMark.draw(mark.x, mark.y, mark.w,
-        self.githubHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
-        self.githubHover and 1 or 0.45)
-
-
-    local discordMark = self.discordBound
-    DiscordMark.draw(discordMark.x, discordMark.y, discordMark.w,
-        self.discordHover and {0.80, 0.80, 0.80} or UI.Theme.colors.textDim,
-        self.discordHover and 1 or 0.45)
+    for _, link in ipairs(self.links) do link:draw() end
 
     self.title:drawChroma()
     self.splash:drawNear(self.title, love.graphics.getWidth())
@@ -289,9 +259,9 @@ function MainMenu:draw()
 
     UI.Label.hint(I18n.t("menu.hint"), true)
 
-    -- githubHover never carries danger (it's a plain link), so the menu's own flag decides the color
+    -- link hover never carries danger (they're plain links), so the menu's own flag decides the color
     local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
-    UI.Cursor.setHover(self.mouseX ~= nil and (self.githubHover or overMenu), dangerous)
+    UI.Cursor.setHover(self.mouseX ~= nil and (self:anyLinkHover() or overMenu), dangerous)
 end
 
 return MainMenu

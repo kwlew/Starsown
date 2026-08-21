@@ -61,6 +61,7 @@ function Nebula.new(config)
         layers = {}, -- filled by bake()
         time = 0,
         alpha = config.alpha or 1, -- global fade, on top of per-layer weights
+        enabled = config.enabled ~= false, -- options.showNebula; off just skips draw(), still baked and updated
         seed = config.seed,        -- set to reproduce a nebula while tuning
 
         layerCount = config.layerCount or 2, -- layer 1 = farthest, drawn first
@@ -237,7 +238,7 @@ function Nebula:update(dt)
 end
 
 function Nebula:draw()
-    if self.alpha <= 0 or #self.layers == 0 then return end
+    if not self.enabled or self.alpha <= 0 or #self.layers == 0 then return end
 
     -- design space -> window, so the composition keeps its framing at every resolution
     local w, h = love.graphics.getDimensions()
