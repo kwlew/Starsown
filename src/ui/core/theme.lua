@@ -71,8 +71,12 @@ local SCRIM_ALPHA     = 0.62
 local SHADOW_DARKEN   = 0.25 -- of bg, for text drop shadows
 local SHADOW_ALPHA    = 0.75
 
+-- palette-independent by design: a golden star reads as gold in every theme,
+-- so these never go through tinted() the way Theme.colors.* do
 Theme.fixedColors = {
-    starPop = { 1, 0.5, 0.2 }, -- the debris from a popped star
+    starPop = { 1, 0.5, 0.2 },       -- the debris from a popped star
+    gold = { 1, 0.82, 0.35 },        -- a golden star, and its count on the stats screen
+    goldFlare = { 1, 0.60, 0.12 },   -- the hotter core of that star's streak
 }
 
 -- perceived brightness (Rec. 601), used to hold a neutral's lightness fixed while its hue moves
@@ -248,7 +252,13 @@ local PALETTES = {
        tint      = 0.40,
        title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
     },
-
+    {
+        id        =  "lapis",
+        accent    = { 0.10, 0.30, 0.90 },
+        accentAlt = { 0.52, 0.60, 0.76 },
+        tint      =   0.40,
+        title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
+    },
     -- a placeholder for a palette the player built in Options
     --{
     --    id        = "custom",
@@ -261,8 +271,8 @@ local PALETTES = {
 
 Theme.DEFAULT = "default"
 
-local palettes = {}    -- id -> resolved flat color table
-local paletteList = {} -- { { id = ... }, ... }, in PALETTES order
+local palettes = {}
+local paletteList = {}
 
 for _, spec in ipairs(PALETTES) do
     palettes[spec.id] = buildPalette(spec)
@@ -271,11 +281,6 @@ end
 
 Theme.current = Theme.DEFAULT
 
--- copies a resolved palette into Theme.colors in place -- widgets, particle
--- layers and the wordmark gradient hold references to the individual color
--- tables, so a switch rewrites the numbers rather than handing out new ones
--- (same reason Theme.rescale mutates Theme.metrics). Alpha slot is always
--- written so a palette without one clears whatever the last palette left.
 local function applyPalette(palette)
     for name, color in pairs(palette) do
         local live = Theme.colors[name]
@@ -291,45 +296,34 @@ function Theme.available()
     return paletteList
 end
 
--- unknown ids fall back to default. Returns true when the palette actually
--- changed, so callers can skip work a switch forces (the nebula's gas has
--- the accent baked in and needs re-baking; everything else just re-reads Theme.colors)
 function Theme.setTheme(id)
     if not palettes[id] then id = Theme.DEFAULT end
     if id == Theme.current then return false end
 
     Theme.current = id
     applyPalette(palettes[id])
-    love.graphics.setBackgroundColor(Theme.colors.bg) -- clear color is GL state, has to be pushed again
+    love.graphics.setBackgroundColor(Theme.colors.bg) 
     return true
 end
 
--- always exactly three stops in every palette: TextFactory bakes the stop
--- *count* into the shader at build time but re-reads colors every draw, so a
--- fixed count is what lets a theme switch recolor the title with no rebuild
 function Theme.titleGradient()
     return { Theme.colors.titleGradient1, Theme.colors.titleGradient2, Theme.colors.titleGradient3 }
 end
 
--- design-space metrics, px at Theme.scale == 1; Theme.metrics holds these * live scale, read that instead
 local baseMetrics = {
     radius     = 8,
     padding    = 14,
     rowHeight  = 48,
     rowGap     = 14,
-    glowSpread = 3, -- px each glow layer grows beyond the last
+    glowSpread = 3,
 }
 
--- unitless: counts, alphas, rates -- must NOT scale with resolution (a glow
--- getting more opaque on a bigger monitor is a bug)
 local constantMetrics = {
     glowLayers = 3,
     glowAlpha  = 0.16,
-    focusSpeed = 10, -- how fast widgets ease toward their focused look
+    focusSpeed = 10,
 }
 
--- point sizes at scale 1, plus the weight each role is cut from (weight is
--- what separates a heading from the body text under it, not size alone)
 local fontRoles = {
     title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 80 }, -- game title
     title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 52  }, -- game title, alternate
@@ -341,12 +335,10 @@ local fontRoles = {
 }
 
 Theme.metrics = {}
-Theme.scale = 0 -- 0 until the first rescale, so it can never match a real scale
+Theme.scale = 0 
 
 local DESIGN_HEIGHT = 720
--- clamped so a very short window doesn't shrink unreadably and a tall one
--- doesn't blow the UI past fitting a panel; quantized so font sizes land on
--- stable integers instead of resampling by a pixel
+
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.85, 1.6, 0.05
 
 local fontCache = {}

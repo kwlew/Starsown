@@ -13,6 +13,7 @@ local Particles     = require "particles"
 local GameTitle     = require "ui.text.gameTitle"
 local Splash        = require "ui.text.splash"
 local Globals       = require "globals"
+local Format        = require "utils.format"
 
 local Stats         = require "services.stats"
 
@@ -24,11 +25,10 @@ local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
 local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
 local SOCIAL_ICON_SIZE = 26
 local CORNER_PAD = 12
+local CORNER_GAP = 10 -- between the online-count label and the version label it sits beside
 
 local MainMenu = {}
 
--- rebuilt on enter/resize so wrap width matches the window; shared with the
--- loading screen, which eases its own copy into this exact pose on the way here
 local buildTitle = GameTitle.build
 
 local function buildVersionLabel()
@@ -39,37 +39,13 @@ local function buildVersionLabel()
     }
 end
 
-
-local function grouped(n)
-    local sep = I18n.t("format.thousands")
-    local text = tostring(math.floor(n))
-    local done
-    repeat
-        text, done = text:gsub("^(%-?%d+)(%d%d%d)", "%1" .. sep .. "%2")
-    until done == 0
-    return text
-end
-
-local function buildCornerLabel(text)
+local function buildOnlinePlayersLabel(count)
+    if not count then return nil end
     return TextFactory:new{
-        text = text,
+        text = I18n.t("menu.onlinePlayers", { n = Format.group(count) }),
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
-end
-
-local function buildOnlinePlayersLabel(count)
-    if not count then return nil end
-    return buildCornerLabel(I18n.t("menu.onlinePlayers", { n = grouped(count) }))
-end
-
-local function buildStarsPoppedLabel(stars, golden, rainbow)
-    if not stars then return nil end
-    return buildCornerLabel(I18n.t("menu.starsPopped", {
-        n = grouped(stars),
-        g = grouped(golden or 0),
-        r = grouped(rainbow or 0),
-    }))
 end
 
 local function inheritSky(existing, name, build)
@@ -78,15 +54,13 @@ local function inheritSky(existing, name, build)
     return layer
 end
 
-function MainMenu:enter()
+function MainMenu:enter(previousName)
     UI.Music.start()
     self.title = buildTitle()
     self.version = buildVersionLabel()
     self.onlineCount = Stats.online
-    self.starCount, self.goldenCount, self.rainbowCount = Stats.stars, Stats.golden, Stats.rainbow
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-    self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
-    -- bottom-left stack, github lowest; order here is stacking order (see layout)
+    -- bottom-left row, github first; order here is left-to-right order (see layout)
     self.links = self.links or {
         UI.IconLink.new{ mark = "github", url = GITHUB_URL },
         UI.IconLink.new{ mark = "discord", url = DISCORD_URL },
@@ -114,11 +88,11 @@ function MainMenu:enter()
             end },
             { label = function() return I18n.t("menu.stats") end, onSelect = function()
                 UI.Sfx.select()
-                --StateManager.fadeTo("stats")
+                StateManager.fadeTo("stats", { returnTo = "mainMenu" })
             end },
             { label = function() return I18n.t("menu.achievements") end, onSelect = function()
                 UI.Sfx.select()
-                --StateManager.fadeTo("achievements")
+                StateManager.fadeTo("achievements", { returnTo = "mainMenu" })
             end },
             { label = function() return I18n.t("menu.options") end, onSelect = function()
                 UI.Sfx.select()
@@ -130,6 +104,11 @@ function MainMenu:enter()
             end },
         })
         self.menu:onFocusChanged(UI.Sfx.focus)
+    end
+
+    -- Fade from loading.
+    if previousName == "loading" then
+        self.menu:playIntro()
     end
 
     Presence.set{ details = "Main Menu", state = "Getting ready",
@@ -145,21 +124,21 @@ function MainMenu:layout()
 
     self.title.y = h * GameTitle.MENU_Y_RATIO
 
-    local iconY = h - pad
+    local iconY = h - iconSize - pad
+    local iconX = pad
     for _, link in ipairs(self.links) do
-        iconY = iconY - iconSize
-        link:setBounds(pad, iconY, iconSize, iconSize)
-        iconY = iconY - pad
+        link:setBounds(iconX, iconY, iconSize, iconSize)
+        iconX = iconX + iconSize + pad
     end
 
-    local stack = { self.version }
-    if self.onlinePlayers then stack[#stack + 1] = self.onlinePlayers end
-    if self.starsPopped then stack[#stack + 1] = self.starsPopped end
+    local versionY = h - pad - self.version.font:getHeight()
+    local versionX = w - self.version.font:getWidth(self.version.text) - pad
+    self.version:setPosition(versionX, versionY)
 
-    local y = h - pad
-    for _, label in ipairs(stack) do
-        y = y - label.font:getHeight()
-        label:setPosition(w - label.font:getWidth(label.text) - pad, y)
+    if self.onlinePlayers then
+        local gap = UI.Theme.px(CORNER_GAP)
+        local onlineX = versionX - gap - self.onlinePlayers.font:getWidth(self.onlinePlayers.text)
+        self.onlinePlayers:setPosition(onlineX, versionY)
     end
 
     self.menu:layout(h * MENU_Y_RATIO)
@@ -173,21 +152,11 @@ function MainMenu:update(dt)
     self.splash:update(dt)
     self.menu:update(dt)
 
-    local moved = false
-
     if Stats.online ~= self.onlineCount then
         self.onlineCount = Stats.online
         self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-        moved = true
+        self:layout()
     end
-
-    if Stats.stars ~= self.starCount or Stats.golden ~= self.goldenCount or Stats.rainbow ~= self.rainbowCount then
-        self.starCount, self.goldenCount, self.rainbowCount = Stats.stars, Stats.golden, Stats.rainbow
-        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
-        moved = true
-    end
-
-    if moved then self:layout() end
 end
 
 function MainMenu:resize(w, h, rescaled)
@@ -195,7 +164,6 @@ function MainMenu:resize(w, h, rescaled)
     if rescaled then
         self.version = buildVersionLabel()
         self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-        self.starsPopped = buildStarsPoppedLabel(self.starCount, self.goldenCount, self.rainbowCount)
     end
     self:layout()
 end
@@ -245,9 +213,6 @@ function MainMenu:draw()
 
     if self.onlinePlayers then
         self.onlinePlayers:draw()
-    end
-    if self.starsPopped then
-        self.starsPopped:draw()
     end
 
     for _, link in ipairs(self.links) do link:draw() end

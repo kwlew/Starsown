@@ -10,15 +10,15 @@ local Math = require "utils.math"
 local Ease = require "utils.ease"
 local GameTitle = require "ui.text.gameTitle"
 
-local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
-local OUTRO_TIME = 0.8  -- length of the hand-off animation
+local DOT_INTERVAL = 0.5 -- seconds between "..." animation steps
+local OUTRO_TIME = 0.9  -- length of the hand-off animation
 local MIN_FILL_TIME = 1.5
 
 local FURNITURE_FADE = 0.45
-local SKY_FADE_SPEED = 1.5 -- alpha/sec the sky (nebula + stars) fades up
+local SKY_FADE_SPEED = 3.0 -- alpha/sec the sky (nebula + stars) fades up
 
 -- loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1
-local TITLE_SCALE = 0.62
+local TITLE_SCALE = 1.3
 local TITLE_Y_RATIO = 0.30
 
 -- vertical anchors for the loading furniture, as fractions of window height

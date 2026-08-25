@@ -14,8 +14,9 @@ local Motion = require "ui.core.motion"
 local REDUCED_SPAWN_SCALE = 2.5
 local REDUCED_SPEED_SCALE = 0.5
 
-local GOLD       = { 1, 0.82, 0.35 }
-local GOLD_FLARE = { 1, 0.60, 0.12 }
+-- shared with the stats screen's golden-star count, so they can't drift apart
+local GOLD       = Theme.fixedColors.gold
+local GOLD_FLARE = Theme.fixedColors.goldFlare
 
 -- rainbow stars have no fixed color; head + trail are computed live off the hue
 -- wheel. CYCLE_SPEED = wheel-rotations/sec of the star's life; TRAIL_SPAN = how

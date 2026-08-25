@@ -40,8 +40,8 @@ local WHITE = Globals.cursor.color
 -- its total size, so *that's* what carries the hover cue here, and it's
 -- shape rather than color: a second signal alongside the accent shift, for
 -- players who can't easily tell the accent hue apart from white.
-local OUTLINE_WIDTH = 1
-local HOVER_OUTLINE_WIDTH = 2
+local OUTLINE_WIDTH = 0.5
+local HOVER_OUTLINE_WIDTH = 3
 
 local CLICK_GROWTH = 5  -- design-space px the click ring expands by
 local CLICK_LIFE = 0.25 -- seconds the click ring takes to fade out
@@ -104,8 +104,6 @@ function Cursor.draw()
     local x, y = love.mouse.getPosition()
     local radius = Theme.px(RADIUS)
 
-    -- starts flush with the dot's own edge and grows outward as it fades,
-    -- in whatever color the cursor currently is
     if click then
         local t = click / CLICK_LIFE
         Theme.setColor(current, 1 - t)
@@ -116,10 +114,9 @@ function Cursor.draw()
     love.graphics.setColor(current[1], current[2], current[3], 1)
     love.graphics.circle("fill", x, y, radius, 6)
 
-    -- dark outline so the dot still reads against a bright panel; same shadow tone UI.Label uses
     Theme.setColor(Theme.colors.shadow)
     love.graphics.setLineWidth(math.max(1, Theme.px(outlineWidth)))
-    love.graphics.circle("line", x, y, radius, 6)
+    love.graphics.circle("line", x, y, radius, 32)
     love.graphics.setLineWidth(1)
 
     love.graphics.setColor(1, 1, 1, 1)

@@ -1,0 +1,14 @@
+{
+  "stats": {
+    "title": "STATS",
+    "online": "Players Online",
+    "total": "Stars Popped",
+    "golden": "Golden Stars",
+    "rainbow": "Rainbow Stars",
+    "unavailable": "-- / --",
+    "sharingOff": "Stats sharing is off. Turn it on under Options › Interface to see world totals.",
+    "waiting": "Couldn't connect to server. Is internet available?",
+    "back": "Back",
+    "hint": "Esc: back"
+  }
+}

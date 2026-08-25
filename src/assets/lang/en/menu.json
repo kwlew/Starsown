@@ -7,7 +7,6 @@
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select",
     "onlinePlayers": "{n} playing now",
-    "starsPopped": "{n} stars popped · {g} golden · {r} rainbow",
     "splashes": [
       "Also try clicking the stars!",
       "Now with extra idle!",

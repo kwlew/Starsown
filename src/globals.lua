@@ -35,7 +35,7 @@ Globals.menu = {
         goldenChance   = 0.004, -- ~1 in 250 stars
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
-        rainbowChance  = 0.001, -- ~1 in 1000 stars
+        rainbowChance  = 0.5, -- ~1 in 1000 stars
         },
     }
 }

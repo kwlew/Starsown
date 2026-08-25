@@ -9,6 +9,8 @@ local GameTitle = require "ui.text.gameTitle"
 local loadingState = require "states.loading"
 local mainMenuState = require "states.mainMenu"
 local optionsState = require "states.options"
+local statsState = require "states.stats"
+local achievementsState = require "states.achievements"
 local Globals = require "globals"
 
 local Stats = require "services.stats"
@@ -38,6 +40,8 @@ function love.load()
     StateManager.register("loading", loadingState)
     StateManager.register("mainMenu", mainMenuState)
     StateManager.register("options", optionsState)
+    StateManager.register("stats", statsState)
+    StateManager.register("achievements", achievementsState)
 
     StateManager.switch("loading")
 

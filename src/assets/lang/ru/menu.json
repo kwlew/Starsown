@@ -1,11 +1,11 @@
 {
   "menu": {
-    "play": "Jogar",
-    "stats": "Estatísticas",
-    "achievements": "Conquistas",
-    "options": "Opções",
-    "quit": "Sair",
-    "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar",
+    "play": "Играть",
+    "stats": "Статистика",
+    "achievements": "Достижения",
+    "options": "Настройки",
+    "quit": "Выйти",
+    "hint": "W/S или Mouse: навигация    Enter или Клик: выбор",
     "onlinePlayers": "{n} jogando agora",
     "splashes": [
       "Tente clicar nas estrelas!",
