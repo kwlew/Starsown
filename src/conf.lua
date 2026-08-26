@@ -3,8 +3,8 @@ function love.conf(t)
     t.version = "11.5"
     t.console = false
 
-    t.window.title = "TD Idle"
-    t.window.icon = "assets/TD-Idle.png"
+    t.window.title = "Starsown"
+    t.window.icon = "assets/icon/starsown-128.png"
     t.window.width = 1280
     t.window.height = 720
     t.window.resizable = false

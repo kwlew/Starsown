@@ -3,7 +3,7 @@ local Particles = require "particles"
 local Globals   = {}
 
 Globals.game = {
-    name        = "TD Idle",
+    name        = "Starsown",
     version     = "0.0.5",
     startedAt   = 0,
 }
@@ -35,14 +35,14 @@ Globals.menu = {
         goldenChance   = 0.004, -- ~1 in 250 stars
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
-        rainbowChance  = 0.5, -- ~1 in 1000 stars
+        rainbowChance  = 0.001, -- ~1 in 1000 stars
         },
     }
 }
 
 Globals.cursor = {
     color = { 0.90, 0.80, 1.00 },
-    size = 2,
+    size = 3,
 }
 
 function Globals.init()

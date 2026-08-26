@@ -1,14 +1,14 @@
 {
   "stats": {
-    "title": "ESTATÍSTICAS",
-    "online": "Jogadores online",
-    "total": "Estrelas Estouradas",
-    "golden": "Estrelas Douradas",
-    "rainbow": "Estrelas Arco-íris",
+    "title": "СТАТИСТИКА",
+    "online": "Игроков онлайн",
+    "total": "Лопнуто звёзд",
+    "golden": "Золотые звёзды",
+    "rainbow": "Радужные звёзды",
     "unavailable": "-- / --",
-    "sharingOff": "O compartilhamento de estatísticas está desativado. Ative em Opções › Interface para ver os totais mundiais.",
-    "waiting": "Não foi possível conectar-se ao servidor. \nA internet está disponível?",
-    "back": "Voltar",
-    "hint": "Esc -> voltar"
+    "sharingOff": "Обмен статистикой отключён. Включите его в Настройки › Интерфейс, чтобы видеть мировые итоги.",
+    "waiting": "Пока нет мировой статистики — ждём ответ сервера.",
+    "back": "Назад",
+    "hint": "Esc: назад"
   }
 }

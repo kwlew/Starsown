@@ -65,8 +65,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $src  = Join-Path $root 'src'
 $dist = Join-Path $root 'dist'
-$love = Join-Path $dist 'TD-Idle.love'
-$exe  = Join-Path $dist 'TD-Idle.exe'
+$love = Join-Path $dist 'Starsown.love'
+$exe  = Join-Path $dist 'Starsown.exe'
 
 if (-not (Test-Path (Join-Path $src 'main.lua'))) {
     throw "No main.lua in $src - is this the right repo?"
