@@ -1,7 +1,7 @@
 {
   "loading": {
     "title": "Cargando",
-    "failed": "No se pudieron cargar {n} recurso(s) -> revisa el registro!",
+    "failed": "No se pudieron cargar {n} recurso(s). Revisa el log.",
     "task": {
       "interface": "Preparando la interfaz",
       "settings": "Cargando configuración",

@@ -1,8 +1,8 @@
 -- Settings screen with three tabs:
---   Audio     — volume sliders; apply live and persist immediately.
---   Interface — language/theme/title font/cursor/motion/stats sharing;
+--   Audio     - volume sliders; apply live and persist immediately.
+--   Interface - language/theme/title font/cursor/motion/stats sharing;
 --               apply live and persist immediately, same as Audio.
---   Graphics  — resolution/display mode/vsync; changes accumulate in a
+--   Graphics  - resolution/display mode/vsync; changes accumulate in a
 --               `pending` table and only take effect (and persist) on Apply.
 --               Leaving the screen discards pending.
 --

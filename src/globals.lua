@@ -40,8 +40,9 @@ Globals.menu = {
     }
 }
 
+-- the cursor's colors are theme roles (Theme.colors.cursor / .highlight), so
+-- only its geometry lives here
 Globals.cursor = {
-    color = { 0.90, 0.80, 1.00 },
     size = 3,
 }
 

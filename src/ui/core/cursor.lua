@@ -8,12 +8,8 @@ local Cursor = {}
 
 local RADIUS = Globals.cursor.size
 
-local WHITE = Globals.cursor.color
-
 local OUTLINE_WIDTH = 0.5
 local HOVER_OUTLINE_WIDTH = 1
-
-local HOVER_OUTLINE_COLOR = { 0.8, 0.8, 0.8 }
 
 local CLICK_GROWTH = 3
 local CLICK_LIFE = 0.25
@@ -42,7 +38,7 @@ function Cursor.setHover(isHovering, isDanger)
 end
 
 function Cursor.update(dt)
-    local target = WHITE
+    local target = Theme.colors.cursor
     if hovering then
         target = danger and Theme.colors.danger or Theme.colors.accent
     end
@@ -50,7 +46,7 @@ function Cursor.update(dt)
     current[2] = Theme.approach(current[2], target[2], dt)
     current[3] = Theme.approach(current[3], target[3], dt)
 
-    local outlineTarget = hovering and HOVER_OUTLINE_COLOR or Theme.colors.shadow
+    local outlineTarget = hovering and Theme.colors.highlight or Theme.colors.shadow
     currentOutline[1] = Theme.approach(currentOutline[1], outlineTarget[1], dt)
     currentOutline[2] = Theme.approach(currentOutline[2], outlineTarget[2], dt)
     currentOutline[3] = Theme.approach(currentOutline[3], outlineTarget[3], dt)

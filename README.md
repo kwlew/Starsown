@@ -8,8 +8,8 @@
 )
 
 
-- **Nine color themes**, switchable any time from Options.
-- **English, Spanish, and Portuguese** localization.
+- **Twelve color themes**, switchable any time from Options.
+- **English, Spanish, Portuguese, and Russian** localization.
 - Discord Rich Presence.
 
 The gameplay itself is still in game design phase.

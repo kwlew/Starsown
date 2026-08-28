@@ -1,5 +1,5 @@
 -- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
--- themed buttons. Also the Minecraft-style splash text hanging off the title
+-- themed buttons. Also the splash tag hanging under the title
 -- (see ui/text/splash.lua).
 
 local StateManager  = require "core.stateManager"
@@ -218,7 +218,7 @@ function MainMenu:draw()
     for _, link in ipairs(self.links) do link:draw() end
 
     self.title:drawChroma()
-    self.splash:drawNear(self.title, love.graphics.getWidth())
+    self.splash:draw(self.title, love.graphics.getWidth())
 
     self.menu:draw()
 

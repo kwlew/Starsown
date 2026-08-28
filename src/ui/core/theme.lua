@@ -14,40 +14,59 @@ local DEFAULT_FAMILY = "oxanium"
 
 Theme.colors = {} 
 
+-- Palette spec: `accent` is the only required field. Optional knobs are
+-- `accentAlt`, `neutralHue` (what the greys lean toward, default `accent`),
+-- `tint` (one scalar, or a per-role table carrying a `default`), `title`
+-- (omit to derive from the accent pair), and a raw override for any role by
+-- name. Every palette must produce the same key set -- see assertRoles.
+
 local NEUTRALS = {
-    bg          = { 0.05, 0.05, 0.07 }, -- window clear color
-    panel       = { 0.10, 0.11, 0.14 }, -- widget/panel background
+    bg          = { 0.05, 0.05, 0.07 },
+    panel       = { 0.10, 0.11, 0.14 },
+    panelRaised = { 0.14, 0.15, 0.19 },
     panelBorder = { 0.25, 0.28, 0.35 },
-    track       = { 0.18, 0.18, 0.20 }, -- empty bar/slider track
-    sliderKnob = { 0.92, 0.94, 0.98 },
+    track       = { 0.18, 0.18, 0.20 },
+    knob        = { 0.78, 0.80, 0.86 }, -- slider + toggle knobs
     text        = { 0.92, 0.94, 0.98 },
     textMuted   = { 0.72, 0.75, 0.82 },
-    textDim     = { 0.55, 0.58, 0.65 }, -- hints, footers, debug overlay
+    textDim     = { 0.55, 0.58, 0.65 },
+    highlight   = { 0.80, 0.80, 0.82 },
+    cursor      = { 0.95, 0.95, 0.97 },
 }
 
+-- how far each neutral travels toward the hue at tint = 1; `tint` scales these
 local TINT_STRENGTH = {
     bg          = 0.2,
     panel       = 0.75,
+    panelRaised = 0.80,
     panelBorder = 0.85,
     track       = 0.60,
-    sliderKnob = 0.4,
+    knob        = 0.45,
     text        = 0.10,
     textMuted   = 0.22,
     textDim     = 0.35,
+    highlight   = 0.20,
+    cursor      = 0.35,
 }
 
 local SEMANTIC = {
     warning = { 1.00, 0.75, 0.25 },
     danger  = { 0.95, 0.35, 0.35 },
+    success = { 0.35, 0.85, 0.45 },
+    info    = { 0.40, 0.70, 1.00 },
 }
 
-local ACCENT_DARK_MIX = 0.32
-local DANGER_REST_MIX = 0.55
-local STAR_TINT       = 0.45
-local SCRIM_DARKEN    = 0.35
-local SCRIM_ALPHA     = 0.62
-local SHADOW_DARKEN   = 0.25 
-local SHADOW_ALPHA    = 0.75
+local ACCENT_DARK_MIX   = 0.32
+local ACCENT_SOFT_MIX   = 0.50
+local ACCENT_BRIGHT_MIX = 0.35 -- toward white, not toward accent: a near-black accent has no headroom
+local ACCENT_DIM_MIX    = 0.30 -- toward black, for filled controls where full accent glares
+local DANGER_REST_MIX   = 0.55
+local STAR_TINT         = 0.45
+local TITLE_CENTER_TINT = 0.14
+local SCRIM_DARKEN      = 0.35
+local SCRIM_ALPHA       = 0.62
+local SHADOW_DARKEN     = 0.25
+local SHADOW_ALPHA      = 0.75
 
 Theme.fixedColors = {
     starPop = { 1, 0.5, 0.2 },
@@ -89,18 +108,38 @@ local function tinted(base, hue, amount)
     }
 end
 
+-- one scalar, or per-role multipliers where `default` covers the rest
+local function tintAmounts(tint)
+    local amounts = {}
+    local perRole = type(tint) == "table"
+    local fallback = perRole and (tint.default or 1) or (tint or 1)
+
+    for name, base in pairs(TINT_STRENGTH) do
+        amounts[name] = base * (perRole and (tint[name] or fallback) or fallback)
+    end
+    return amounts
+end
+
 local function buildPalette(spec)
     local accent = spec.accent
-    local colors = { accent = accent, accentAlt = spec.accentAlt }
+    local accentAlt = spec.accentAlt or accent
+    local hue = spec.neutralHue or accent -- surfaces need not share the accent's temperature
+    local amount = tintAmounts(spec.tint)
+
+    local colors = { accent = accent, accentAlt = accentAlt }
 
     for name, neutral in pairs(NEUTRALS) do
-        colors[name] = spec[name] or tinted(neutral, accent, TINT_STRENGTH[name] * spec.tint)
+        colors[name] = spec[name] or tinted(neutral, hue, amount[name])
     end
     for name, color in pairs(SEMANTIC) do
         colors[name] = spec[name] or color
     end
 
     colors.accentDark = spec.accentDark or blend(colors.panel, accent, ACCENT_DARK_MIX)
+    colors.accentSoft = spec.accentSoft or blend(colors.panel, accent, ACCENT_SOFT_MIX)
+    colors.accentBright = spec.accentBright or blend(accent, { 1, 1, 1 }, ACCENT_BRIGHT_MIX)
+    colors.accentDim = spec.accentDim or blend(accent, { 0, 0, 0 }, ACCENT_DIM_MIX)
+    colors.glow = spec.glow or accent
 
     colors.dangerDark = spec.dangerDark or blend(colors.panel, colors.danger, ACCENT_DARK_MIX)
     colors.dangerBorder = spec.dangerBorder or
@@ -114,9 +153,11 @@ local function buildPalette(spec)
     colors.shadow = spec.shadow or
         { bg[1] * SHADOW_DARKEN, bg[2] * SHADOW_DARKEN, bg[3] * SHADOW_DARKEN, SHADOW_ALPHA }
 
-    colors.titleGradient1 = spec.title[1]
-    colors.titleGradient2 = spec.title[2]
-    colors.titleGradient3 = spec.title[3]
+    local title = spec.title or
+        { accent, blend({ 1, 1, 1 }, normalized(accentAlt), TITLE_CENTER_TINT), accentAlt }
+    colors.titleGradient1 = title[1]
+    colors.titleGradient2 = title[2]
+    colors.titleGradient3 = title[3]
 
     return colors
 end
@@ -125,57 +166,64 @@ local PALETTES = {
     {
         -- Default pallete, Nebula
         id        = "default",
-        accent    = { 0.30, 0.70, 1.00 },
-        accentAlt = { 0.62, 0.40, 1.00 },
+        accent    = { 0.34, 0.68, 0.96 },
+        accentAlt = { 0.62, 0.42, 0.98 },
         tint      = 0.70,
         title     = { { 0.25, 0.60, 1.00 }, { 0.85, 0.92, 1.00 }, { 0.62, 0.40, 1.00 } },
     },
     {
-        -- Carbon
-        id        = "carbon",
-        accent    = { 0.25, 0.25, 0.25 },
-        accentAlt = { 0.9, 0.9, 0.9 },
-        tint      = 0.70,
-        title     = { { 0.4, 0.4, 0.4 }, { 0.85, 0.92, 1.00 }, { 0.2, 0.2, 0.2 } },
+        -- Carbon. A grey hue normalizes to white, so tinting toward this
+        -- accent would do nothing; neutralHue casts the surfaces instead.
+        -- glow/accentDim are overridden because a near-black accent neither
+        -- blooms additively nor stays visible once dimmed against the track.
+        id         = "carbon",
+        accent     = { 0.32, 0.33, 0.36 },
+        accentAlt  = { 0.90, 0.90, 0.92 },
+        neutralHue = { 0.55, 0.62, 0.78 },
+        tint       = 0.70,
+        glow       = { 0.75, 0.78, 0.85 },
+        accentDim  = { 0.52, 0.55, 0.62 },
+        title      = { { 0.42, 0.44, 0.48 }, { 0.85, 0.92, 1.00 }, { 0.34, 0.36, 0.40 } },
     },
     {
-        -- "Amethyst"
+        -- "Amethyst" - deep violet into magenta. Its title stops were a copy
+        -- of lavender's, which made the two themes share a wordmark; derived.
         id        = "amethyst",
-        accent    = { 0.4, 0.1, 0.6 },
-        accentAlt = { 0.8, 0.2, 0.6 },
+        accent    = { 0.52, 0.18, 0.72 },
+        accentAlt = { 0.82, 0.26, 0.66 },
         tint      = 0.75,
-        title     = { { 0.62, 0.25, 1.00 }, { 0.95, 0.86, 1.00 }, { 1.00, 0.40, 0.85 } },
     },
     {
         -- "Emerald" - green into teal.
         id        = "emerald",
-        accent    = { 0.25, 0.92, 0.60 },
-        accentAlt = { 0.35, 0.80, 1.00 },
+        accent    = { 0.30, 0.82, 0.56 },
+        accentAlt = { 0.36, 0.76, 0.96 },
         tint      = 0.70,
         title     = { { 0.20, 0.90, 0.55 }, { 0.88, 1.00, 0.92 }, { 0.30, 0.78, 1.00 } },
     },
     {
         -- "Lavender" - purple into pink.
         id        = "lavender",
-        accent    = { 0.72, 0.32, 1.00 },
-        accentAlt = { 1.00, 0.42, 0.85 },
+        accent    = { 0.68, 0.38, 0.95 },
+        accentAlt = { 0.95, 0.46, 0.82 },
         tint      = 0.75,
         title     = { { 0.62, 0.25, 1.00 }, { 0.95, 0.86, 1.00 }, { 1.00, 0.40, 0.85 } },
     },
     {
-        -- "Topaz" - yellow into orange.
+        -- "Topaz" - yellow into orange. Text takes a fraction of the surface
+        -- tint: pulled the full distance toward yellow it goes sallow.
         id        = "topaz",
-        accent    = { 1.00, 0.90, 0.30 },
-        accentAlt = { 1.00, 0.50, 0.30 },
-        tint      = 0.70,
+        accent    = { 0.95, 0.80, 0.32 },
+        accentAlt = { 0.96, 0.52, 0.30 },
+        tint      = { default = 0.70, text = 0.25, textMuted = 0.30, textDim = 0.40 },
         danger    = { 0.95, 0.10, 0.14 },
         title     = { { 1.00, 0.90, 0.30 }, { 1.00, 0.95, 0.82 }, { 1.00, 0.50, 0.30 } },
     },
     {
         -- "Ember" - the warm theme.
         id        = "ember",
-        accent    = { 1.00, 0.60, 0.20 },
-        accentAlt = { 1.00, 0.35, 0.45 },
+        accent    = { 0.96, 0.58, 0.22 },
+        accentAlt = { 0.96, 0.36, 0.44 },
         tint      = 0.70,
         warning   = { 1.00, 0.88, 0.48 },
         danger    = { 1.00, 0.26, 0.30 },
@@ -187,45 +235,47 @@ local PALETTES = {
         accent    = { 0.70, 0.78, 0.92 },
         accentAlt = { 0.52, 0.60, 0.76 },
         tint      = 0.40,
-        title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
     },
     {
-        -- "Ruby"
+        -- "Ruby". danger is lifted off the accent so a Quit row still reads as
+        -- a warning rather than as more theme.
         id        = "ruby",
-        accent    = { 0.75, 0.10, 0.10 },
-        accentAlt = { 1.00, 0.50, 0.30 },
+        accent    = { 0.80, 0.18, 0.20 },
+        accentAlt = { 0.96, 0.52, 0.32 },
         tint      = 0.5,
-        danger    = { 0.95, 0.10, 0.14 },
+        danger    = { 0.98, 0.32, 0.30 },
         title     = { { 0.75, 0.10, 0.10 }, { 1.00, 0.90, 0.85 }, { 0.75, 0.20, 0.10 } },
     },
     {
-       id        = "diamond",
-       accent    = { 0.2, 1.00, 1.00 },
-       accentAlt = { 0.52, 0.60, 0.76 },
-       tint      = 0.40,
-       title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
+        -- "Diamond" - icy cyan. Was a pure { 0.2, 1, 1 }: two channels pinned
+        -- at full, which glared on every filled control.
+        id        = "diamond",
+        accent    = { 0.45, 0.86, 0.94 },
+        accentAlt = { 0.68, 0.94, 1.00 },
+        tint      = 0.45,
     },
     {
-        id        =  "lapis",
-        accent    = { 0.10, 0.30, 0.90 },
-        accentAlt = { 0.52, 0.60, 0.76 },
-        tint      =   0.40,
-        title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
+        -- "Lapis" - deep blue, lifted off pure navy so accentDim stays clear
+        -- of the track it fills.
+        id        = "lapis",
+        accent    = { 0.30, 0.48, 0.92 },
+        accentAlt = { 0.42, 0.70, 1.00 },
+        tint      = 0.45,
     },
     {
-        id        =  "rose",
-        accent    = { 0.65, 0.10, 0.35 },
-        accentAlt = { 0.56, 0.250, 0.76 },
-        tint      =   0.40,
-        title     = { { 0.60, 0.10, 0.30 }, { 0.96, 0.98, 1.00 }, { 0.56, 0.250, 0.76 } },
+        -- "Rose" - A shade of pink.
+        id        = "rose",
+        accent    = { 0.76, 0.22, 0.44 },
+        accentAlt = { 0.62, 0.30, 0.80 },
+        tint      = 0.45,
     },
-    -- a placeholder for future palletes.
+    -- a placeholder for future palletes. `accent` is the only required field;
+    -- omit `title` to derive the wordmark from the accent pair.
     --{
     --    id        = "custom",
     --    accent    = { 0.30, 0.70, 1.00 },
     --    accentAlt = { 0.52, 0.60, 0.76 },
     --    tint      = 0.40,
-    --    title     = { { 0.55, 0.62, 0.78 }, { 0.96, 0.98, 1.00 }, { 0.55, 0.62, 0.78 } },
     --},
 }
 
@@ -234,8 +284,29 @@ Theme.DEFAULT = "default"
 local palettes = {}
 local paletteList = {}
 
+-- applyPalette writes into the live color tables rather than replacing them,
+-- so a role missing from one palette keeps the outgoing theme's value after a
+-- switch. A typo'd override is how that happens; catch it at load instead.
+local function assertRoles(reference, referenceId, palette, id)
+    for name in pairs(reference) do
+        assert(palette[name], "Theme: palette '" .. id .. "' is missing role '" ..
+            name .. "' that '" .. referenceId .. "' defines")
+    end
+    for name in pairs(palette) do
+        assert(reference[name], "Theme: palette '" .. id .. "' defines role '" ..
+            name .. "' that '" .. referenceId .. "' does not -- likely a typo in its spec")
+    end
+end
+
+local firstId, firstPalette
 for _, spec in ipairs(PALETTES) do
-    palettes[spec.id] = buildPalette(spec)
+    local palette = buildPalette(spec)
+    if firstPalette then
+        assertRoles(firstPalette, firstId, palette, spec.id)
+    else
+        firstId, firstPalette = spec.id, palette
+    end
+    palettes[spec.id] = palette
     paletteList[#paletteList + 1] = { id = spec.id }
 end
 
@@ -408,7 +479,7 @@ function Theme.resolveLabel(label, owner)
 end
 
 function Theme.glowRect(x, y, w, h, radius, intensity, color)
-    color = color or Theme.colors.accent
+    color = color or Theme.colors.glow
     local m = Theme.metrics
     local r, g, b = color[1], color[2], color[3]
 
@@ -424,9 +495,11 @@ function Theme.glowRect(x, y, w, h, radius, intensity, color)
     love.graphics.setBlendMode("alpha")
 end
 
+-- `glow` is separate from `lit` so an accent too dark to bloom additively
+-- (carbon) can still show a focus ring
 local TONES = {
-    accent = { rest = "panelBorder",  lit = "accent", fill = "accentDark" },
-    danger = { rest = "dangerBorder", lit = "danger", fill = "dangerDark" },
+    accent = { rest = "panelBorder",  lit = "accent", fill = "accentDark", glow = "glow" },
+    danger = { rest = "dangerBorder", lit = "danger", fill = "dangerDark", glow = "danger" },
 }
 
 function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone)
@@ -436,7 +509,7 @@ function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone)
     local lit = c[set.lit]
 
     if glow > 0.01 then
-        Theme.glowRect(x, y, w, h, m.radius, glow * Theme.pulse(time), lit)
+        Theme.glowRect(x, y, w, h, m.radius, glow * Theme.pulse(time), c[set.glow])
     end
     love.graphics.setColor(Theme.lerp(c.panel, c[set.fill], glow))
     love.graphics.rectangle("fill", x, y, w, h, m.radius, m.radius, 10)

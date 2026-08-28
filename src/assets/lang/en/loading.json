@@ -1,7 +1,7 @@
 {
   "loading": {
     "title": "Loading",
-    "failed": "{n} asset(s) failed to load — check the log",
+    "failed": "{n} asset(s) failed to load. Check the log.",
     "task": {
       "interface": "Preparing interface",
       "settings": "Loading settings",
