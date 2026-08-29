@@ -7,6 +7,12 @@
     "quit": "Salir",
     "hint": "W/S o Mouse: navegar    Enter o Clic: seleccionar",
     "onlinePlayers": "{n} jugando ahora",
+    "statsConsent": {
+      "title": "¿AYUDAR A MEJORAR STARSOWN?",
+      "message": "Starsown puede compartir tus recuentos de estrellas reventadas y un identificador aleatorio de la instalación para estadísticas agregadas y el recuento de jugadores en línea. Solo se envían estos valores. Puedes cambiarlo más tarde en Opciones.",
+      "decline": "Ahora No",
+      "accept": "Compartir"
+    },
     "splashes": [
       "¡Prueba a hacer clic en las estrellas!",
       "¡Ahora con más idle!",

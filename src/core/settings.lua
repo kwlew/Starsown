@@ -20,7 +20,10 @@ Settings.defaults = {
     customCursor = true, -- draws the game's own cursor; off shows the OS pointer instead
     reducedMotion = false, -- dampens ambient animation (starfield, nebula, twinkle, splash, title)
     showNebula = true, -- drifting gas-cloud backdrop behind the menu; off just skips drawing it, still baked
-    shareStats = true,
+    -- Analytics are opt-in. Keep whether the question was answered separate
+    -- from the answer so a fresh install can be distinguished from "no".
+    shareStats = false,
+    statsConsentAsked = false,
 }
 
 

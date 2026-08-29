@@ -16,6 +16,7 @@ local Globals       = require "globals"
 local Format        = require "utils.format"
 
 local Stats         = require "services.stats"
+local Settings      = require "core.settings"
 
 -- fractions of window size, so layout survives resizing at any resolution;
 -- the title's ratio lives in gameTitle.lua since loading animates to it
@@ -52,6 +53,36 @@ local function inheritSky(existing, name, build)
     local layer = existing or Assets.get(name) or build()
     layer.alpha = 1 -- loading may have handed it over mid-fade
     return layer
+end
+
+function MainMenu:saveStatsConsent(enabled)
+    local settings = Settings.load()
+    settings.shareStats = enabled
+    settings.statsConsentAsked = true
+    Settings.save(settings)
+    Stats.setEnabled(enabled)
+    self.statsConsentDialog:close()
+end
+
+function MainMenu:buildStatsConsentDialog()
+    if self.statsConsentDialog then return end
+
+    self.statsConsentDialog = UI.Dialog.new{
+        title = function() return I18n.t("menu.statsConsent.title") end,
+        message = function() return I18n.t("menu.statsConsent.message") end,
+        buttons = {
+            -- The safe choice is first, so keyboard confirmation never opts
+            -- the player in merely because they pressed Enter reflexively.
+            { label = function() return I18n.t("menu.statsConsent.decline") end,
+              onSelect = function() self:saveStatsConsent(false) end },
+            { label = function() return I18n.t("menu.statsConsent.accept") end,
+              onSelect = function() self:saveStatsConsent(true) end },
+        },
+        -- Escape and clicking the scrim are explicit declines rather than a
+        -- way to postpone the question and accidentally enable collection.
+        onCancel = function() self:saveStatsConsent(false) end,
+    }
+    self.statsConsentDialog:setFocusSound(UI.Sfx.focus)
 end
 
 function MainMenu:enter(previousName)
@@ -115,6 +146,13 @@ function MainMenu:enter(previousName)
                   smallText = "In the menu" }
 
     self:layout()
+
+    self:buildStatsConsentDialog()
+    if not Settings.load().statsConsentAsked then
+        self.statsConsentDialog:openDialog()
+    else
+        self.statsConsentDialog:close()
+    end
 end
 
 function MainMenu:layout()
@@ -142,6 +180,7 @@ function MainMenu:layout()
     end
 
     self.menu:layout(h * MENU_Y_RATIO)
+    if self.statsConsentDialog then self.statsConsentDialog:layout() end
 end
 
 function MainMenu:update(dt)
@@ -151,6 +190,9 @@ function MainMenu:update(dt)
     self.title:update(dt)
     self.splash:update(dt)
     self.menu:update(dt)
+    if self.statsConsentDialog:isOpen() then
+        self.statsConsentDialog:update(dt)
+    end
 
     if Stats.online ~= self.onlineCount then
         self.onlineCount = Stats.online
@@ -169,6 +211,9 @@ function MainMenu:resize(w, h, rescaled)
 end
 
 function MainMenu:keypressed(key)
+    if self.statsConsentDialog:isOpen() then
+        return self.statsConsentDialog:keypressed(key)
+    end
     self.menu:keypressed(key)
 end
 
@@ -181,12 +226,20 @@ function MainMenu:anyLinkHover()
 end
 
 function MainMenu:mousemoved(x, y)
+    if self.statsConsentDialog:isOpen() then
+        self.statsConsentDialog:mousemoved(x, y)
+        self.mouseX, self.mouseY = x, y
+        return
+    end
     self.menu:mousemoved(x, y)
     for _, link in ipairs(self.links) do link:mousemoved(x, y) end
     self.mouseX, self.mouseY = x, y
 end
 
 function MainMenu:mousepressed(x, y, button)
+    if self.statsConsentDialog:isOpen() then
+        return self.statsConsentDialog:mousepressed(x, y, button)
+    end
     if self.menu:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
     for _, link in ipairs(self.links) do
         if link:mousepressed(x, y, button) then return end
@@ -198,6 +251,9 @@ function MainMenu:mousepressed(x, y, button)
 end
 
 function MainMenu:mousereleased(x, y, button)
+    if self.statsConsentDialog:isOpen() then
+        return self.statsConsentDialog:mousereleased(x, y, button)
+    end
     self.menu:mousereleased(x, y, button)
     for _, link in ipairs(self.links) do link:mousereleased(x, y, button) end
 end
@@ -223,6 +279,13 @@ function MainMenu:draw()
     self.menu:draw()
 
     UI.Label.hint(I18n.t("menu.hint"), true)
+
+    if self.statsConsentDialog:isOpen() then
+        self.statsConsentDialog:draw()
+        local hover = self.statsConsentDialog:hovering(self.mouseX or -1, self.mouseY or -1)
+        UI.Cursor.setHover(hover)
+        return
+    end
 
     -- link hover never carries danger (they're plain links), so the menu's own flag decides the color
     local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)

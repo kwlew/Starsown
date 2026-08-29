@@ -67,7 +67,7 @@
       "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el tearing.",
       "uncapFps": "Elimina el límite interno de fotogramas del motor. VSync (arriba) seguirá limitando los fotogramas a menos que también esté desactivado. Se aplica de inmediato.",
       "showNebula": "Activa o desactiva la nube de gas a la deriva detrás del menú. Se aplica de inmediato.",
-      "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando y cuántas estrellas ha reventado todo el mundo. Ningún dato personal.",
+      "shareStats": "Comparte recuentos de estrellas reventadas y un identificador aleatorio de la instalación para estadísticas agregadas y el recuento de jugadores en línea. Solo se envían estos valores.",
       "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
       "back": "Vuelve a la pantalla anterior."
     }

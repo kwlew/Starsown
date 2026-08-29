@@ -67,7 +67,7 @@
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
       "uncapFps": "Remove o limite interno de quadros do motor. O VSync (acima) ainda limita os quadros a menos que também esteja desativado. Aplica imediatamente.",
       "showNebula": "Ativa ou desativa a nuvem de gás à deriva atrás do menu. Aplica imediatamente.",
-      "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando e quantas estrelas todo mundo estourou. Nenhum dado pessoal.",
+      "shareStats": "Compartilha contagens de estrelas estouradas e um identificador aleatório da instalação para estatísticas agregadas e a contagem de jogadores online. Apenas esses valores são enviados.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
       "back": "Volta para a tela anterior."
     }

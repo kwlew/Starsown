@@ -124,9 +124,11 @@ function StateManager.draw()
 end
 
 -- dropped while transitioning so mashing Esc can't queue a second switch;
--- cursor movement/resize still get through or the far side lands with stale hover/layout
+-- cursor movement/resize still get through or the far side lands with stale hover/layout.
+-- keyreleased is deliberately not blocked: a release can't start a transition, and
+-- swallowing it strands the key as held in whatever tracks it (see Player.held)
 local blockedWhileFading = {
-    keypressed = true, keyreleased = true, textinput = true,
+    keypressed = true, textinput = true,
     mousepressed = true, mousereleased = true, wheelmoved = true,
 }
 

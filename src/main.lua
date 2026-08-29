@@ -8,10 +8,6 @@ local UI = require "ui"
 local GameTitle = require "ui.text.gameTitle"
 
 local loadingState = require "states.loading"
-local mainMenuState = require "states.mainMenu"
-local optionsState = require "states.options"
-local statsState = require "states.stats"
-local achievementsState = require "states.achievements"
 local Globals = require "globals"
 
 local Stats = require "services.stats"
@@ -20,17 +16,15 @@ local Stats = require "services.stats"
 function love.load()
     love.window.setTitle(Globals.game.name)
 
-    -- must run before anything else asks Theme for a font/metric
     UI.Theme.rescale()
-    -- hides the OS cursor; UI.Cursor.draw() replaces it every frame
+
     UI.Cursor.init()
 
     Globals.init()
 
-    -- load settings/language/theme before any screen draws, so the
-    -- loading screen itself is already localized and themed
     local settings = Settings.load()
-    Stats.enabled = settings.shareStats
+
+    Stats.enabled = settings.statsConsentAsked and settings.shareStats
     Stats.start()
     I18n.load()
     I18n.setLanguage(settings.language)
@@ -41,12 +35,7 @@ function love.load()
     FrameLimiter.setUncapped(settings.uncapFps)
 
     StateManager.register("loading", loadingState)
-    StateManager.register("mainMenu", mainMenuState)
-    StateManager.register("options", optionsState)
-    StateManager.register("stats", statsState)
-    StateManager.register("achievements", achievementsState)
-
-    StateManager.switch("loading")
+    StateManager.switch("loading", settings)
 
     Presence.initialize()
 end
@@ -57,7 +46,6 @@ function love.update(dt)
     Presence.update(dt)
     Stats.update(dt)
     UI.Cursor.update(dt)
-    -- global so a crossfade still happens while sitting on Options
     UI.Music.update(dt)
 end
 

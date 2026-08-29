@@ -7,6 +7,12 @@
     "quit": "Quit",
     "hint": "W/S or Mouse: navigate    Enter or Click: select",
     "onlinePlayers": "{n} playing now",
+    "statsConsent": {
+      "title": "HELP IMPROVE STARSOWN?",
+      "message": "Starsown can share your star-pop counts and a random installation ID for aggregate statistics and the online player count. Only these values are sent. You can change this later in Options.",
+      "decline": "No Thanks",
+      "accept": "Share Stats"
+    },
     "splashes": [
       "Also try clicking the stars!",
       "Now with extra idle!",

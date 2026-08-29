@@ -61,7 +61,7 @@ function Nebula.new(config)
         layers = {}, -- filled by bake()
         time = 0,
         alpha = config.alpha or 1, -- global fade, on top of per-layer weights
-        enabled = config.enabled ~= false, -- options.showNebula; off just skips draw(), still baked and updated
+        enabled = config.enabled ~= false,
         seed = config.seed,        -- set to reproduce a nebula while tuning
 
         layerCount = config.layerCount or 2, -- layer 1 = farthest, drawn first
@@ -174,46 +174,106 @@ function Nebula:carveLanes(image, cloud)
     end
 end
 
--- builds every layer's canvas; call once at load, everything after is draw calls
-function Nebula:bake()
+local function restoreGraphics(prevCanvas, blendMode, alphaMode, r, g, b, a)
+    love.graphics.setCanvas(prevCanvas)
+    love.graphics.setBlendMode(blendMode, alphaMode)
+    love.graphics.setColor(r, g, b, a)
+end
+
+-- Runs one drawing unit against a layer canvas and restores all graphics
+-- state before returning. That makes it safe for incremental baking to pause
+-- between units while the loading screen draws normally.
+local function drawOnLayer(canvas, blendMode, draw)
+    local prevCanvas = love.graphics.getCanvas()
+    local prevBlend, prevAlpha = love.graphics.getBlendMode()
+    local r, g, b, a = love.graphics.getColor()
+
+    love.graphics.setCanvas(canvas)
+    love.graphics.push()
+    love.graphics.scale(CANVAS_SCALE)
+    love.graphics.translate(SLACK_X / 2, SLACK_Y / 2)
+    love.graphics.setBlendMode(blendMode)
+    local ok, err = pcall(draw)
+    love.graphics.pop()
+    restoreGraphics(prevCanvas, prevBlend, prevAlpha, r, g, b, a)
+    if not ok then error(err, 0) end
+end
+
+-- Prepares an incremental bake. bakeStep() performs one canvas allocation,
+-- cloud stamp, lane carve, or layer finalization at a time.
+function Nebula:beginBake()
     if self.seed then math.randomseed(self.seed) end
 
-    local image = getBlob()
     local canvasW = Math.round((DESIGN_W + SLACK_X) * CANVAS_SCALE)
     local canvasH = Math.round((DESIGN_H + SLACK_Y) * CANVAS_SCALE)
-    -- restored, not cleared to nil: runs from a loading task, can't assume it owns the render target
-    local prevCanvas = love.graphics.getCanvas()
-
-    self.layers = {}
+    local plans = {}
+    local total = 0
     for i = 1, self.layerCount do
-        local canvas = love.graphics.newCanvas(canvasW, canvasH)
-        canvas:setFilter("linear", "linear")
-
-        love.graphics.setCanvas(canvas)
-        love.graphics.clear(0, 0, 0, 0)
-        love.graphics.push()
-        love.graphics.scale(CANVAS_SCALE)
-        love.graphics.translate(SLACK_X / 2, SLACK_Y / 2)
-
         local clouds = {}
         for _ = 1, Math.randInt(self.cloudsMin, self.cloudsMax) do
             clouds[#clouds + 1] = self:buildCloud()
         end
+        plans[i] = { clouds = clouds }
+        total = total + 2 + #clouds * 2 -- prepare/finalize + gas/lane per cloud
+    end
 
-        -- additive gas, then lanes cut into it; additive into a transparent
-        -- canvas is already premultiplied alpha, matching how draw() blends it back
-        love.graphics.setBlendMode("add")
-        for _, cloud in ipairs(clouds) do self:stampCloud(image, cloud) end
-        love.graphics.setBlendMode("subtract")
-        for _, cloud in ipairs(clouds) do self:carveLanes(image, cloud) end
-        love.graphics.setBlendMode("alpha")
+    self.bakeState = {
+        image = getBlob(),
+        canvasW = canvasW,
+        canvasH = canvasH,
+        plans = plans,
+        layer = 1,
+        phase = "prepare",
+        cloud = 1,
+        completed = 0,
+        total = math.max(1, total),
+    }
+    self.layers = {}
+    return self
+end
 
-        love.graphics.pop()
+function Nebula:bakeStep()
+    local state = self.bakeState
+    if not state then return true, 1 end
 
-        -- 0 = farthest, 1 = nearest; single layer counts as the near one
+    local i = state.layer
+    local plan = state.plans[i]
+    if not plan then
+        self.bakeState = nil
+        return true, 1
+    end
+
+    if state.phase == "prepare" then
+        local canvas = love.graphics.newCanvas(state.canvasW, state.canvasH)
+        canvas:setFilter("linear", "linear")
+        local prevCanvas = love.graphics.getCanvas()
+        love.graphics.setCanvas(canvas)
+        love.graphics.clear(0, 0, 0, 0)
+        love.graphics.setCanvas(prevCanvas)
+        plan.canvas = canvas
+        state.phase = "gas"
+        state.cloud = 1
+    elseif state.phase == "gas" then
+        local cloud = plan.clouds[state.cloud]
+        drawOnLayer(plan.canvas, "add", function()
+            self:stampCloud(state.image, cloud)
+        end)
+        state.cloud = state.cloud + 1
+        if state.cloud > #plan.clouds then
+            state.phase = "lanes"
+            state.cloud = 1
+        end
+    elseif state.phase == "lanes" then
+        local cloud = plan.clouds[state.cloud]
+        drawOnLayer(plan.canvas, "subtract", function()
+            self:carveLanes(state.image, cloud)
+        end)
+        state.cloud = state.cloud + 1
+        if state.cloud > #plan.clouds then state.phase = "finalize" end
+    else
         local depth = self.layerCount > 1 and (i - 1) / (self.layerCount - 1) or 1
         self.layers[i] = {
-            canvas = canvas,
+            canvas = plan.canvas,
             alpha = self.layerAlpha * (self.layerFalloff + (1 - self.layerFalloff) * depth),
             parallax = self.parallaxMin + (1 - self.parallaxMin) * depth,
             driftRateX = Math.randRange(self.driftRateMin, self.driftRateMax),
@@ -222,10 +282,23 @@ function Nebula:bake()
             phaseY = Math.randAngle(),
             breathePhase = Math.randAngle(),
         }
+        state.layer = i + 1
+        state.phase = "prepare"
+        state.cloud = 1
     end
 
-    love.graphics.setCanvas(prevCanvas)
-    love.graphics.setColor(1, 1, 1, 1)
+    state.completed = state.completed + 1
+    local done = state.layer > self.layerCount
+    local progress = done and 1 or math.min(1, state.completed / state.total)
+    if done then self.bakeState = nil end
+    return done, progress
+end
+
+-- Synchronous compatibility path for theme changes and other callers that
+-- need the finished canvas immediately. Loading uses beginBake()/bakeStep().
+function Nebula:bake()
+    self:beginBake()
+    while not self:bakeStep() do end
     return self
 end
 

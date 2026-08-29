@@ -4,6 +4,7 @@
     "failed": "Falha ao carregar {n} recurso(s). Verifique o log.",
     "task": {
       "interface": "Preparando a interface",
+      "screens": "Preparando telas",
       "settings": "Carregando configurações",
       "world": "Preparando o céu noturno",
       "audio": "Carregando áudio"

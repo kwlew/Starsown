@@ -217,8 +217,20 @@ function Stats.shutdown()
     thread, jobChannel, resultChannel = nil, nil, nil
 end
 
+local function clearLocalData()
+    Stats.online, Stats.stars, Stats.golden, Stats.rainbow = nil, nil, nil, nil
+    pending.stars, pending.golden, pending.rainbow = 0, 0, 0
+    love.filesystem.remove(PENDING_FILE)
+    love.filesystem.remove(ID_FILE)
+end
+
 function Stats.setEnabled(enabled)
-    if enabled == Stats.enabled then return end
+    if enabled == Stats.enabled then
+        -- Calling this with false also serves as an explicit privacy cleanup,
+        -- including for data left by a version that enabled stats by default.
+        if not enabled then clearLocalData() end
+        return
+    end
     Stats.enabled = enabled
 
     if enabled then
@@ -227,9 +239,7 @@ function Stats.setEnabled(enabled)
     end
 
     Stats.shutdown()
-    Stats.online, Stats.stars, Stats.golden, Stats.rainbow = nil, nil, nil, nil
-    pending.stars, pending.golden, pending.rainbow = 0, 0, 0
-    love.filesystem.remove(PENDING_FILE)
+    clearLocalData()
 end
 
 return Stats

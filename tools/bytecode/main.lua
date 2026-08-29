@@ -1,22 +1,4 @@
--- Compiles every .lua file under game/ (a copy of src/, staged by
--- build.ps1) to LuaJIT bytecode, written to $TDIDLE_COMPILE_OUT with the
--- same relative paths. Driven by build.ps1 -Bytecode, not run directly.
---
--- Compiles through THIS runtime (love.filesystem.load + string.dump) rather
--- than shelling out to a standalone `luajit` binary on PATH: the bytecode
--- format isn't guaranteed stable across LuaJIT builds, and a locally
--- installed luajit.exe has no reason to match whatever's embedded in this
--- LÖVE install. Loading and dumping through LÖVE's own runtime means the
--- bytecode it produces is *exactly* what that runtime will later load back.
---
--- game/ is a plain subdirectory of this project, not an external mount --
--- love.filesystem.mount() returned false for every absolute path tried
--- (even "." and this project's own directory) when this was built, so
--- build.ps1 copies the source in as a subfolder instead of mounting it.
---
--- Output directories must already exist -- io.open won't create them, and
--- build.ps1 mirrors the source tree before launching this.
-
+-- Bytecode for lua file.
 function love.load()
     io.stdout:setvbuf("no")
 

@@ -181,11 +181,13 @@ function Options:applyTheme(id)
     if nebula and nebula:isBaked() then nebula:bake() end
 end
 
--- shared instance from Assets (see applyTheme above); staying baked while
--- hidden means turning it back on is instant, not a re-bake
+-- A disabled-at-boot nebula is intentionally not baked during loading. Pay
+-- that one-time cost only if the player later asks to see it.
 function Options:setNebulaVisible(value)
     local nebula = Assets.get("nebula")
-    if nebula then nebula.enabled = value end
+    if not nebula then return end
+    if value and not nebula:isBaked() then nebula:bake() end
+    nebula.enabled = value
 end
 
 -- both layout and the focus list read this, so a footer button can never be

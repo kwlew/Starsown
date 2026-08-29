@@ -14,7 +14,8 @@ local Globals = require "globals"
 
 local DOT_INTERVAL = 0.5 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.9  -- length of the hand-off animation
-local MIN_FILL_TIME = 1.5
+local MIN_FILL_TIME = 1.25 -- intentional presentation beat; not a claim that work is still running
+local WORK_BUDGET = 0.004  -- seconds of cooperative loading work allowed per update
 
 local FURNITURE_FADE = 0.45
 local SKY_FADE_SPEED = 3.0 -- alpha/sec the sky (nebula + stars) fades up
@@ -73,20 +74,18 @@ local CLIPS = {
     { "assets/audio/sfx/explosions/star_explosion2.wav", "starExplosion2" },
     { "assets/audio/sfx/explosions/star_explosion3.wav", "starExplosion3" },
     { "assets/audio/sfx/explosions/golden_star_explosion.wav", "goldenStarExplosion" },
-    { "assets/audio/sfx/menu/blipSelect.wav", "menuBlipSelect" },
-    { "assets/audio/sfx/menu/blipSelect2.wav", "menuBlipSelect2" },
-    { "assets/audio/sfx/menu/menuButton.wav", "menuButton" },
-    { "assets/audio/sfx/menu/menuButton2.wav", "menuButton2" },
     { "assets/audio/sfx/menu/menuButton3.wav", "menuButton3" },
     { "assets/audio/sfx/menu/menuButton4.wav", "menuButton4" },
-    { "assets/audio/sfx/menu/menuButton5.wav", "menuButton5" },
-    { "assets/audio/sfx/menu/menuButton6.ogg", "menuButton6" },
     { "assets/audio/sfx/menu/menuBeep.mp3", "menuBeep" },
 }
 
--- each task gets (yield, warn):
---   yield(fraction) -- optional 0..1 progress within this task; ends the frame
---   warn(detail)    -- a non-fatal problem worth telling the player about
+local STATES = {
+    { "mainMenu", "states.mainMenu" },
+    { "options", "states.options" },
+    { "stats", "states.stats" },
+    { "achievements", "states.achievements" },
+}
+
 function Loading:buildTasks()
     return {
         {
@@ -104,9 +103,19 @@ function Loading:buildTasks()
             label = I18n.t("loading.task.settings"),
             weight = 1,
             run = function()
-                local settings = Settings.load()
+                local settings = self.startupSettings or Settings.load()
                 Settings.apply(settings)
                 Assets.set("settings", settings)
+            end,
+        },
+        {
+            label = I18n.t("loading.task.screens"),
+            weight = 2,
+            run = function(yield)
+                for i, spec in ipairs(STATES) do
+                    StateManager.register(spec[1], require(spec[2]))
+                    yield(i / #STATES)
+                end
             end,
         },
         {
@@ -122,10 +131,18 @@ function Loading:buildTasks()
                 -- settings task above already ran, so this respects a saved showNebula = false from the first frame
                 local settings = Assets.get("settings")
                 local nebula = Particles.Nebula.new{ alpha = 0, enabled = settings.showNebula }
-                nebula:bake()
                 Assets.set("nebula", nebula)
                 self.nebula = nebula
-                yield(1)
+                if settings.showNebula then
+                    nebula:beginBake()
+                    local done, progress
+                    repeat
+                        done, progress = nebula:bakeStep()
+                        yield(0.5 + progress * 0.5)
+                    until done
+                else
+                    yield(1)
+                end
             end,
         },
         {
@@ -143,8 +160,14 @@ function Loading:buildTasks()
     }
 end
 
-function Loading:enter()
+function Loading:enter(previousName, settings)
     love.graphics.setBackgroundColor(UI.Theme.colors.bg)
+
+    self.startupSettings = settings
+    self.metrics = { tasks = {}, maxStep = 0, maxWorkFrame = 0 }
+    self.enteredAt = love.timer.getTime()
+    self.firstDrawAt = nil
+    self.loadFinishedAt = nil
 
     self.tasks = self:buildTasks()
     self.totalWeight = 0
@@ -230,9 +253,14 @@ function Loading:step()
         self.label = task.label
         self.partial = 0
         self.coroutine = coroutine.create(task.run)
+        task.workTime = 0
     end
 
+    local started = love.timer.getTime()
     local ok, value = coroutine.resume(self.coroutine, self.yield, self.warn)
+    local duration = love.timer.getTime() - started
+    task.workTime = task.workTime + duration
+    self.metrics.maxStep = math.max(self.metrics.maxStep, duration)
     if not ok then
         self:recordFailure(task.label, value)
     elseif type(value) == "number" then
@@ -240,6 +268,10 @@ function Loading:step()
     end
 
     if coroutine.status(self.coroutine) == "dead" then
+        self.metrics.tasks[#self.metrics.tasks + 1] = {
+            label = task.label,
+            seconds = task.workTime,
+        }
         self.doneWeight = self.doneWeight + (task.weight or 1)
         self.index = self.index + 1
         self.coroutine = nil
@@ -248,11 +280,20 @@ function Loading:step()
 end
 
 function Loading:update(dt)
-    dt = math.min(dt, 0.1)
+    local animationDt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
 
     if self.phase == "loading" then
-        self:step()
+        local workStarted = love.timer.getTime()
+        repeat
+            self:step()
+        until self:isLoaded() or love.timer.getTime() - workStarted >= WORK_BUDGET
+        local workDuration = love.timer.getTime() - workStarted
+        self.metrics.maxWorkFrame = math.max(self.metrics.maxWorkFrame, workDuration)
+        if self:isLoaded() and not self.loadFinishedAt then
+            self.loadFinishedAt = love.timer.getTime()
+            self.metrics.loadSeconds = self.loadFinishedAt - self.enteredAt
+        end
 
         self.bar:setProgress(math.min(self:progress(), self.elapsed / MIN_FILL_TIME))
 
@@ -260,7 +301,7 @@ function Loading:update(dt)
             self.phase = "outro"
         end
     else
-        self.outro = self.outro + dt
+        self.outro = self.outro + animationDt
         if self.outro >= OUTRO_TIME then
             Audio.stopAll()
             StateManager.switch("mainMenu")
@@ -268,12 +309,12 @@ function Loading:update(dt)
         end
     end
 
-    self.bar:update(dt)
+    self.bar:update(animationDt)
 
-    fadeInSky(self.nebula, dt)
-    fadeInSky(self.stars, dt)
+    fadeInSky(self.nebula, animationDt)
+    fadeInSky(self.stars, animationDt)
 
-    self.dotTimer = self.dotTimer + dt
+    self.dotTimer = self.dotTimer + animationDt
     if self.dotTimer >= DOT_INTERVAL then
         self.dotTimer = self.dotTimer - DOT_INTERVAL
         self.dotCount = (self.dotCount + 1) % 4
@@ -314,6 +355,10 @@ local function drawVersionScaled(version, bigX, bigY, menuX, menuY, endScale, ea
 end
 
 function Loading:draw()
+    if not self.firstDrawAt then
+        self.firstDrawAt = love.timer.getTime()
+        self.metrics.firstDrawSeconds = self.firstDrawAt - self.enteredAt
+    end
     local w, h = love.graphics.getDimensions()
     local outro = self:outroProgress()
     -- furniture clears out first so the title finishes its travel against an empty screen
