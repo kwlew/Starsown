@@ -1,3 +1,4 @@
+---@diagnostic disable: duplicate-set-field, inject-field
 function love.conf(t)
     t.identity = "TD-Idle"
     t.version = "11.5"

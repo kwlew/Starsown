@@ -16,6 +16,7 @@
     "msaaOff": "Desativado",
     "displayMode": "Modo de Tela",
     "vsync": "VSync",
+    "uncapFps": "FPS sem limite",
     "showNebula": "Mostrar Nebulosa",
     "shareStats": "Compartilhar estatísticas",
     "tab": {
@@ -64,6 +65,7 @@
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
       "displayMode": "Windowed, Borderless ou Fullscreen exclusivo.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
+      "uncapFps": "Remove o limite interno de quadros do motor. O VSync (acima) ainda limita os quadros a menos que também esteja desativado. Aplica imediatamente.",
       "showNebula": "Ativa ou desativa a nuvem de gás à deriva atrás do menu. Aplica imediatamente.",
       "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando e quantas estrelas todo mundo estourou. Nenhum dado pessoal.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",

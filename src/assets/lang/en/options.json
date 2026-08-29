@@ -16,6 +16,7 @@
     "msaaOff": "Off",
     "displayMode": "Display Mode",
     "vsync": "VSync",
+    "uncapFps": "Uncapped FPS",
     "showNebula": "Show Nebula",
     "shareStats": "Share Play Stats",
     "tab": {
@@ -64,6 +65,7 @@
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
       "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
+      "uncapFps": "Removes the engine's internal frame rate cap. VSync above still limits frames unless it's off too. Applies immediately.",
       "showNebula": "Toggles the drifting gas-cloud backdrop behind the menu. Applies immediately.",
       "shareStats": "Sends an anonymous ping so the menu can show how many people are playing and how many stars everyone has popped. No personal data.",
       "apply": "Applies the graphics changes above. You'll be asked to confirm.",

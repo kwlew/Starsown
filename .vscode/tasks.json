@@ -6,6 +6,11 @@
       "type": "shell",
       "command": "love",
       "args": ["${workspaceFolder}/src"],
+      "options": {
+        "env": {
+          "LUA_CPATH": "${workspaceFolder}/.tools/lua-https/?.so;;"
+        }
+      },
       "group": {
         "kind": "build",
         "isDefault": true

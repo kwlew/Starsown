@@ -399,24 +399,40 @@ function Theme.px(value)
     return Math.round(value * Theme.scale)
 end
 
+local function buildFont(name, role, size)
+    local dir = FONT_FAMILIES[role.family or DEFAULT_FAMILY]
+    assert(dir, "Theme: role '" .. name .. "' names unknown family '" .. tostring(role.family) .. "'")
+
+    local ok, font = pcall(love.graphics.newFont, dir .. role.file, size)
+    font = ok and font or love.graphics.newFont(size)
+
+    if role.fallback then
+        local fbOk, fallback = pcall(love.graphics.newFont, FONT_FAMILIES.play .. role.fallback, size)
+        if fbOk then font:setFallbacks(fallback) end
+    end
+
+    return font
+end
+
 function Theme.font(name)
     local role = fontRoles[name]
     assert(role, "Theme.font: unknown font '" .. tostring(name) .. "'")
     if not fontCache[name] then
         local size = math.max(1, Math.round(role.size * Theme.scale))
-        local dir = FONT_FAMILIES[role.family or DEFAULT_FAMILY]
-        assert(dir, "Theme.font: role '" .. name .. "' names unknown family '" .. tostring(role.family) .. "'")
-
-        local ok, font = pcall(love.graphics.newFont, dir .. role.file, size)
-        font = ok and font or love.graphics.newFont(size)
-        fontCache[name] = font
-
-        if role.fallback then
-            local fbOk, fallback = pcall(love.graphics.newFont, FONT_FAMILIES.play .. role.fallback, size)
-            if fbOk then font:setFallbacks(fallback) end
-        end
+        fontCache[name] = buildFont(name, role, size)
     end
     return fontCache[name]
+end
+
+-- like Theme.font, but rasterized at an explicit design-space size instead
+-- of the role's own, and not cached -- for a one-off larger/smaller render
+-- of an existing typeface (e.g. loading screen's big version label, same
+-- face as "small") that a caller will itself scale down toward, never up
+function Theme.fontSized(name, designSize)
+    local role = fontRoles[name]
+    assert(role, "Theme.fontSized: unknown font '" .. tostring(name) .. "'")
+    local size = math.max(1, Math.round(designSize * Theme.scale))
+    return buildFont(name, role, size)
 end
 
 function Theme.fontRoles()

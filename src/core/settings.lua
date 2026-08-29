@@ -7,6 +7,7 @@ Settings.FILENAME = "settings.lua"
 Settings.defaults = {
     windowMode = "windowed", -- "windowed" | "borderless" | "exclusive"
     vsync = 0,
+    uncapFps = false, -- skips love.run's per-frame sleep; see core/frameLimiter.lua
     msaa = 4,
     volume = 0.8,      -- master, scales every channel via love.audio.setVolume
     musicVolume = 0.8, -- channel volume, see core/audio.lua

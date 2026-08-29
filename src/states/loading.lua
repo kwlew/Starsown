@@ -9,6 +9,8 @@ local Particles = require "particles"
 local Math = require "utils.math"
 local Ease = require "utils.ease"
 local GameTitle = require "ui.text.gameTitle"
+local TextFactory = require "ui.text.textFactory"
+local Globals = require "globals"
 
 local DOT_INTERVAL = 0.5 -- seconds between "..." animation steps
 local OUTRO_TIME = 0.9  -- length of the hand-off animation
@@ -20,6 +22,13 @@ local SKY_FADE_SPEED = 3.0 -- alpha/sec the sky (nebula + stars) fades up
 -- loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1
 local TITLE_SCALE = 1.3
 local TITLE_Y_RATIO = 0.30
+
+-- loading-screen pose of the version label: big and centered, eased on the
+-- same outro timeline as the title down into mainMenu's exact small corner
+-- position and color, so the hand-off lands on an identical frame
+local VERSION_BIG_SIZE = 64 -- design-space font px, native raster size (see buildBigVersionLabel)
+local VERSION_BIG_Y_RATIO = 0.85
+local VERSION_PAD = 12 -- must match mainMenu.lua's CORNER_PAD
 
 -- vertical anchors for the loading furniture, as fractions of window height
 local HEADING_Y_RATIO = 0.52
@@ -41,6 +50,18 @@ local function buildVersionLabel()
         text = "v" .. Globals.game.version,
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
+    }
+end
+
+-- big loading-screen pose of the same label: same typeface as buildVersionLabel,
+-- rasterized at its own native size rather than stretched up from the small
+-- role's tiny glyph texture, so it draws crisp -- drawVersionScaled only ever
+-- scales it *down* toward the small pose, never up
+local function buildBigVersionLabel()
+    return TextFactory:new{
+        text = "v" .. Globals.game.version,
+        font = UI.Theme.fontSized("small", VERSION_BIG_SIZE),
+        color = UI.Theme.colors.text,
     }
 end
 
@@ -144,6 +165,9 @@ function Loading:enter()
 
     self.bar = UI.ProgressBar.new{ showPercent = false, fillSpeed = 12 }
     self.title = GameTitle.build()
+    self.versionSmall = buildVersionLabel()
+    self.versionBig = buildBigVersionLabel()
+    self:layoutVersion()
     self.stars = nil
     self.nebula = nil
 
@@ -154,8 +178,32 @@ function Loading:enter()
     self.warn = function(detail) self:recordFailure(self.label, detail) end
 end
 
-function Loading:resize()
+-- big centered pose vs. mainMenu's exact small corner pose, so drawVersionScaled
+-- only has to ease between the two endpoints computed here; versionEndScale is
+-- derived from real font metrics rather than a guessed ratio, so the big font
+-- (native size VERSION_BIG_SIZE) lands as close as possible to the small
+-- font's actual rendered size at ease = 1
+function Loading:layoutVersion()
+    local w, h = love.graphics.getDimensions()
+    local bigFont, smallFont = self.versionBig.font, self.versionSmall.font
+    local bigWidth, bigHeight = bigFont:getWidth(self.versionBig.text), bigFont:getHeight()
+    local smallWidth, smallHeight = smallFont:getWidth(self.versionSmall.text), smallFont:getHeight()
+    local pad = UI.Theme.px(VERSION_PAD)
+
+    self.versionEndScale = smallHeight / bigHeight
+    self.versionBigX = (w - bigWidth) / 2
+    self.versionBigY = h * VERSION_BIG_Y_RATIO
+    self.versionMenuX = w - smallWidth - pad
+    self.versionMenuY = h - pad - smallHeight
+end
+
+function Loading:resize(w, h, rescaled)
     self.title = GameTitle.build()
+    if rescaled then
+        self.versionSmall = buildVersionLabel()
+        self.versionBig = buildBigVersionLabel()
+    end
+    self:layoutVersion()
 end
 
 function Loading:recordFailure(label, detail)
@@ -251,6 +299,20 @@ local function drawHeading(text, dots, y, alpha)
                    align = "left", font = font, alpha = alpha }
 end
 
+local function drawVersionScaled(version, bigX, bigY, menuX, menuY, endScale, ease)
+    local scale = 1 + (endScale - 1) * ease
+    local x = bigX + (menuX - bigX) * ease
+    local y = bigY + (menuY - bigY) * ease
+
+    love.graphics.push()
+    love.graphics.translate(x, y)
+    love.graphics.scale(scale, scale)
+    love.graphics.setColor(UI.Theme.lerp(UI.Theme.colors.text, UI.Theme.colors.textDim, ease))
+    love.graphics.draw(version.textObject, 0, 0)
+    love.graphics.pop()
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function Loading:draw()
     local w, h = love.graphics.getDimensions()
     local outro = self:outroProgress()
@@ -263,6 +325,9 @@ function Loading:draw()
     local ease = Ease.outCubic(outro)
     local titleY = h * TITLE_Y_RATIO + (h * GameTitle.MENU_Y_RATIO - h * TITLE_Y_RATIO) * ease
     GameTitle.drawScaled(self.title, titleY, TITLE_SCALE + (1 - TITLE_SCALE) * ease)
+
+    drawVersionScaled(self.versionBig, self.versionBigX, self.versionBigY,
+                       self.versionMenuX, self.versionMenuY, self.versionEndScale, ease)
 
     if alpha <= 0 then return end
 

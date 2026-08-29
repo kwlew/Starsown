@@ -4,7 +4,7 @@ local Globals   = {}
 
 Globals.game = {
     name        = "Starsown",
-    version     = "0.0.5",
+    version     = "0.1.0",
     startedAt   = 0,
 }
 
@@ -31,7 +31,7 @@ Globals.menu = {
         speedMin       = 100, speedMax      = 350,
         lengthMin      = 100, lengthMax     = 400,
         lifeMin        = 1.5, lifeMax       = 5.2,
-        dyingThreshold = 0.4,
+        dyingThreshold = 0.6,
         goldenChance   = 0.004, -- ~1 in 250 stars
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,

@@ -15,6 +15,7 @@
 local StateManager = require "core.stateManager"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
+local FrameLimiter = require "core.frameLimiter"
 local UI = require "ui"
 local I18n = require "core.i18n"
 local Audio = require "core.audio"
@@ -610,6 +611,10 @@ function Options:enter(previousName, opts)
         self.vsyncToggle = self:buildPendingToggle("vsync", "vsync",
             function(value) return value and 1 or 0 end)
 
+        -- just a love.run loop flag, not a window mode -- can't strand the
+        -- player, so unlike vsync above it applies live, see buildSettingToggle
+        self.uncapFpsToggle = self:buildSettingToggle("uncapFps", FrameLimiter.setUncapped)
+
         -- purely cosmetic, so unlike the rest of this tab it applies live
         -- rather than waiting on Apply -- see buildSettingToggle
         self.showNebulaToggle = self:buildSettingToggle("showNebula",
@@ -641,7 +646,8 @@ function Options:enter(previousName, opts)
                                                self.titleFontSelector, self.customCursorToggle,
                                                self.reducedMotionToggle, self.shareStatsToggle, } },
             { name = "graphics",  widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
-                                               self.vsyncToggle, self.showNebulaToggle, self.applyButton, } },
+                                               self.vsyncToggle, self.uncapFpsToggle, self.showNebulaToggle,
+                                               self.applyButton, } },
         }
 
         self.tabBar = UI.TabBar.new{
@@ -672,6 +678,7 @@ function Options:enter(previousName, opts)
     self.customCursorToggle.value = self.settings.customCursor
     self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats
+    self.uncapFpsToggle.value = self.settings.uncapFps
     self.showNebulaToggle.value = self.settings.showNebula
     self:resetPending()
     self:selectTab(self.tabBar.index)
