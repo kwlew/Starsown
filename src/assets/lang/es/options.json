@@ -3,18 +3,21 @@
     "title": "OPCIONES",
     "back": "Volver",
     "apply": "Aplicar",
-    "volume": "Volumen",
+    "volume": "Volumen Principal",
     "musicVolume": "Música",
     "sfxVolume": "SFX",
     "language": "Idioma",
     "theme": "Tema",
     "titleFont": "Fuente del Título",
     "customCursor": "Cursor Personalizado",
+    "reducedMotion": "Reducir Movimiento",
     "resolution": "Resolución",
-    "msaa": "Suavizado",
+    "msaa": "Antialiasing",
     "msaaOff": "Desactivado",
     "displayMode": "Modo de Pantalla",
     "vsync": "VSync",
+    "uncapFps": "FPS sin límite",
+    "showNebula": "Mostrar Nebulosa",
     "shareStats": "Compartir estadísticas",
     "tab": {
       "audio": "Audio",
@@ -22,9 +25,9 @@
       "graphics": "Gráficos"
     },
     "windowMode": {
-      "windowed": "Ventana",
-      "borderless": "Sin Bordes",
-      "exclusive": "Pantalla Completa"
+      "windowed": "Windowed",
+      "borderless": "Borderless",
+      "exclusive": "Fullscreen"
     },
     "themeName": {
       "default": "Nebulosa",
@@ -33,10 +36,12 @@
       "carbon": "Carbono",
       "ember": "Brasa",
       "topaz": "Topacio",
-      "lavender": "Lavendera",
+      "lavender": "Lavanda",
       "slate": "Pizarra",
       "ruby": "Rubí",
-      "diamond": "Diamante"
+      "diamond": "Diamante",
+      "lapis": "Lapis",
+      "rose": "Rosa"
     },
     "titleFontName": {
       "acme": "Acme",
@@ -54,12 +59,15 @@
       "theme": "Esquema de color de la interfaz y del cielo nocturno. Se aplica de inmediato.",
       "titleFont": "Fuente usada en el título del juego. Se aplica de inmediato.",
       "customCursor": "Reemplaza el puntero de tu sistema con el cursor propio del juego. Se aplica de inmediato.",
+      "reducedMotion": "Calma la animación de fondo: estrellas fugaces, nebulosa a la deriva, cielo titilante y el ciclo de color del título. Se aplica de inmediato.",
       "resolution": "Tamaño de la ventana del juego.",
-      "resolutionBorderless": "No disponible en Sin bordes: el juego usa la resolución de tu escritorio.",
+      "resolutionBorderless": "No disponible en Borderless: el juego usa la resolución de tu escritorio.",
       "msaa": "Suaviza los bordes dentados. Los valores altos cuestan más rendimiento.",
-      "displayMode": "En ventana, pantalla completa sin bordes o pantalla completa exclusiva.",
-      "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el desgarro.",
-      "shareStats": "Envía una señal anónima para que el menú muestre cuánta gente está jugando y cuántas estrellas ha reventado todo el mundo. Ningún dato personal.",
+      "displayMode": "Windowed, Borderless o Fullscreen exclusivo.",
+      "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el tearing.",
+      "uncapFps": "Elimina el límite interno de fotogramas del motor. VSync (arriba) seguirá limitando los fotogramas a menos que también esté desactivado. Se aplica de inmediato.",
+      "showNebula": "Activa o desactiva la nube de gas a la deriva detrás del menú. Se aplica de inmediato.",
+      "shareStats": "Comparte recuentos de estrellas reventadas y un identificador aleatorio de la instalación para estadísticas agregadas y el recuento de jugadores en línea. Solo se envían estos valores.",
       "apply": "Aplica los cambios gráficos de arriba. Se te pedirá confirmación.",
       "back": "Vuelve a la pantalla anterior."
     }

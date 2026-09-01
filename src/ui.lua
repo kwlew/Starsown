@@ -4,6 +4,7 @@
 return {
     Theme       = require "ui.core.theme",
     Cursor      = require "ui.core.cursor",
+    Motion      = require "ui.core.motion",
     Sfx         = require "ui.core.sfx",
     Music       = require "ui.core.music",
     Glyph       = require "ui.icons.glyph",
@@ -15,6 +16,7 @@ return {
     Slider      = require "ui.widgets.slider",
     Selector    = require "ui.widgets.selector",
     TabBar      = require "ui.widgets.tabBar",
+    IconLink    = require "ui.widgets.iconLink",
     ProgressBar = require "ui.widgets.progressBar",
     Label       = require "ui.text.label",
 }

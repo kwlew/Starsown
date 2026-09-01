@@ -10,11 +10,14 @@
     "theme": "Theme",
     "titleFont": "Title Font",
     "customCursor": "Custom Cursor",
+    "reducedMotion": "Reduce Motion",
     "resolution": "Resolution",
     "msaa": "Antialiasing",
     "msaaOff": "Off",
     "displayMode": "Display Mode",
     "vsync": "VSync",
+    "uncapFps": "Uncapped FPS",
+    "showNebula": "Show Nebula",
     "shareStats": "Share Play Stats",
     "tab": {
       "audio": "Audio",
@@ -36,7 +39,9 @@
       "lavender": "Lavender",
       "slate": "Slate",
       "ruby": "Ruby",
-      "diamond": "Diamond"
+      "diamond": "Diamond",
+      "lapis": "Lapis",
+      "rose": "Rose"
     },
     "titleFontName": {
       "acme": "Acme",
@@ -54,12 +59,15 @@
       "theme": "Color scheme for the interface and the night sky. Applies immediately.",
       "titleFont": "Font used for the game's title. Applies immediately.",
       "customCursor": "Replaces your system pointer with the game's own cursor. Applies immediately.",
+      "reducedMotion": "Calms the background animation: shooting stars, drifting nebula, twinkling sky, and the title's color cycling. Applies immediately.",
       "resolution": "Size of the game window.",
-      "resolutionBorderless": "Unavailable in Borderless — the game matches your desktop resolution.",
+      "resolutionBorderless": "Unavailable in Borderless. The game matches your desktop resolution.",
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
       "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
-      "shareStats": "Sends an anonymous ping so the menu can show how many people are playing and how many stars everyone has popped. No personal data.",
+      "uncapFps": "Removes the engine's internal frame rate cap. VSync above still limits frames unless it's off too. Applies immediately.",
+      "showNebula": "Toggles the drifting gas-cloud backdrop behind the menu. Applies immediately.",
+      "shareStats": "Shares star-pop counts and a random installation ID for aggregate statistics and the online player count. Only these values are sent.",
       "apply": "Applies the graphics changes above. You'll be asked to confirm.",
       "back": "Returns to the previous screen."
     }

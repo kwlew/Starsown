@@ -9,17 +9,27 @@ local Particles = require "particles"
 local Math = require "utils.math"
 local Ease = require "utils.ease"
 local GameTitle = require "ui.text.gameTitle"
+local TextFactory = require "ui.text.textFactory"
+local Globals = require "globals"
 
-local DOT_INTERVAL = 0.3 -- seconds between "..." animation steps
-local OUTRO_TIME = 0.8  -- length of the hand-off animation
-local MIN_FILL_TIME = 1.5
+local DOT_INTERVAL = 0.5 -- seconds between "..." animation steps
+local OUTRO_TIME = 0.9  -- length of the hand-off animation
+local MIN_FILL_TIME = 1.25 -- intentional presentation beat; not a claim that work is still running
+local WORK_BUDGET = 0.004  -- seconds of cooperative loading work allowed per update
 
 local FURNITURE_FADE = 0.45
-local SKY_FADE_SPEED = 1.5 -- alpha/sec the sky (nebula + stars) fades up
+local SKY_FADE_SPEED = 3.0 -- alpha/sec the sky (nebula + stars) fades up
 
 -- loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1
-local TITLE_SCALE = 0.62
+local TITLE_SCALE = 1.3
 local TITLE_Y_RATIO = 0.30
+
+-- loading-screen pose of the version label: big and centered, eased on the
+-- same outro timeline as the title down into mainMenu's exact small corner
+-- position and color, so the hand-off lands on an identical frame
+local VERSION_BIG_SIZE = 64 -- design-space font px, native raster size (see buildBigVersionLabel)
+local VERSION_BIG_Y_RATIO = 0.85
+local VERSION_PAD = 12 -- must match mainMenu.lua's CORNER_PAD
 
 -- vertical anchors for the loading furniture, as fractions of window height
 local HEADING_Y_RATIO = 0.52
@@ -44,6 +54,18 @@ local function buildVersionLabel()
     }
 end
 
+-- big loading-screen pose of the same label: same typeface as buildVersionLabel,
+-- rasterized at its own native size rather than stretched up from the small
+-- role's tiny glyph texture, so it draws crisp -- drawVersionScaled only ever
+-- scales it *down* toward the small pose, never up
+local function buildBigVersionLabel()
+    return TextFactory:new{
+        text = "v" .. Globals.game.version,
+        font = UI.Theme.fontSized("small", VERSION_BIG_SIZE),
+        color = UI.Theme.colors.text,
+    }
+end
+
 local CLIPS = {
     { "assets/audio/bg/ambientmain_0.ogg", "mainMenuBG", "stream" },
     { "assets/audio/bg/mainMenuBG2.flac", "mainMenuBG2", "stream" },
@@ -52,20 +74,19 @@ local CLIPS = {
     { "assets/audio/sfx/explosions/star_explosion2.wav", "starExplosion2" },
     { "assets/audio/sfx/explosions/star_explosion3.wav", "starExplosion3" },
     { "assets/audio/sfx/explosions/golden_star_explosion.wav", "goldenStarExplosion" },
-    { "assets/audio/sfx/menu/blipSelect.wav", "menuBlipSelect" },
-    { "assets/audio/sfx/menu/blipSelect2.wav", "menuBlipSelect2" },
-    { "assets/audio/sfx/menu/menuButton.wav", "menuButton" },
-    { "assets/audio/sfx/menu/menuButton2.wav", "menuButton2" },
     { "assets/audio/sfx/menu/menuButton3.wav", "menuButton3" },
     { "assets/audio/sfx/menu/menuButton4.wav", "menuButton4" },
-    { "assets/audio/sfx/menu/menuButton5.wav", "menuButton5" },
-    { "assets/audio/sfx/menu/menuButton6.ogg", "menuButton6" },
     { "assets/audio/sfx/menu/menuBeep.mp3", "menuBeep" },
 }
 
--- each task gets (yield, warn):
---   yield(fraction) -- optional 0..1 progress within this task; ends the frame
---   warn(detail)    -- a non-fatal problem worth telling the player about
+local STATES = {
+    { "mainMenu", "states.mainMenu" },
+    { "play", "states.play" },
+    { "options", "states.options" },
+    { "stats", "states.stats" },
+    { "achievements", "states.achievements" },
+}
+
 function Loading:buildTasks()
     return {
         {
@@ -83,9 +104,19 @@ function Loading:buildTasks()
             label = I18n.t("loading.task.settings"),
             weight = 1,
             run = function()
-                local settings = Settings.load()
+                local settings = self.startupSettings or Settings.load()
                 Settings.apply(settings)
                 Assets.set("settings", settings)
+            end,
+        },
+        {
+            label = I18n.t("loading.task.screens"),
+            weight = 2,
+            run = function(yield)
+                for i, spec in ipairs(STATES) do
+                    StateManager.register(spec[1], require(spec[2]))
+                    yield(i / #STATES)
+                end
             end,
         },
         {
@@ -98,11 +129,21 @@ function Loading:buildTasks()
                 self.stars = stars
                 yield(0.5)
 
-                local nebula = Particles.Nebula.new{ alpha = 0 }
-                nebula:bake()
+                -- settings task above already ran, so this respects a saved showNebula = false from the first frame
+                local settings = Assets.get("settings")
+                local nebula = Particles.Nebula.new{ alpha = 0, enabled = settings.showNebula }
                 Assets.set("nebula", nebula)
                 self.nebula = nebula
-                yield(1)
+                if settings.showNebula then
+                    nebula:beginBake()
+                    local done, progress
+                    repeat
+                        done, progress = nebula:bakeStep()
+                        yield(0.5 + progress * 0.5)
+                    until done
+                else
+                    yield(1)
+                end
             end,
         },
         {
@@ -120,8 +161,14 @@ function Loading:buildTasks()
     }
 end
 
-function Loading:enter()
+function Loading:enter(previousName, settings)
     love.graphics.setBackgroundColor(UI.Theme.colors.bg)
+
+    self.startupSettings = settings
+    self.metrics = { tasks = {}, maxStep = 0, maxWorkFrame = 0 }
+    self.enteredAt = love.timer.getTime()
+    self.firstDrawAt = nil
+    self.loadFinishedAt = nil
 
     self.tasks = self:buildTasks()
     self.totalWeight = 0
@@ -142,6 +189,9 @@ function Loading:enter()
 
     self.bar = UI.ProgressBar.new{ showPercent = false, fillSpeed = 12 }
     self.title = GameTitle.build()
+    self.versionSmall = buildVersionLabel()
+    self.versionBig = buildBigVersionLabel()
+    self:layoutVersion()
     self.stars = nil
     self.nebula = nil
 
@@ -152,8 +202,32 @@ function Loading:enter()
     self.warn = function(detail) self:recordFailure(self.label, detail) end
 end
 
-function Loading:resize()
+-- big centered pose vs. mainMenu's exact small corner pose, so drawVersionScaled
+-- only has to ease between the two endpoints computed here; versionEndScale is
+-- derived from real font metrics rather than a guessed ratio, so the big font
+-- (native size VERSION_BIG_SIZE) lands as close as possible to the small
+-- font's actual rendered size at ease = 1
+function Loading:layoutVersion()
+    local w, h = love.graphics.getDimensions()
+    local bigFont, smallFont = self.versionBig.font, self.versionSmall.font
+    local bigWidth, bigHeight = bigFont:getWidth(self.versionBig.text), bigFont:getHeight()
+    local smallWidth, smallHeight = smallFont:getWidth(self.versionSmall.text), smallFont:getHeight()
+    local pad = UI.Theme.px(VERSION_PAD)
+
+    self.versionEndScale = smallHeight / bigHeight
+    self.versionBigX = (w - bigWidth) / 2
+    self.versionBigY = h * VERSION_BIG_Y_RATIO
+    self.versionMenuX = w - smallWidth - pad
+    self.versionMenuY = h - pad - smallHeight
+end
+
+function Loading:resize(w, h, rescaled)
     self.title = GameTitle.build()
+    if rescaled then
+        self.versionSmall = buildVersionLabel()
+        self.versionBig = buildBigVersionLabel()
+    end
+    self:layoutVersion()
 end
 
 function Loading:recordFailure(label, detail)
@@ -180,9 +254,14 @@ function Loading:step()
         self.label = task.label
         self.partial = 0
         self.coroutine = coroutine.create(task.run)
+        task.workTime = 0
     end
 
+    local started = love.timer.getTime()
     local ok, value = coroutine.resume(self.coroutine, self.yield, self.warn)
+    local duration = love.timer.getTime() - started
+    task.workTime = task.workTime + duration
+    self.metrics.maxStep = math.max(self.metrics.maxStep, duration)
     if not ok then
         self:recordFailure(task.label, value)
     elseif type(value) == "number" then
@@ -190,6 +269,10 @@ function Loading:step()
     end
 
     if coroutine.status(self.coroutine) == "dead" then
+        self.metrics.tasks[#self.metrics.tasks + 1] = {
+            label = task.label,
+            seconds = task.workTime,
+        }
         self.doneWeight = self.doneWeight + (task.weight or 1)
         self.index = self.index + 1
         self.coroutine = nil
@@ -198,11 +281,20 @@ function Loading:step()
 end
 
 function Loading:update(dt)
-    dt = math.min(dt, 0.1)
+    local animationDt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
 
     if self.phase == "loading" then
-        self:step()
+        local workStarted = love.timer.getTime()
+        repeat
+            self:step()
+        until self:isLoaded() or love.timer.getTime() - workStarted >= WORK_BUDGET
+        local workDuration = love.timer.getTime() - workStarted
+        self.metrics.maxWorkFrame = math.max(self.metrics.maxWorkFrame, workDuration)
+        if self:isLoaded() and not self.loadFinishedAt then
+            self.loadFinishedAt = love.timer.getTime()
+            self.metrics.loadSeconds = self.loadFinishedAt - self.enteredAt
+        end
 
         self.bar:setProgress(math.min(self:progress(), self.elapsed / MIN_FILL_TIME))
 
@@ -210,7 +302,7 @@ function Loading:update(dt)
             self.phase = "outro"
         end
     else
-        self.outro = self.outro + dt
+        self.outro = self.outro + animationDt
         if self.outro >= OUTRO_TIME then
             Audio.stopAll()
             StateManager.switch("mainMenu")
@@ -218,12 +310,12 @@ function Loading:update(dt)
         end
     end
 
-    self.bar:update(dt)
+    self.bar:update(animationDt)
 
-    fadeInSky(self.nebula, dt)
-    fadeInSky(self.stars, dt)
+    fadeInSky(self.nebula, animationDt)
+    fadeInSky(self.stars, animationDt)
 
-    self.dotTimer = self.dotTimer + dt
+    self.dotTimer = self.dotTimer + animationDt
     if self.dotTimer >= DOT_INTERVAL then
         self.dotTimer = self.dotTimer - DOT_INTERVAL
         self.dotCount = (self.dotCount + 1) % 4
@@ -249,7 +341,25 @@ local function drawHeading(text, dots, y, alpha)
                    align = "left", font = font, alpha = alpha }
 end
 
+local function drawVersionScaled(version, bigX, bigY, menuX, menuY, endScale, ease)
+    local scale = 1 + (endScale - 1) * ease
+    local x = bigX + (menuX - bigX) * ease
+    local y = bigY + (menuY - bigY) * ease
+
+    love.graphics.push()
+    love.graphics.translate(x, y)
+    love.graphics.scale(scale, scale)
+    love.graphics.setColor(UI.Theme.lerp(UI.Theme.colors.text, UI.Theme.colors.textDim, ease))
+    love.graphics.draw(version.textObject, 0, 0)
+    love.graphics.pop()
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function Loading:draw()
+    if not self.firstDrawAt then
+        self.firstDrawAt = love.timer.getTime()
+        self.metrics.firstDrawSeconds = self.firstDrawAt - self.enteredAt
+    end
     local w, h = love.graphics.getDimensions()
     local outro = self:outroProgress()
     -- furniture clears out first so the title finishes its travel against an empty screen
@@ -261,6 +371,9 @@ function Loading:draw()
     local ease = Ease.outCubic(outro)
     local titleY = h * TITLE_Y_RATIO + (h * GameTitle.MENU_Y_RATIO - h * TITLE_Y_RATIO) * ease
     GameTitle.drawScaled(self.title, titleY, TITLE_SCALE + (1 - TITLE_SCALE) * ease)
+
+    drawVersionScaled(self.versionBig, self.versionBigX, self.versionBigY,
+                       self.versionMenuX, self.versionMenuY, self.versionEndScale, ease)
 
     if alpha <= 0 then return end
 

@@ -55,13 +55,13 @@ function Toggle:draw()
     local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
     local pillX = self.x + self.w - m.padding - pillW
     local pillY = self.y + (self.h - pillH) / 2
-    local tr, tg, tb = Theme.lerp(c.track, c.accent, self.knob)
+    local tr, tg, tb = Theme.lerp(c.track, c.accentDim, self.knob)
     love.graphics.setColor(tr, tg, tb, alpha)
     love.graphics.rectangle("fill", pillX, pillY, pillW, pillH, pillH / 2, pillH / 2, 64)
 
     local knobR = pillH / 2 - Theme.px(KNOB_INSET)
     local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
-    Theme.setColor(c.text, alpha)
+    Theme.setColor(c.knob, alpha)
     love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 4)
 
     love.graphics.setColor(1, 1, 1, 1)

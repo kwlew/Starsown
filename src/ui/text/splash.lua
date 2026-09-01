@@ -1,59 +1,57 @@
--- The rotated splash text hanging off the title, a la Minecraft: one line of
--- flavor text, picked at random once per session, that gently pulses in place.
--- Localized -- assets/lang/*.json holds menu.splashes.1, .2, .3, ... per
--- language (see I18n.list).
---
---   self.splash = self.splash or Splash.pick() -- build once, like the menu/starfield
---   function State:update(dt) self.splash:update(dt) end
---   function State:draw() self.splash:drawNear(self.title, w) end
+-- One line of flavor text under the title, picked once per session from
+-- menu.splashes.1, .2, ... in assets/lang/* (see I18n.list).
 
 local Theme = require "ui.core.theme"
 local I18n = require "core.i18n"
 local Math = require "utils.math"
+local Motion = require "ui.core.motion"
 
 local Splash = {}
 Splash.__index = Splash
 
-local FONT_ROLE = "button"
-local ANGLE = -0.22       -- radians; tilts up to the right, like a stamped tag
-local PULSE_SPEED = 4
-local PULSE_AMOUNT = 0.08 -- +/- scale around 1, the "breathing" bounce
-local Y_FACTOR = 0.78     -- how far down the title's height the splash hangs, 0 = top
-local TUCK = 0.12         -- pulls it in from the title's exact corner, x fraction of title height
-local SHADOW_OFFSET = 2   -- design-space px, matches Label's
+-- design-space px except where noted; scaled through Theme.px at use
+local FONT_ROLE = "small"
+local GAP = 14
+local SHADOW_OFFSET = 2
+local BOB_SPEED = 1
+local BOB_AMOUNT = 2
+local FADE_IN_TIME = 1.4 -- seconds
 
--- one random line, or "" (drawn as nothing) if the active locale has none
+-- "" when the active locale has no splashes; draws as nothing
 function Splash.pick()
     local lines = I18n.list("menu.splashes")
     return setmetatable({
         text = #lines > 0 and lines[Math.randInt(1, #lines)] or "",
-        time = Math.randRange(0, 10), -- phase offset, in case more than one is ever on screen
+        time = Math.randRange(0, 10),
+        age = 0, -- separate from `time`, whose random phase would skip the fade-in
     }, Splash)
 end
 
 function Splash:update(dt)
     self.time = self.time + dt
+    self.age = self.age + dt
 end
 
--- pinned to the upper-right corner of `title` (a TextFactory instance, e.g.
--- GameTitle's), the way Minecraft hangs its splash off the logo
-function Splash:drawNear(title, windowW)
+-- centered under `title` (a TextFactory instance, e.g. GameTitle's)
+function Splash:draw(title, windowW)
     if self.text == "" then return end
 
     local font = Theme.font(FONT_ROLE)
-    local scale = 1 + math.sin(self.time * PULSE_SPEED) * PULSE_AMOUNT
-    local ox, oy = font:getWidth(self.text) / 2, font:getHeight() / 2
+    local textW = font:getWidth(self.text)
 
-    local titleW, titleH = title.textObject:getWidth(), title.textObject:getHeight()
-    local x = windowW / 2 + titleW / 2 - titleH * TUCK
-    local y = title.y + titleH * Y_FACTOR
+    local bob = Motion.reduced and 0 or math.sin(self.time * BOB_SPEED) * Theme.px(BOB_AMOUNT)
+    local x = windowW / 2 - textW / 2
+    local y = title.y + title.textObject:getHeight() + Theme.px(GAP) + bob
+
+    local alpha = Motion.reduced and 1 or Math.clamp01(self.age / FADE_IN_TIME)
 
     Theme.pushFont(font)
     local offset = Theme.px(SHADOW_OFFSET)
-    Theme.setColor(Theme.colors.shadow)
-    love.graphics.print(self.text, x + offset, y + offset, ANGLE, scale, scale, ox, oy)
-    Theme.setColor(Theme.colors.warning)
-    love.graphics.print(self.text, x, y, ANGLE, scale, scale, ox, oy)
+    local shadow = Theme.colors.shadow
+    Theme.setColor(shadow, alpha * (shadow[4] or 1))
+    love.graphics.print(self.text, x + offset, y + offset)
+    Theme.setColor(Theme.colors.accent, alpha)
+    love.graphics.print(self.text, x, y)
     Theme.popFont()
 
     love.graphics.setColor(1, 1, 1, 1)

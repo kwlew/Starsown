@@ -10,11 +10,14 @@
     "theme": "Tema",
     "titleFont": "Fonte do Título",
     "customCursor": "Cursor Personalizado",
+    "reducedMotion": "Reduzir Movimento",
     "resolution": "Resolução",
-    "msaa": "Suavização",
+    "msaa": "Antialiasing",
     "msaaOff": "Desativado",
     "displayMode": "Modo de Tela",
     "vsync": "VSync",
+    "uncapFps": "FPS sem limite",
+    "showNebula": "Mostrar Nebulosa",
     "shareStats": "Compartilhar estatísticas",
     "tab": {
       "audio": "Áudio",
@@ -22,9 +25,9 @@
       "graphics": "Gráficos"
     },
     "windowMode": {
-      "windowed": "Janela",
-      "borderless": "Sem Bordas",
-      "exclusive": "Tela Cheia"
+      "windowed": "Windowed",
+      "borderless": "Borderless",
+      "exclusive": "Fullscreen"
     },
     "themeName": {
       "default": "Nebulosa",
@@ -36,7 +39,9 @@
       "lavender": "Lavenda",
       "slate": "Ardósia",
       "ruby": "Rubi",
-      "diamond": "Diamante"
+      "diamond": "Diamante",
+      "lapis": "Lapis",
+      "rose": "Rosa"
     },
     "titleFontName": {
       "acme": "Acme",
@@ -54,12 +59,15 @@
       "theme": "Esquema de cores da interface e do céu noturno. Aplica imediatamente.",
       "titleFont": "Fonte usada no título do jogo. Aplica imediatamente.",
       "customCursor": "Substitui o ponteiro do seu sistema pelo cursor próprio do jogo. Aplica imediatamente.",
+      "reducedMotion": "Acalma a animação de fundo: estrelas cadentes, nebulosa à deriva, céu cintilante e o ciclo de cores do título. Aplica imediatamente.",
       "resolution": "Tamanho da janela do jogo.",
-      "resolutionBorderless": "Indisponível em Sem bordas — o jogo usa a resolução da sua área de trabalho.",
+      "resolutionBorderless": "Indisponível em Borderless. O jogo usa a resolução da sua área de trabalho.",
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
-      "displayMode": "Em janela, tela cheia sem bordas ou tela cheia exclusiva.",
+      "displayMode": "Windowed, Borderless ou Fullscreen exclusivo.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
-      "shareStats": "Envia um sinal anônimo para o menu mostrar quantas pessoas estão jogando e quantas estrelas todo mundo estourou. Nenhum dado pessoal.",
+      "uncapFps": "Remove o limite interno de quadros do motor. O VSync (acima) ainda limita os quadros a menos que também esteja desativado. Aplica imediatamente.",
+      "showNebula": "Ativa ou desativa a nuvem de gás à deriva atrás do menu. Aplica imediatamente.",
+      "shareStats": "Compartilha contagens de estrelas estouradas e um identificador aleatório da instalação para estatísticas agregadas e a contagem de jogadores online. Apenas esses valores são enviados.",
       "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
       "back": "Volta para a tela anterior."
     }

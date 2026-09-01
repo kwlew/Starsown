@@ -3,8 +3,8 @@ local Particles = require "particles"
 local Globals   = {}
 
 Globals.game = {
-    name        = "TD Idle",
-    version     = "0.0.3a",
+    name        = "Starsown",
+    version     = "0.1.0",
     startedAt   = 0,
 }
 
@@ -31,7 +31,7 @@ Globals.menu = {
         speedMin       = 100, speedMax      = 350,
         lengthMin      = 100, lengthMax     = 400,
         lifeMin        = 1.5, lifeMax       = 5.2,
-        dyingThreshold = 0.4,
+        dyingThreshold = 0.6,
         goldenChance   = 0.004, -- ~1 in 250 stars
         goldenSpeedMin = 70, goldenSpeedMax = 150,
         goldenLifeMin  = 4, goldenLifeMax   = 13,
@@ -40,8 +40,9 @@ Globals.menu = {
     }
 }
 
+-- the cursor's colors are theme roles (Theme.colors.cursor / .highlight), so
+-- only its geometry lives here
 Globals.cursor = {
-    color = { 0.90, 0.90, 0.90 },
     size = 3,
 }
 

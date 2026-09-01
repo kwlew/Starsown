@@ -7,6 +7,7 @@ Settings.FILENAME = "settings.lua"
 Settings.defaults = {
     windowMode = "windowed", -- "windowed" | "borderless" | "exclusive"
     vsync = 0,
+    uncapFps = false, -- skips love.run's per-frame sleep; see core/frameLimiter.lua
     msaa = 4,
     volume = 0.8,      -- master, scales every channel via love.audio.setVolume
     musicVolume = 0.8, -- channel volume, see core/audio.lua
@@ -17,7 +18,12 @@ Settings.defaults = {
     theme = "default", -- validated against available themes by UI.Theme
     titleFont = "acme", -- validated against available fonts by GameTitle
     customCursor = true, -- draws the game's own cursor; off shows the OS pointer instead
-    shareStats = true,
+    reducedMotion = false, -- dampens ambient animation (starfield, nebula, twinkle, splash, title)
+    showNebula = true, -- drifting gas-cloud backdrop behind the menu; off just skips drawing it, still baked
+    -- Analytics are opt-in. Keep whether the question was answered separate
+    -- from the answer so a fresh install can be distinguished from "no".
+    shareStats = false,
+    statsConsentAsked = false,
 }
 
 

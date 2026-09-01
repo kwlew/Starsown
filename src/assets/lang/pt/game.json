@@ -1,0 +1,14 @@
+{
+  "game": {
+    "hint": "WASD: mover    Clique esquerdo: golpe    E: inventário    Esc: pausa    F4: depuração",
+    "pause": {
+      "title": "PAUSADO",
+      "resume": "Retomar",
+      "options": "Opções",
+      "quit": "Sair para o menu"
+    },
+    "inventory": {
+      "title": "Inventário"
+    }
+  }
+}

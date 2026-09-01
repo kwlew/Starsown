@@ -2,14 +2,14 @@
 
 ## Features
 
-![Version](https://img.shields.io/badge/version-v0.0.4-black?style=for-the-badge
+![Version](https://img.shields.io/badge/version-v0.1.0-black?style=for-the-badge
 )
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge
 )
 
 
-- **Nine color themes**, switchable any time from Options.
-- **English, Spanish, and Portuguese** localization.
+- **Twelve color themes**, switchable any time from Options.
+- **English, Spanish, Portuguese, and Russian** localization.
 - Discord Rich Presence.
 
 The gameplay itself is still in game design phase.

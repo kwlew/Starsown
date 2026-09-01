@@ -1,10 +1,11 @@
+---@diagnostic disable: duplicate-set-field, inject-field
 function love.conf(t)
     t.identity = "TD-Idle"
     t.version = "11.5"
-    t.console = true
+    t.console = false
 
-    t.window.title = "TD Idle"
-    t.window.icon = "assets/icon.png"
+    t.window.title = "Starsown"
+    t.window.icon = "assets/icon/starsown-128.png"
     t.window.width = 1280
     t.window.height = 720
     t.window.resizable = false

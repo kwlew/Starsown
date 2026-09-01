@@ -1,8 +1,8 @@
 -- Settings screen with three tabs:
---   Audio     — volume sliders; apply live and persist immediately.
---   Interface — language/theme/title font/cursor/stats sharing; apply live
---               and persist immediately, same as Audio.
---   Graphics  — resolution/display mode/vsync; changes accumulate in a
+--   Audio     - volume sliders; apply live and persist immediately.
+--   Interface - language/theme/title font/cursor/motion/stats sharing;
+--               apply live and persist immediately, same as Audio.
+--   Graphics  - resolution/display mode/vsync; changes accumulate in a
 --               `pending` table and only take effect (and persist) on Apply.
 --               Leaving the screen discards pending.
 --
@@ -15,6 +15,7 @@
 local StateManager = require "core.stateManager"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
+local FrameLimiter = require "core.frameLimiter"
 local UI = require "ui"
 local I18n = require "core.i18n"
 local Audio = require "core.audio"
@@ -180,6 +181,15 @@ function Options:applyTheme(id)
     if nebula and nebula:isBaked() then nebula:bake() end
 end
 
+-- A disabled-at-boot nebula is intentionally not baked during loading. Pay
+-- that one-time cost only if the player later asks to see it.
+function Options:setNebulaVisible(value)
+    local nebula = Assets.get("nebula")
+    if not nebula then return end
+    if value and not nebula:isBaked() then nebula:bake() end
+    nebula.enabled = value
+end
+
 -- both layout and the focus list read this, so a footer button can never be
 -- visible-but-unfocusable or vice versa
 function Options:footerButtons()
@@ -221,6 +231,68 @@ function Options:buildVolumeSlider(key, apply, blip)
     }
     slider.descKey = "options.desc." .. key
     return slider
+end
+
+-- Live/immediate toggles (most of Interface, plus the purely-cosmetic
+-- Graphics rows like showNebula that can't strand the player the way a
+-- resolution or fullscreen change can): apply and persist right away, same
+-- contract as buildVolumeSlider above. i18n key, description key and
+-- settings field are all `key` by construction; `sideEffect(value)`, if
+-- given, is whatever beyond the settings write needs to happen (e.g.
+-- UI.Cursor.setEnabled).
+function Options:buildSettingToggle(key, sideEffect)
+    local toggle = UI.Toggle.new{
+        label = function() return I18n.t("options." .. key) end,
+        value = self.settings[key],
+        onChange = function(value)
+            UI.Sfx.select()
+            self.settings[key] = value
+            if sideEffect then sideEffect(value) end
+            Settings.save(self.settings)
+        end,
+    }
+    toggle.descKey = "options.desc." .. key
+    return toggle
+end
+
+-- Graphics-tab selectors: write into `pending` only and sync derived
+-- enabled-states; Apply is what commits (see Options:applyPending). `key`
+-- names both the i18n string and the widget itself; `pendingKey` is the
+-- field written on `pending`, since it isn't always the same name (the
+-- displayMode row's pending field is `windowMode`). `valueOf(option, index)`
+-- picks what actually gets stored -- defaults to the option itself, but the
+-- resolution row stores the index instead (see resolutionIndexFor).
+function Options:buildPendingSelector(key, options, format, pendingKey, valueOf)
+    valueOf = valueOf or function(option) return option end
+    local selector = UI.Selector.new{
+        label = function() return I18n.t("options." .. key) end,
+        options = options,
+        format = format,
+        onChange = function(option, index)
+            UI.Sfx.select()
+            self.pending[pendingKey] = valueOf(option, index)
+            self:syncEnabledStates()
+        end,
+    }
+    selector.descKey = "options.desc." .. key
+    return selector
+end
+
+-- Graphics-tab toggle (currently just VSync); same pending/sync contract as
+-- buildPendingSelector above. `transform`, if given, converts the widget's
+-- boolean into whatever `pending[pendingKey]` actually stores.
+function Options:buildPendingToggle(key, pendingKey, transform)
+    transform = transform or function(value) return value end
+    local toggle = UI.Toggle.new{
+        label = function() return I18n.t("options." .. key) end,
+        onChange = function(value)
+            UI.Sfx.select()
+            self.pending[pendingKey] = transform(value)
+            self:syncEnabledStates()
+        end,
+    }
+    toggle.descKey = "options.desc." .. key
+    return toggle
 end
 
 function Options:buildDialogs()
@@ -466,8 +538,8 @@ function Options:enter(previousName, opts)
         self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
             function(v) Audio.setVolume("sfx", v) end, true)
 
-        -- Interface tab: language/theme/title font/cursor/stats sharing,
-        -- all live and persisted immediately, same as Audio.
+        -- Interface tab: language/theme/title font/cursor/motion/stats
+        -- sharing, all live and persisted immediately, same as Audio.
         self.languageSelector = UI.Selector.new{
             label = function() return I18n.t("options.language") end,
             options = I18n.available(),
@@ -513,80 +585,42 @@ function Options:enter(previousName, opts)
 
         -- live/immediate too; UI.Cursor owns actually swapping the OS
         -- pointer back in, this just tells it to
-        self.customCursorToggle = UI.Toggle.new{
-            label = function() return I18n.t("options.customCursor") end,
-            value = self.settings.customCursor,
-            onChange = function(value)
-                UI.Sfx.select()
-                self.settings.customCursor = value
-                UI.Cursor.setEnabled(value)
-                persist()
-            end,
-        }
-        self.customCursorToggle.descKey = 'options.desc.customCursor'
+        self.customCursorToggle = self:buildSettingToggle("customCursor", UI.Cursor.setEnabled)
+
+        -- live/immediate; UI.Motion is the one thing every ambient-animation
+        -- module reads to dampen itself, see ui/core/motion.lua
+        self.reducedMotionToggle = self:buildSettingToggle("reducedMotion", UI.Motion.setReduced)
 
         -- a privacy switch that waited for a restart wouldn't really be one
-        self.shareStatsToggle = UI.Toggle.new{
-            label = function() return I18n.t("options.shareStats") end,
-            value = self.settings.shareStats,
-            onChange = function(value)
-                UI.Sfx.select()
-                self.settings.shareStats = value
-                Stats.setEnabled(value)
-                persist()
-            end,
-        }
-        self.shareStatsToggle.descKey = 'options.desc.shareStats'
+        self.shareStatsToggle = self:buildSettingToggle("shareStats", Stats.setEnabled)
 
         -- Graphics tab: writes to pending only; Apply commits.
-        self.resolutionSelector = UI.Selector.new{
-            label = function() return I18n.t("options.resolution") end,
-            options = RESOLUTIONS,
-            format = function(o) return o[1] .. "x" .. o[2] end,
-            onChange = function(_, index)
-                UI.Sfx.select()
-                self.pending.resIndex = index
-                self:syncEnabledStates()
-            end,
-        }
-        self.resolutionSelector.descKey = 'options.desc.resolution'
+        self.resolutionSelector = self:buildPendingSelector("resolution", RESOLUTIONS,
+            function(o) return o[1] .. "x" .. o[2] end,
+            "resIndex", function(_, index) return index end)
 
-        self.msaaSelector = UI.Selector.new{
-            label = function() return I18n.t("options.msaa") end,
-            options = MSAA,
-            format = function(samples)
+        self.msaaSelector = self:buildPendingSelector("msaa", MSAA,
+            function(samples)
                 if samples == 0 then return I18n.t("options.msaaOff") end
                 return samples .. "x"
             end,
-            onChange = function(samples)
-                UI.Sfx.select()
-                self.pending.msaa = samples
-                self:syncEnabledStates()
-            end,
-        }
-        self.msaaSelector.descKey = 'options.desc.msaa'
+            "msaa")
 
-        self.windowModeSelector = UI.Selector.new{
-            label = function() return I18n.t("options.displayMode") end,
-            options = WINDOW_MODES,
-            format = function(mode) return I18n.t("options.windowMode." .. mode) end,
-            onChange = function(mode)
-                UI.Sfx.select()
-                self.pending.windowMode = mode
-                self:syncEnabledStates()
-            end,
-        }
-        self.windowModeSelector.descKey = 'options.desc.displayMode'
+        self.windowModeSelector = self:buildPendingSelector("displayMode", WINDOW_MODES,
+            function(mode) return I18n.t("options.windowMode." .. mode) end,
+            "windowMode")
 
-        self.vsyncToggle = UI.Toggle.new{
-            label = function() return I18n.t("options.vsync") end,
-            onChange = function(value)
-                UI.Sfx.select()
-                self.pending.vsync = value and 1 or 0
-                self:syncEnabledStates()
-            end,
-        }
-        self.vsyncToggle.descKey = 'options.desc.vsync'
+        self.vsyncToggle = self:buildPendingToggle("vsync", "vsync",
+            function(value) return value and 1 or 0 end)
+
+        -- just a love.run loop flag, not a window mode -- can't strand the
+        -- player, so unlike vsync above it applies live, see buildSettingToggle
+        self.uncapFpsToggle = self:buildSettingToggle("uncapFps", FrameLimiter.setUncapped)
+
+        -- purely cosmetic, so unlike the rest of this tab it applies live
+        -- rather than waiting on Apply -- see buildSettingToggle
+        self.showNebulaToggle = self:buildSettingToggle("showNebula",
+            function(value) self:setNebulaVisible(value) end)
 
         self.applyButton = UI.Button.new{
             label = function() return I18n.t("options.apply") end,
@@ -612,9 +646,10 @@ function Options:enter(previousName, opts)
                                                self.sfxVolumeSlider, } },
             { name = "interface", widgets = { self.languageSelector, self.themeSelector,
                                                self.titleFontSelector, self.customCursorToggle,
-                                               self.shareStatsToggle, } },
+                                               self.reducedMotionToggle, self.shareStatsToggle, } },
             { name = "graphics",  widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
-                                               self.vsyncToggle, self.applyButton, } },
+                                               self.vsyncToggle, self.uncapFpsToggle, self.showNebulaToggle,
+                                               self.applyButton, } },
         }
 
         self.tabBar = UI.TabBar.new{
@@ -643,7 +678,10 @@ function Options:enter(previousName, opts)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
     self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
     self.customCursorToggle.value = self.settings.customCursor
+    self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats
+    self.uncapFpsToggle.value = self.settings.uncapFps
+    self.showNebulaToggle.value = self.settings.showNebula
     self:resetPending()
     self:selectTab(self.tabBar.index)
 end

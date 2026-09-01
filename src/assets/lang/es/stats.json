@@ -1,0 +1,14 @@
+{
+  "stats": {
+    "title": "ESTADÍSTICAS",
+    "online": "Jugadores online",
+    "total": "Estrellas Reventadas",
+    "golden": "Estrellas Doradas",
+    "rainbow": "Estrellas Arcoíris",
+    "unavailable": "-- / --",
+    "sharingOff": "El envío de estadísticas está desactivado. Actívalo en Opciones > Interfaz para ver los totales mundiales.",
+    "waiting": "No se pudo conectar con el servidor. ¿Hay conexión a internet?",
+    "back": "Volver",
+    "hint": "Esc: volver"
+  }
+}

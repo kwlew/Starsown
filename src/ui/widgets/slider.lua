@@ -123,9 +123,9 @@ function Slider:draw()
     local trackX, trackY, trackW, trackH = self:trackRect()
     Theme.setColor(c.track, alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW, trackH, trackH / 2, trackH / 2, 12)
-    Theme.setColor(c.accent, alpha)
+    Theme.setColor(c.accentDim, alpha)
     love.graphics.rectangle("fill", trackX, trackY, trackW * self.value, trackH, trackH / 2, trackH / 2, 12)
-    Theme.setColor(c.sliderKnob, alpha)
+    Theme.setColor(c.knob, alpha)
     love.graphics.circle("fill", trackX + trackW * self.value, trackY + trackH / 2,
         trackH * KNOB_RATIO, 4)
 

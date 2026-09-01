@@ -47,6 +47,7 @@ function Widget.new(class, config)
         focused = false,
         glow = 0, -- eased 0..1 toward the focused look
         time = 0, -- drives the focused pulse
+        introAlpha = 1, -- eased 0..1 by an owner playing an entrance animation (see Menu:playIntro)
     }, class)
 end
 
@@ -73,7 +74,7 @@ function Widget:getFont()
 end
 
 function Widget:alpha()
-    return self.enabled and 1 or 0.4
+    return (self.enabled and 1 or 0.4) * self.introAlpha
 end
 
 -- overridden by widgets with a second reason to glow (a Slider stays lit for the length of a drag)

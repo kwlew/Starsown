@@ -4,12 +4,11 @@
 -- silhouettes (unlike love.graphics.polygon, whose ear-clipping can throw on
 -- near-collinear bezier points).
 --
--- One instance per glyph, so two icons never share (or evict) each other's cache:
+-- One instance per glyph, so two icons never share (or evict) each other's
+-- cache -- see ui/icons/marks.lua, which wraps a whole table of these:
 --
 --   local mark = SvgIcon.new(PATH, 24)
---   function GithubMark.draw(x, y, size, color, glow)
---       mark:draw(x, y, size, color, glow)
---   end
+--   mark:draw(x, y, size, color, glow)
 --
 -- Path commands supported: M/m, L/l, C/c, A/a (elliptical arc), Z/z --
 -- covers every glyph fed to it so far; add a case to flatten() for anything else.

@@ -3,6 +3,7 @@
 
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
+local Motion = require "ui.core.motion"
 
 local Stars = {}
 Stars.__index = Stars
@@ -120,7 +121,7 @@ function Stars:draw()
     -- one points() call for the whole sky; twinkle written into each vertex's
     -- own color instead of a setColor per star, since this runs ~190x/frame
     -- and the Lua->C crossings are the cost
-    local oscillation = self.brightnessOscillation
+    local oscillation = Motion.reduced and 0 or self.brightnessOscillation -- reduced motion: no twinkle
     local alpha = self.alpha
     local points = self.points
     for i, s in ipairs(self.stars) do

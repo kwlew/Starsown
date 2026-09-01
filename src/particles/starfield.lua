@@ -7,9 +7,16 @@ local Math = require "utils.math"
 local Burst = require "particles.burst"
 local Audio = require "core.audio"
 local Audios = require "utils.audios"
+local Motion = require "ui.core.motion"
 
-local GOLD       = { 1, 0.82, 0.35 }
-local GOLD_FLARE = { 1, 0.60, 0.12 }
+-- reduced motion: shooting stars stay clickable, just calmer -- fewer of
+-- them, and slower, rather than turning the feature off outright
+local REDUCED_SPAWN_SCALE = 2.5
+local REDUCED_SPEED_SCALE = 0.5
+
+-- shared with the stats screen's golden-star count, so they can't drift apart
+local GOLD       = Theme.fixedColors.gold
+local GOLD_FLARE = Theme.fixedColors.goldFlare
 
 -- rainbow stars have no fixed color; head + trail are computed live off the hue
 -- wheel. CYCLE_SPEED = wheel-rotations/sec of the star's life; TRAIL_SPAN = how
@@ -111,6 +118,7 @@ function Starfield:spawnStar()
     local y = Math.randRange(-0.05 * h, 0.03 * h)
     local angle = math.rad(Math.randRange(42, 48))
     local speed = Math.randRange(speedMin, speedMax)
+    if Motion.reduced then speed = speed * REDUCED_SPEED_SCALE end
     self.stars[#self.stars + 1] = {
         x = x, y = y,
         spawnX = x, spawnY = y,
@@ -178,6 +186,7 @@ function Starfield:update(dt)
     self.timer = self.timer - dt
     if self.timer <= 0 then
         self.timer = Math.randRange(self.spawnMin, self.spawnMax)
+        if Motion.reduced then self.timer = self.timer * REDUCED_SPAWN_SCALE end
         self:spawnStar()
     end
 
@@ -241,8 +250,6 @@ local function starLook(s, dying)
     end
     local r, g, b
     if s.rainbow then
-        -- matches addTrail's t=0 hue so head and trail meet with no seam;
-        -- still rides dyingLook's fade/glow, it just doesn't fix on one hue
         r, g, b = hueToRgb(s.life * RAINBOW_CYCLE_SPEED)
     else
         r, g, b = Theme.lerp(s.color, s.flare, colorMix)
@@ -258,13 +265,6 @@ local TRAIL_WIDTH_RAMP = 60
 
 local TRAIL_FADE_POW = 1.6 -- power the trail's alpha is raised to for a smooth fade-out
 
--- Every star's trail is a (TRAIL_SEGMENTS+1) x 4 vertex grid (edge+, core+,
--- core-, edge-) stitched into triangles. All trails share ONE mesh and ONE
--- upload+draw per frame instead of one per star: writing to a buffer with a
--- draw already pending against it forces the driver to stall or shadow it, so
--- rewrite-then-draw per star cost a draw call each. Batching into one buffer
--- and issuing a single setVertices + draw makes the whole field one draw call.
--- Reordering trails ahead of heads/halos is safe since everything's additive.
 local VERTS_PER_TRAIL   = (TRAIL_SEGMENTS + 1) * 4
 local INDICES_PER_TRAIL = TRAIL_SEGMENTS * 3 * 6
 
@@ -272,8 +272,6 @@ local trailMesh, trailVerts
 local trailCapacity = 0 -- trails the current buffer can hold
 local batchCount = 0    -- trails queued so far this frame
 
--- grows the shared buffer to hold `capacity` trails; capacity only ratchets up
--- and doubles when it does, so a busy sky pays for this once
 local function ensureTrailMesh(capacity)
     if trailCapacity >= capacity then return end
 
@@ -309,13 +307,7 @@ local function setVertex(v, x, y, r, g, b, a)
     v[5], v[6], v[7], v[8] = r, g, b, a
 end
 
--- queues the strip down the star's path into the shared batch: (dx,dy) unit
--- heading, (nx,ny) perpendicular, length = streak earned so far. Nothing is
--- drawn here -- flushTrails() sends the whole field in one call.
 local function addTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
-    -- draw() sizes the buffer for the whole field before queuing, so this
-    -- shouldn't trip; not grown here on demand since a rebuild would drop
-    -- every trail already queued this frame
     if batchCount >= trailCapacity then return end
 
     local base = batchCount * VERTS_PER_TRAIL
@@ -340,9 +332,6 @@ local function addTrail(s, dx, dy, nx, ny, length, r, g, b, fade)
         local edge = core + TRAIL_FEATHER
         local alpha = shape ^ TRAIL_FADE_POW * fade
 
-        -- a rainbow trail reads its hue off position along the trail (t),
-        -- offset by the star's life so the streak slowly turns over; t=0
-        -- lands on the same hue as starLook's head color, so no seam
         local sr, sg, sb = r, g, b
         if s.rainbow then
             sr, sg, sb = hueToRgb(s.life * RAINBOW_CYCLE_SPEED - t * RAINBOW_TRAIL_SPAN)
@@ -426,8 +415,6 @@ local function drawStar(s, dyingThreshold)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- picked fresh each pop so the sound doesn't always ring out identically;
--- golden keeps one dedicated sound so it stands apart as the rare one
 local POP_SOUNDS = { "starExplosion", "starExplosion2", "starExplosion3" }
 
 local function popSound(golden)
@@ -459,8 +446,6 @@ function Starfield:mousepressed(x, y, button)
 end
 
 function Starfield:draw()
-    -- two passes on purpose: drawStar only queues trail geometry, so the
-    -- whole field's trails go up in one upload+draw instead of one per star
     ensureTrailMesh(#self.stars)
 
     for _, s in ipairs(self.stars) do

@@ -1,48 +1,33 @@
--- The game's cursor, everywhere: a small dot, white at rest, that eases to
--- the theme's accent color over something interactive, or danger red over
--- something destructive (Quit, Discard). Replaces the OS arrow app-wide --
--- unless the player has turned it off in Options (options.customCursor),
--- in which case the OS pointer shows instead and this draws nothing.
---
---   UI.Cursor.init()             -- once, at boot (main.lua)
---   UI.Cursor.setEnabled(bool)   -- once at boot with the saved setting, and
---                                   again whenever the Options toggle changes
---   UI.Cursor.update(dt)         -- once a frame, before draw
---   UI.Cursor.draw()             -- once a frame, last -- always on top
---
--- A screen reports hover state via FocusGroup:hovering's second return
--- (Menu/Dialog forward to it), whether the hovered widget is `danger = true`:
---
---   function State:draw()
---       local over, danger = self.menu:hovering(self.mouseX, self.mouseY)
---       UI.Cursor.setHover(self.mouseX and over, danger)
---   end
---
--- setHover must be called unconditionally every frame, not just when true --
--- there's no automatic reset, so a screen that only calls it inside `if
--- hovering then` leaves the dot stuck colored. Belongs in draw, not
--- mousemoved: mousemoved stops firing once the pointer holds still.
+-- src/ui/core/cursor.lua
 
 local Theme = require "ui.core.theme"
+local Motion = require "ui.core.motion"
 local Globals = require "globals";
 
 local Cursor = {}
 
-local RADIUS = Globals.cursor.size -- design-space px, see Theme.px
+local RADIUS = Globals.cursor.size
 
-local WHITE = Globals.cursor.color
+local OUTLINE_WIDTH = 0.5
+local HOVER_OUTLINE_WIDTH = 1
 
-local hovering = false      -- the latest setHover request
-local danger = false        -- true when the hovered thing is destructive
-local current = { 1, 1, 1 } -- eased toward this frame's target color
-local enabled = true        -- whether the custom cursor draws at all
+local CLICK_GROWTH = 3
+local CLICK_LIFE = 0.25
+
+local hovering = false
+local danger = false
+local current = { 1, 1, 1 }
+local currentOutline = { Theme.colors.shadow[1], Theme.colors.shadow[2], Theme.colors.shadow[3] }
+local enabled = true
+local outlineWidth = OUTLINE_WIDTH
+local wasDown = false
+local click = nil
+local pinnedX, pinnedY = nil, nil
 
 function Cursor.init()
-    Cursor.setEnabled(true) -- hidden by default until the saved setting overrides it
+    Cursor.setEnabled(true) 
 end
 
--- the OS pointer and this drawn one are never both visible: turning this
--- off has to show the system cursor again, not leave the player with none
 function Cursor.setEnabled(isEnabled)
     enabled = isEnabled
     love.mouse.setVisible(not enabled)
@@ -53,32 +38,60 @@ function Cursor.setHover(isHovering, isDanger)
     danger = isDanger or false
 end
 
--- eases at the same rate a focused widget's glow does, so the cursor reads
--- as part of the same UI. Each channel chases independently rather than
--- blending through one 0..1 mix, so hover-to-danger reads the same as rest-to-danger.
+-- Draws the cursor somewhere other than the OS pointer for one frame -- the
+-- play screen tethers it inside the player's reach. It lasts a single draw and
+-- whoever wants it re-asserts every frame, so a screen that stops asking (or
+-- stops existing) hands the pointer back with no teardown to forget.
+function Cursor.setPosition(x, y)
+    pinnedX, pinnedY = x, y
+end
+
 function Cursor.update(dt)
-    local target = WHITE
+    local target = Theme.colors.cursor
     if hovering then
         target = danger and Theme.colors.danger or Theme.colors.accent
     end
     current[1] = Theme.approach(current[1], target[1], dt)
     current[2] = Theme.approach(current[2], target[2], dt)
     current[3] = Theme.approach(current[3], target[3], dt)
+
+    local outlineTarget = hovering and Theme.colors.highlight or Theme.colors.shadow
+    currentOutline[1] = Theme.approach(currentOutline[1], outlineTarget[1], dt)
+    currentOutline[2] = Theme.approach(currentOutline[2], outlineTarget[2], dt)
+    currentOutline[3] = Theme.approach(currentOutline[3], outlineTarget[3], dt)
+
+    outlineWidth = Theme.approach(outlineWidth, hovering and HOVER_OUTLINE_WIDTH or OUTLINE_WIDTH, dt)
+
+    local isDown = enabled and love.mouse.isDown(1)
+    if isDown and not wasDown and not Motion.reduced then click = 0 end
+    wasDown = isDown
+    if click then
+        click = click + dt
+        if click >= CLICK_LIFE then click = nil end
+    end
 end
 
 function Cursor.draw()
+    local x, y = pinnedX, pinnedY
+    pinnedX, pinnedY = nil, nil -- cleared even when disabled, so no pin goes stale
     if not enabled then return end
+    if not x then x, y = love.mouse.getPosition() end
 
-    local x, y = love.mouse.getPosition()
     local radius = Theme.px(RADIUS)
 
-    love.graphics.setColor(current[1], current[2], current[3], 1)
-    love.graphics.circle("fill", x, y, radius)
+    if click then
+        local t = click / CLICK_LIFE
+        Theme.setColor(current, 1 - t)
+        love.graphics.setLineWidth(math.max(1, Theme.px(OUTLINE_WIDTH)))
+        love.graphics.circle("line", x, y, radius + Theme.px(CLICK_GROWTH) * t, 16)
+    end
 
-    -- dark outline so the dot still reads against a bright panel; same shadow tone UI.Label uses
-    Theme.setColor(Theme.colors.shadow)
-    love.graphics.setLineWidth(math.max(1, Theme.px(1)))
-    love.graphics.circle("line", x, y, radius)
+    love.graphics.setColor(current[1], current[2], current[3], 1)
+    love.graphics.circle("fill", x, y, radius, 6)
+
+    Theme.setColor(currentOutline)
+    love.graphics.setLineWidth(math.max(1, Theme.px(outlineWidth)))
+    love.graphics.circle("line", x, y, radius, 32)
     love.graphics.setLineWidth(1)
 
     love.graphics.setColor(1, 1, 1, 1)

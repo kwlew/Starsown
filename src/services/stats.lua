@@ -1,74 +1,68 @@
--- World-wide numbers: how many people are playing right now, and how many
--- shooting stars have been popped since the game existed. Owns the worker
--- thread, the anonymous client ID, and the opt-out. Screens just read:
---
---   if Stats.online then -- draw something with Stats.online end
---   if Stats.stars  then -- ...and with Stats.stars / Stats.golden end
---
--- and anything that pops a star calls Stats.pop(isGolden).
---
--- Every value stays nil until the first successful response, and a failed
--- request never clears one -- nil means "we don't know yet", and callers
--- should draw nothing rather than a 0 or an error.
---
--- One request carries everything: pops accumulate locally and ride out on the
--- same heartbeat that reports presence, so clicking stars costs no extra
--- traffic. See docs/shared-stats.md for the server side.
---
--- Succeeds the old onlineCount module. Unrelated to services/presence.lua (Discord).
-
+-- src/services/stats.lua
 local Json = require "vendor.json"
 
 local Stats = {}
 
 local ENDPOINT = "https://tdidle-presence.kwlew.workers.dev/stats"
--- seconds between heartbeats; requests/day per player = 86400/INTERVAL, and
--- the server's window must stay >= 2x this or one dropped request flickers a player out
+
 local INTERVAL = 60
 local ID_FILE = "client_id"
 local PENDING_FILE = "stats_pending"
 local WORKER = "services/threads/stats.lua" -- love.filesystem-relative (root is src/)
 
--- stars/request the server accepts before rejecting outright; keep in step with MAX_REPORT in the worker
 local MAX_REPORT = 400
 
--- backlog ceiling; past this it's either a very long offline session or not a
--- player, and there's no point growing a number the server will spend hours draining
 local MAX_PENDING = 5000
 
 Stats.online = nil
 Stats.stars = nil
 Stats.golden = nil
+Stats.rainbow = nil
 Stats.enabled = true
 
 local thread, jobChannel, resultChannel
-local timer = INTERVAL -- fire the first heartbeat immediately
+local timer = INTERVAL
 local loadedPending = false
 
--- pops waiting to send vs. currently on the wire, split so a failed request
--- can put back exactly what it took without swallowing pops made mid-flight
-local pending = { stars = 0, golden = 0 }
+local pending = { stars = 0, golden = 0, rainbow = 0 }
 local inflight = nil
 
--- bumped every start so each thread gets its own channel pair -- a shared
--- channel let a still-finishing old thread swallow the new thread's stop
--- token, or push a stale count into the new one
 local generation = 0
 
--- random v4 UUID, not derived from hardware/username: exists only so the
--- server can tell two running copies apart
+-- Folds an arbitrary string into a non-negative number; used below to mix a
+-- fresh table's own memory address into the seed without caring what
+-- format tostring() happens to print it in on a given platform/Lua build.
+local function hashString(s)
+    local h = 0
+    for i = 1, #s do
+        h = (h * 31 + s:byte(i)) % 2^31
+    end
+    return h
+end
+
+-- os.time() alone is a second-resolution value anyone who knows roughly
+-- when the game launched can narrow to a handful of guesses, and
+-- os.clock() this early in boot is bounded to whatever sliver of CPU time
+-- the process has used so far -- neither carries remotely enough entropy
+-- for something meant to tell two installs apart, and using just those two
+-- means two players who happen to launch around the same moment (hardly a
+-- rare case) have an elevated chance of colliding IDs. tostring() on a
+-- table exposes its heap address, which moves with allocation history and
+-- ASLR and isn't derivable from outside the process -- mixing that in is
+-- what actually defeats "I know when you launched, so I can guess your ID."
+local function uuidSeed()
+    return (os.time() * 1000003 + math.floor(os.clock() * 1000000) + hashString(tostring({}))) % 2^31
+end
+
+-- random v4 UUID.
 local function uuid()
-    -- love.math's default seed isn't guaranteed to differ between installs
-    love.math.setRandomSeed(os.time() + math.floor(os.clock() * 1000000))
+    love.math.setRandomSeed(uuidSeed())
     return (("xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"):gsub("[xy]", function(c)
         local v = (c == "x") and love.math.random(0, 15) or love.math.random(8, 11)
         return string.format("%x", v)
     end))
 end
 
--- stable per-install ID, generated once, kept next to settings.lua.
--- >= not >: a UUID is exactly 36 chars, so a > test would reject every ID we
--- ever wrote and mint a fresh one on every launch
 local function clientId()
     local saved = love.filesystem.read(ID_FILE)
     if saved and #saved >= 36 then return saved:sub(1, 36) end
@@ -77,10 +71,6 @@ local function clientId()
     return id
 end
 
--- pops that never made it out before the game closed; without this, quitting
--- inside the heartbeat window (most sessions) would drop that session's pops.
--- Read once and deleted immediately -- the backlog is authoritative in memory
--- from here on, so a stale file can't get double-counted after a crash.
 local function loadPending()
     loadedPending = true -- guards savePending: a session that never read the file must not rewrite/delete it
 
@@ -88,12 +78,18 @@ local function loadPending()
     if not saved then return end
     love.filesystem.remove(PENDING_FILE)
 
-    local stars, golden = saved:match("^(%d+)%s+(%d+)")
-    stars, golden = tonumber(stars), tonumber(golden)
-    if not stars or not golden or golden > stars then return end -- hand-edited/truncated file: don't trust it
+    local stars, golden, rainbow = saved:match("^(%d+)%s+(%d+)%s+(%d+)")
+    if not stars then -- written before rainbow stars existed: two fields, no rainbow
+        stars, golden = saved:match("^(%d+)%s+(%d+)")
+        rainbow = "0"
+    end
+    stars, golden, rainbow = tonumber(stars), tonumber(golden), tonumber(rainbow)
+
+    if not stars or not golden or golden + rainbow > stars then return end
 
     pending.stars = math.min(stars, MAX_PENDING)
     pending.golden = math.min(golden, pending.stars)
+    pending.rainbow = math.min(rainbow, pending.stars - pending.golden)
 end
 
 local function savePending()
@@ -102,7 +98,7 @@ local function savePending()
         love.filesystem.remove(PENDING_FILE)
         return
     end
-    love.filesystem.write(PENDING_FILE, ("%d %d"):format(pending.stars, pending.golden))
+    love.filesystem.write(PENDING_FILE, ("%d %d %d"):format(pending.stars, pending.golden, pending.rainbow))
 end
 
 local function newWorkerThread()
@@ -110,31 +106,30 @@ local function newWorkerThread()
     return love.thread.newThread(WORKER)
 end
 
--- moves a chunk of the backlog onto the wire; chunked because the server caps
--- a single report and refuses an over-cap one outright rather than clamping
 local function dispatch()
     local stars = math.min(pending.stars, MAX_REPORT)
     local golden = math.min(pending.golden, stars)
+    local rainbow = math.min(pending.rainbow, stars - golden)
 
     pending.stars = pending.stars - stars
     pending.golden = pending.golden - golden
-    inflight = { stars = stars, golden = golden }
+    pending.rainbow = pending.rainbow - rainbow
+    inflight = { stars = stars, golden = golden, rainbow = rainbow }
 
-    -- hand-rolled, not Json.encode: two integers, and it keeps the worker free of our modules
     jobChannel:push{
-        body = ('{"stars":%d,"golden":%d}'):format(stars, golden),
+        body = ('{"stars":%d,"golden":%d,"rainbow":%d}'):format(stars, golden, rainbow),
         stars = stars,
         golden = golden,
+        rainbow = rainbow,
     }
 end
 
-local function requeue(stars, golden)
+local function requeue(stars, golden, rainbow)
     pending.stars = math.min(pending.stars + stars, MAX_PENDING)
     pending.golden = math.min(pending.golden + golden, pending.stars)
+    pending.rainbow = math.min(pending.rainbow + rainbow, pending.stars - pending.golden)
 end
 
--- a 4xx other than 429 means the server rejected this payload and would
--- reject an identical retry forever; anything else (no code, 5xx, 429) is a "later"
 local function retryable(code)
     if not code then return true end
     return code < 400 or code >= 500 or code == 429
@@ -153,9 +148,10 @@ local function readResults()
                 if type(data.online) == "number" then Stats.online = math.floor(data.online) end
                 if type(data.stars) == "number" then Stats.stars = math.floor(data.stars) end
                 if type(data.golden) == "number" then Stats.golden = math.floor(data.golden) end
+                if type(data.rainbow) == "number" then Stats.rainbow = math.floor(data.rainbow) end
             end
         elseif retryable(result.code) then
-            requeue(result.stars, result.golden)
+            requeue(result.stars, result.golden, result.rainbow)
         end
 
         result = resultChannel:pop()
@@ -195,19 +191,22 @@ function Stats.update(dt)
     dispatch()
 end
 
--- cheap enough to call straight from a click handler: moves two integers, never touches the network
-function Stats.pop(golden)
+function Stats.pop(kind)
     if not Stats.enabled then return end
     if pending.stars >= MAX_PENDING then return end
 
     pending.stars = pending.stars + 1
-    if golden then pending.golden = pending.golden + 1 end
+    if kind == "golden" then
+        pending.golden = pending.golden + 1
+    elseif kind == "rainbow" then
+        pending.rainbow = pending.rainbow + 1
+    end
 end
 
 function Stats.shutdown()
     readResults() -- read whatever came back first, or a just-succeeded report gets counted again next launch
     if inflight then
-        requeue(inflight.stars, inflight.golden)
+        requeue(inflight.stars, inflight.golden, inflight.rainbow)
         inflight = nil
     end
     savePending() -- before the early return: no https module means no thread, but the backlog still needs saving
@@ -218,10 +217,20 @@ function Stats.shutdown()
     thread, jobChannel, resultChannel = nil, nil, nil
 end
 
--- live opt-in/opt-out for the Options toggle; must stop the heartbeat
--- immediately and drop every value so the menu stops showing frozen figures
+local function clearLocalData()
+    Stats.online, Stats.stars, Stats.golden, Stats.rainbow = nil, nil, nil, nil
+    pending.stars, pending.golden, pending.rainbow = 0, 0, 0
+    love.filesystem.remove(PENDING_FILE)
+    love.filesystem.remove(ID_FILE)
+end
+
 function Stats.setEnabled(enabled)
-    if enabled == Stats.enabled then return end
+    if enabled == Stats.enabled then
+        -- Calling this with false also serves as an explicit privacy cleanup,
+        -- including for data left by a version that enabled stats by default.
+        if not enabled then clearLocalData() end
+        return
+    end
     Stats.enabled = enabled
 
     if enabled then
@@ -230,10 +239,7 @@ function Stats.setEnabled(enabled)
     end
 
     Stats.shutdown()
-    Stats.online, Stats.stars, Stats.golden = nil, nil, nil
-    -- opting out means opting out of the backlog too, not sending it the moment they opt back in
-    pending.stars, pending.golden = 0, 0
-    love.filesystem.remove(PENDING_FILE)
+    clearLocalData()
 end
 
 return Stats
