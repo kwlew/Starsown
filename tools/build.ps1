@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Packages src/ into a runnable dist/TD-Idle.love, and optionally an .exe.
+    Packages src/ into a runnable dist/Starsown.love, and optionally an .exe.
 
 .DESCRIPTION
     A .love file is just a zip whose ROOT contains main.lua — not a zip of the
@@ -17,7 +17,7 @@
     built archive from a directory that has nothing else in it.
 
     -Fuse concatenates love.exe with the .love to make a standalone
-    dist/TD-Idle.exe, copies the runtime DLLs it needs alongside it, and (via
+    dist/Starsown.exe, copies the runtime DLLs it needs alongside it, and (via
     a downloaded rcedit, see Get-RcEdit) sets the exe's own icon to
     src/assets/TD-Idle.ico -- fusing only appends bytes, so without this the
     exe keeps carrying love.exe's icon. None of this is protection against
@@ -46,7 +46,7 @@ param(
     [switch]$Verify,
     # Seconds to let the game run during -Verify before considering it healthy.
     [int]$VerifySeconds = 12,
-    # Also produce dist/TD-Idle.exe (love.exe + the .love, concatenated) plus
+    # Also produce dist/Starsown.exe (love.exe + the .love, concatenated) plus
     # the DLLs it needs alongside it. Distribution convenience only — see
     # the .DESCRIPTION above.
     [switch]$Fuse,
@@ -298,12 +298,12 @@ try {
     if ($Fuse) {
         Copy-Item $exe $sandbox
         Get-ChildItem -Path $dist -Filter *.dll | Copy-Item -Destination $sandbox
-        $target = Join-Path $sandbox 'TD-Idle.exe'
+        $target = Join-Path $sandbox (Split-Path -Leaf $exe)
         $launchArgs = @()
     } else {
         Copy-Item $love $sandbox
         $target = Join-Path $loveHome 'lovec.exe'
-        $launchArgs = @('TD-Idle.love')
+        $launchArgs = @((Split-Path -Leaf $love))
     }
 
     $out = Join-Path $sandbox 'stdout.txt'
