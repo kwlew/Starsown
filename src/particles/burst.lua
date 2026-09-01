@@ -54,8 +54,7 @@ function Burst:spawn(x, y, color, scale)
 end
 
 function Burst:update(dt)
-    -- exp() decay is frame-rate independent, unlike a per-frame multiply
-    local decay = math.exp(-self.drag * dt)
+    local decay = Math.decay(self.drag, dt)
 
     -- compact in one forward pass; table.remove in a reverse loop was
     -- quadratic since a whole burst tends to expire together

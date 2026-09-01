@@ -81,6 +81,7 @@ local CLIPS = {
 
 local STATES = {
     { "mainMenu", "states.mainMenu" },
+    { "play", "states.play" },
     { "options", "states.options" },
     { "stats", "states.stats" },
     { "achievements", "states.achievements" },

@@ -115,7 +115,7 @@ function MainMenu:enter(previousName)
         self.menu = Menu.new({
             { label = function() return I18n.t("menu.play") end, onSelect = function()
                 UI.Sfx.select()
-                --StateManager.fadeTo("play")
+                StateManager.fadeTo("play")
             end },
             { label = function() return I18n.t("menu.stats") end, onSelect = function()
                 UI.Sfx.select()

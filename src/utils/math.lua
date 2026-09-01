@@ -38,6 +38,24 @@ function Math.length(x, y)
     return math.sqrt(x * x + y * y)
 end
 
+-- the fraction of a value still left after dt seconds of decaying at `rate`.
+-- exp() is what makes it frame-rate independent; a plain per-frame multiply
+-- decays faster the more frames a second happens to have.
+function Math.decay(rate, dt)
+    return math.exp(-rate * dt)
+end
+
+-- frame-rate independent approach toward `target`. Distinct from
+-- Theme.approach, which is the linear, dt-clamped version the UI eases with.
+function Math.damp(current, target, rate, dt)
+    return target + (current - target) * Math.decay(rate, dt)
+end
+
+-- the point `radius` away from (x, y) at `angle`
+function Math.polar(x, y, angle, radius)
+    return x + math.cos(angle) * radius, y + math.sin(angle) * radius
+end
+
 -- wraps a 1-based index into 1..count, so 0 lands on count and count+1 on 1
 function Math.wrapIndex(index, count)
     return (index - 1) % count + 1

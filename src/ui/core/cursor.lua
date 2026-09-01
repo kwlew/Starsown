@@ -22,6 +22,7 @@ local enabled = true
 local outlineWidth = OUTLINE_WIDTH
 local wasDown = false
 local click = nil
+local pinnedX, pinnedY = nil, nil
 
 function Cursor.init()
     Cursor.setEnabled(true) 
@@ -35,6 +36,14 @@ end
 function Cursor.setHover(isHovering, isDanger)
     hovering = isHovering
     danger = isDanger or false
+end
+
+-- Draws the cursor somewhere other than the OS pointer for one frame -- the
+-- play screen tethers it inside the player's reach. It lasts a single draw and
+-- whoever wants it re-asserts every frame, so a screen that stops asking (or
+-- stops existing) hands the pointer back with no teardown to forget.
+function Cursor.setPosition(x, y)
+    pinnedX, pinnedY = x, y
 end
 
 function Cursor.update(dt)
@@ -63,9 +72,11 @@ function Cursor.update(dt)
 end
 
 function Cursor.draw()
+    local x, y = pinnedX, pinnedY
+    pinnedX, pinnedY = nil, nil -- cleared even when disabled, so no pin goes stale
     if not enabled then return end
+    if not x then x, y = love.mouse.getPosition() end
 
-    local x, y = love.mouse.getPosition()
     local radius = Theme.px(RADIUS)
 
     if click then

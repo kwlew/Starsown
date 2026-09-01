@@ -128,12 +128,12 @@ end
 -- keyreleased is deliberately not blocked: a release can't start a transition, and
 -- swallowing it strands the key as held in whatever tracks it (see Player.held)
 local blockedWhileFading = {
-    keypressed = true, textinput = true,
+    keypressed = true, chordpressed = true, textinput = true,
     mousepressed = true, mousereleased = true, wheelmoved = true,
 }
 
 local callbacks = {
-    "keypressed", "keyreleased", "textinput",
+    "keypressed", "keyreleased", "chordpressed", "textinput",
     "mousepressed", "mousereleased", "mousemoved", "wheelmoved",
     "resize",
 }

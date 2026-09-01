@@ -66,14 +66,20 @@ function love.resize(w, h)
 end
 
 function love.keypressed(key, scancode, isrepeat)
-    if key == "f3" then
-        Debug.toggle()
+    local consumed, chord = Debug.keypressed(key, isrepeat)
+    if chord then
+        StateManager.chordpressed(chord)
         return
     end
+    if consumed then return end
     StateManager.keypressed(key, scancode, isrepeat)
 end
 
-love.keyreleased   = StateManager.keyreleased
+function love.keyreleased(key, scancode)
+    if Debug.keyreleased(key) then return end
+    StateManager.keyreleased(key, scancode)
+end
+
 love.textinput     = StateManager.textinput
 love.mousepressed  = StateManager.mousepressed
 love.mousereleased = StateManager.mousereleased

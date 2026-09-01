@@ -1,0 +1,14 @@
+{
+  "game": {
+    "hint": "WASD: move    Left Click: swipe    E: inventory    Esc: pause    F4: debug",
+    "pause": {
+      "title": "PAUSED",
+      "resume": "Resume",
+      "options": "Options",
+      "quit": "Quit to Menu"
+    },
+    "inventory": {
+      "title": "Inventory"
+    }
+  }
+}
