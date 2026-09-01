@@ -1,10 +1,7 @@
 name: Build
 
-# Runs tools/build.ps1's -Verify across every packaging combination it
-# supports, so a change that breaks the archive (or the require graph, or
-# bytecode compilation, or the fused exe) fails here instead of at release.
-# Windows-only runner: the script does PE fusing and reads Windows DLLs, so
-# there's no cross-platform variant to also test.
+# Builds and verifies both supported targets. Windows also checks fused PE
+# executables; Fedora checks the portable .love archive against LÖVE 11.5.
 
 on:
   push:
@@ -20,16 +17,16 @@ env:
   RCEDIT_VERSION: "v2.0.0"
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache LÖVE download
         id: love-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: love-dist
           key: love-${{ env.LOVE_VERSION }}-win64
@@ -58,7 +55,7 @@ jobs:
       # tools/build.ps1's -Fuse downloads this itself (Get-RcEdit) if it's
       # missing -- caching it here just saves that download on every run.
       - name: Cache rcedit download
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .tools
           key: rcedit-${{ env.RCEDIT_VERSION }}
@@ -83,8 +80,47 @@ jobs:
 
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Starsown-dist
           path: dist/
+          if-no-files-found: ignore
+
+  linux-fedora:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 10
+    steps:
+      # The Fedora container starts intentionally minimal. Install git before
+      # checkout, plus the exact runtime and virtual display used to verify.
+      - name: Install Fedora build dependencies
+        run: >-
+          dnf install -y
+          git love zip unzip
+          xorg-x11-server-Xvfb xorg-x11-xauth
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build + verify (.love)
+        shell: bash
+        run: >-
+          xvfb-run -a tools/build-linux.sh
+          --verify
+          --output dist/Starsown.love
+
+      - name: Build + verify (bytecode .love)
+        shell: bash
+        run: >-
+          xvfb-run -a tools/build-linux.sh
+          --bytecode
+          --verify
+          --output dist/Starsown-bytecode.love
+
+      - name: Upload Fedora artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Starsown-linux-fedora44
+          path: dist/*.love
           if-no-files-found: ignore
