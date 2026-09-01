@@ -105,14 +105,14 @@ jobs:
       - name: Build + verify (.love)
         shell: bash
         run: >-
-          xvfb-run -a tools/build-linux.sh
+          xvfb-run -a bash tools/build-linux.sh
           --verify
           --output dist/Starsown.love
 
       - name: Build + verify (bytecode .love)
         shell: bash
         run: >-
-          xvfb-run -a tools/build-linux.sh
+          xvfb-run -a bash tools/build-linux.sh
           --bytecode
           --verify
           --output dist/Starsown-bytecode.love
