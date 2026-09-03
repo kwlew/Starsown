@@ -1,4 +1,4 @@
--- Labeled 0..1 slider row: label left, draggable track + percentage right.
+--- Labeled 0..1 slider row: label left, draggable track + percentage right.
 -- onChange(value) fires on every change (apply live); onRelease(value)
 -- fires when a drag ends or after a keyboard step (persist here).
 --
@@ -16,16 +16,14 @@ local Math = require "utils.math"
 local Slider = {}
 Widget.extend(Slider)
 
--- design-space px, scaled through Theme.px at use
 local TRACK_H = 8
 local PERCENT_W = 52    -- reserved width for the "100%" readout
 local KNOB_RATIO = 1.125 -- knob radius as a multiple of track height, stays proportional at every scale
 local KNOB_CLEARANCE = 4 -- clearance past the track's end, or the knob at 100% prints through "100%"
--- how far outside the track a press still starts a drag -- without this the
--- track is an 8px-tall target in a 48px row; with it the whole middle band
--- grabs, while the label and readout stay non-grabbing (see mousepressed)
 local GRAB_MARGIN = 12
 
+---@param config table # Widget.new's fields, plus value: number 0..1, step: number, onChange: fun(value: number), onRelease: fun(value: number)
+---@return table
 function Slider.new(config)
     local self = Widget.new(Slider, config)
     self.value = config.value or 0
@@ -36,11 +34,16 @@ function Slider.new(config)
     return self
 end
 
+---@return boolean # lit through a whole drag, not just while focused
 function Slider:isLit()
     return self.focused or self.dragging
 end
 
--- right-aligned, leaving room for the label on the left and readout (plus knob clearance) on the right
+--- right-aligned, leaving room for the label on the left and readout (plus knob clearance) on the right
+---@return number x
+---@return number y
+---@return number w
+---@return number h
 function Slider:trackRect()
     local m = Theme.metrics
     local trackH = Theme.px(TRACK_H)
@@ -51,7 +54,10 @@ function Slider:trackRect()
     return trackX, trackY, trackW, trackH
 end
 
--- grab area: the track grown by GRAB_MARGIN, clamped to the row so it can't reach a neighbouring widget
+--- grab area: the track grown by GRAB_MARGIN, clamped to the row so it can't reach a neighbouring widget
+---@param px number
+---@param py number
+---@return boolean
 function Slider:trackContains(px, py)
     local trackX, trackY, trackW, trackH = self:trackRect()
     local margin = Theme.px(GRAB_MARGIN)
@@ -62,6 +68,9 @@ function Slider:trackContains(px, py)
         trackW + margin * 2, bottom - top)
 end
 
+--- clamped to 0..1 and rounded to whole percent; onChange fires only on a
+-- real change
+---@param value number
 function Slider:setValue(value)
     if not self:isInteractive() then return end
     value = Math.round(Math.clamp01(value) * 100) / 100 -- keep values (and saves) tidy
@@ -72,6 +81,8 @@ function Slider:setValue(value)
     end
 end
 
+--- one keyboard step, which counts as a commit (onRelease fires too)
+---@param direction -1|1
 function Slider:adjust(direction)
     if not self:isInteractive() then return end
     self:setValue(self.value + direction * self.step)
@@ -80,14 +91,21 @@ function Slider:adjust(direction)
     end
 end
 
+---@param self table
+---@param px number # screen x
+---@return number # unclamped 0..1 ratio along the track
 local function valueFromX(self, px)
     local trackX, _, trackW = self:trackRect()
     return (px - trackX) / trackW
 end
 
--- only a press on the track (plus grab margin) starts a drag -- hit-testing
+--- only a press on the track (plus grab margin) starts a drag -- hit-testing
 -- the whole row would let a click on the far-left label compute a negative
 -- ratio and snap to 0, muting the game by clicking its own name
+---@param px number
+---@param py number
+---@param mouseButton integer
+---@return boolean # captured true once a drag starts, so the FocusGroup keeps routing here
 function Slider:mousepressed(px, py, mouseButton)
     if mouseButton ~= 1 or not self:isInteractive() then return false end
     if not self:trackContains(px, py) then return false end
@@ -97,12 +115,19 @@ function Slider:mousepressed(px, py, mouseButton)
     return true
 end
 
+---@param px number
+---@param py number
 function Slider:mousemoved(px, py)
     if self.dragging then
         self:setValue(valueFromX(self, px))
     end
 end
 
+--- ends a drag and commits through onRelease -- the point where a live-applied
+-- value gets persisted
+---@param px number
+---@param py number
+---@param mouseButton integer
 function Slider:mousereleased(px, py, mouseButton)
     if mouseButton == 1 and self.dragging then
         self.dragging = false
@@ -112,6 +137,7 @@ function Slider:mousereleased(px, py, mouseButton)
     end
 end
 
+--- label left, then the track, fill, knob and percentage readout
 function Slider:draw()
     local c, m = Theme.colors, Theme.metrics
     local alpha, font = self:alpha(), self:getFont()

@@ -40,21 +40,24 @@ Globals.menu = {
     }
 }
 
--- the cursor's colors are theme roles (Theme.colors.cursor / .highlight), so
--- only its geometry lives here
+-- Cursor geometry.
+-- TODO: This in the feature will have options for custom shapes, like square, circle, crosshair, etc.
 Globals.cursor = {
     size = 3,
 }
 
+--- stamps the session start and seeds the RNG from it; call once at boot
 function Globals.init()
     Globals.game.startedAt = os.time()
     math.randomseed(Globals.game.startedAt)
 end
 
+---@return table # the menu starfield's star-pop burst pool
 function Globals.menuBurst()
     return Globals.menu.Particles.burst
 end
 
+---@return table # the menu starfield's ember pool
 function Globals.menuEmbers()
     return Globals.menu.Particles.embers
 end

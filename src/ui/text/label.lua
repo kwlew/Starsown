@@ -1,5 +1,3 @@
--- src/ui/text/label.lua
-
 local Theme = require "ui.core.theme"
 local Text = require "ui.text.text"
 
@@ -9,6 +7,9 @@ local SHADOW_OFFSET = 2
 
 local HINT_BOTTOM = 48
 
+--- the draw-time wrapper screens call instead of love.graphics.print, so
+-- shadow offset and colour defaults live in one place
+---@param opts table # { text?: string, x?: number, y?: number, width?: number, align?: string, font?: love.Font, color?: number[], alpha?: number, shadow?: boolean }
 function Label.draw(opts)
     local font = opts.font or Theme.font("body")
     local width = opts.width or love.graphics.getWidth()
@@ -29,14 +30,19 @@ function Label.draw(opts)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+---@return integer # screen pixels, for callers laying out around a shadowed label
 function Label.shadowOffset()
     return Theme.px(SHADOW_OFFSET)
 end
 
+---@return number # the y every screen's hint row sits at
 function Label.hintY()
     return love.graphics.getHeight() - Theme.px(HINT_BOTTOM)
 end
 
+--- the dim one-line hint across the bottom of a screen
+---@param text string
+---@param shadow? boolean
 function Label.hint(text, shadow)
     Label.draw{
         text = text,

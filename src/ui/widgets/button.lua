@@ -1,4 +1,4 @@
--- Themed rounded-rect button. Focus (keyboard) and hover (mouse) share one
+--- Themed rounded-rect button. Focus (keyboard) and hover (mouse) share one
 -- `focused` flag; the visual eases toward the accent look with a soft glow.
 --
 --   local b = Button.new{ label = "Play", onSelect = function() ... end }
@@ -14,12 +14,19 @@ Widget.extend(Button)
 
 Button.fontRole = "button"
 
+---@param config table # Widget.new's fields, plus onSelect: fun(self: table)
+---@return table
 function Button.new(config)
     local self = Widget.new(Button, config)
     self.onSelect = config.onSelect
+    self.textObject = nil
+    self.textValue = nil
+    self.textFont = nil
+    self.textWidth = nil
     return self
 end
 
+--- fires onSelect, unless the button is disabled
 function Button:activate()
     if not self:isInteractive() then return end
     if self.onSelect then
@@ -27,15 +34,23 @@ function Button:activate()
     end
 end
 
+--- the row plus a centred label, its mesh rebuilt only when the text, font or
+-- width actually changed
 function Button:draw()
     local alpha, font = self:alpha(), self:getFont()
     self:drawRow(alpha)
 
-    Theme.pushFont(font) -- centered, not left-aligned, so this doesn't use Widget:drawLabel
+    local label = self:labelText()
+    if label ~= self.textValue or font ~= self.textFont or self.w ~= self.textWidth then
+        self.textObject = love.graphics.newText(font)
+        self.textObject:setf(label, self.w, "center")
+        self.textValue = label
+        self.textFont = font
+        self.textWidth = self.w
+    end
+
     Theme.setColor(Theme.colors.text, alpha)
-    love.graphics.printf(self:labelText(), self.x,
-        Theme.centerY(self.y, self.h, font), self.w, "center")
-    Theme.popFont()
+    love.graphics.draw(self.textObject, self.x, Theme.centerY(self.y, self.h, font))
 
     love.graphics.setColor(1, 1, 1, 1)
 end

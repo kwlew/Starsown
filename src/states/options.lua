@@ -1,4 +1,4 @@
--- Settings screen with three tabs:
+--- Settings screen with three tabs:
 --   Audio     - volume sliders; apply live and persist immediately.
 --   Interface - language/theme/title font/cursor/motion/stats sharing;
 --               apply live and persist immediately, same as Audio.
@@ -29,21 +29,21 @@ local PANEL_Y_RATIO   = 0.32 -- preferred start; pulled up if the stack wouldn't
 local PANEL_PAD       = 20   -- design-space px, scaled through Theme.px
 local PANEL_MAX_W     = 560
 
--- seconds before an unconfirmed graphics change reverts on its own -- a mode
--- the monitor can't display leaves the player unable to click a revert button
 local REVERT_SECONDS = 10
 
 local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
 
 local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates against the same list at boot
 
--- selector order; display names come from options.windowMode.<mode> in the locale
 local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
 
 local Options = {}
 
--- index of the first entry `matches` accepts, or 1 -- a saved value no
+--- index of the first entry `matches` accepts, or 1 -- a saved value no
 -- longer on offer (a resolution the monitor lost) falls back to the first option
+---@param list any[]
+---@param matches fun(entry: any): boolean
+---@return integer
 local function indexWhere(list, matches)
     for i, entry in ipairs(list) do
         if matches(entry) then return i end
@@ -51,33 +51,45 @@ local function indexWhere(list, matches)
     return 1
 end
 
+---@param code string
+---@return integer
 local function languageIndexFor(code)
     return indexWhere(I18n.available(), function(e) return e.code == code end)
 end
 
+---@param id string
+---@return integer
 local function themeIndexFor(id)
     return indexWhere(UI.Theme.available(), function(e) return e.id == id end)
 end
 
+---@param id string
+---@return integer
 local function titleFontIndexFor(id)
     return indexWhere(GameTitle.available(), function(e) return e.id == id end)
 end
 
+---@param settings table
+---@return integer
 local function resolutionIndexFor(settings)
     return indexWhere(RESOLUTIONS, function(r)
         return r[1] == settings.res_x and r[2] == settings.res_y
     end)
 end
 
+---@param settings table
+---@return integer
 local function msaaIndexFor(settings)
     return indexWhere(MSAA, function(s) return s == settings.msaa end)
 end
 
+---@param mode string
+---@return integer
 local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
 
--- keeps derived enabled-states in sync with pending; call after any mutation
+--- keeps derived enabled-states in sync with pending; call after any mutation
 -- of `pending`. Resolution row is inert in borderless (always desktop res
 -- there); Apply greys out when there's nothing to apply.
 function Options:syncEnabledStates()
@@ -86,6 +98,7 @@ function Options:syncEnabledStates()
     self.group:refresh() -- move focus off a row that just went inert
 end
 
+---@return boolean # whether Graphics has edits waiting on Apply
 function Options:isDirty()
     return self.pending.resIndex ~= resolutionIndexFor(self.settings)
         or self.pending.msaa ~= self.settings.msaa
@@ -93,7 +106,7 @@ function Options:isDirty()
         or self.pending.vsync ~= self.settings.vsync
 end
 
--- resets pending graphics changes to the live settings and syncs widget
+--- resets pending graphics changes to the live settings and syncs widget
 -- displays (setting fields directly never fires onChange)
 function Options:resetPending()
     local msaaIndex = msaaIndexFor(self.settings)
@@ -110,6 +123,7 @@ function Options:resetPending()
     self:syncEnabledStates()
 end
 
+---@return table # what applyPending saves so revertGraphics can put it back
 function Options:graphicsSnapshot()
     return {
         res_x = self.settings.res_x,
@@ -120,9 +134,9 @@ function Options:graphicsSnapshot()
     }
 end
 
--- commits pending: settings <- pending, apply, then ask the player to
+--- commits pending: settings <- pending, apply, then ask the player to
 -- confirm before persisting -- nothing hits disk until they do, since an
--- unusable mode must not survive a restart
+-- unusable mode must not survive a restart. A no-op when nothing changed.
 function Options:applyPending()
     if not self:isDirty() then return end
 
@@ -135,27 +149,26 @@ function Options:applyPending()
     self.settings.vsync = self.pending.vsync
 
     Settings.applyGraphics(self.settings)
-    -- re-read, not just re-check dirtiness: applyGraphics writes back the
-    -- msaa the driver actually granted, which can be lower than requested
     self:resetPending()
     self.revertDialog:openDialog()
 end
 
+--- confirmed: the applied mode is persisted, and any exit queued behind the
+-- prompt goes through now
 function Options:keepGraphics()
     self.revertDialog:close()
     self.revertTo = nil
     Settings.save(self.settings)
 
-    -- they were already leaving when they chose Apply (see buildDialogs), so
-    -- a confirmed change carries them the rest of the way out
     if self.leaveAfterApply then
         self.leaveAfterApply = false
         self:leave()
     end
 end
 
--- declined, or the countdown ran out (the case that matters: it's what a
--- player who can't see anything is relying on)
+--- declined, or the countdown ran out (the case that matters: it's what a
+-- player who can't see anything is relying on): puts the previous mode back
+-- and re-applies it
 function Options:revertGraphics()
     self.revertDialog:close()
     self.leaveAfterApply = false -- the mode didn't stick, so any queued exit is dropped
@@ -170,10 +183,11 @@ function Options:revertGraphics()
     self:resetPending()
 end
 
--- switches the UI palette and rebuilds the one thing that can't just re-read
+--- switches the UI palette and rebuilds the one thing that can't just re-read
 -- it: the nebula stamps accent colors into its canvases at bake time, so it
 -- keeps the old theme's hues until re-baked. Shared instance from Assets, so
 -- this also recolors the main menu's copy.
+---@param id string
 function Options:applyTheme(id)
     if not UI.Theme.setTheme(id) then return end
 
@@ -181,8 +195,9 @@ function Options:applyTheme(id)
     if nebula and nebula:isBaked() then nebula:bake() end
 end
 
--- A disabled-at-boot nebula is intentionally not baked during loading. Pay
+--- A disabled-at-boot nebula is intentionally not baked during loading. Pay
 -- that one-time cost only if the player later asks to see it.
+---@param value boolean
 function Options:setNebulaVisible(value)
     local nebula = Assets.get("nebula")
     if not nebula then return end
@@ -190,13 +205,14 @@ function Options:setNebulaVisible(value)
     nebula.enabled = value
 end
 
--- both layout and the focus list read this, so a footer button can never be
+--- both layout and the focus list read this, so a footer button can never be
 -- visible-but-unfocusable or vice versa
+---@return table[]
 function Options:footerButtons()
     return { self.backButton }
 end
 
--- Back/Esc: graphics edits only take effect on Apply, and the greyed-out
+--- Back/Esc: graphics edits only take effect on Apply, and the greyed-out
 -- Apply button isn't much of a reminder that edits are outstanding, so
 -- leaving with pending edits asks first.
 function Options:goBack()
@@ -208,13 +224,18 @@ function Options:goBack()
     self:leave()
 end
 
+--- fades back to whichever screen opened this one
 function Options:leave()
     StateManager.fadeTo(self.returnTo)
 end
 
--- Music passes blip = false: it retunes live and is already its own preview,
+--- Music passes blip = false: it retunes live and is already its own preview,
 -- so an sfx click on top would demo the wrong channel. i18n key, description
 -- key and settings field are all `key` by construction.
+---@param key string # names the i18n string, the description key and the settings field
+---@param apply fun(value: number) # applies the value live, throughout the drag
+---@param blip boolean # play a click when the change settles
+---@return table
 function Options:buildVolumeSlider(key, apply, blip)
     local slider = UI.Slider.new{
         label = function() return I18n.t("options." .. key) end,
@@ -233,13 +254,16 @@ function Options:buildVolumeSlider(key, apply, blip)
     return slider
 end
 
--- Live/immediate toggles (most of Interface, plus the purely-cosmetic
+--- Live/immediate toggles (most of Interface, plus the purely-cosmetic
 -- Graphics rows like showNebula that can't strand the player the way a
 -- resolution or fullscreen change can): apply and persist right away, same
 -- contract as buildVolumeSlider above. i18n key, description key and
 -- settings field are all `key` by construction; `sideEffect(value)`, if
 -- given, is whatever beyond the settings write needs to happen (e.g.
 -- UI.Cursor.setEnabled).
+---@param key string # names the i18n string, the description key and the settings field
+---@param sideEffect? fun(value: boolean)
+---@return table
 function Options:buildSettingToggle(key, sideEffect)
     local toggle = UI.Toggle.new{
         label = function() return I18n.t("options." .. key) end,
@@ -255,13 +279,19 @@ function Options:buildSettingToggle(key, sideEffect)
     return toggle
 end
 
--- Graphics-tab selectors: write into `pending` only and sync derived
+--- Graphics-tab selectors: write into `pending` only and sync derived
 -- enabled-states; Apply is what commits (see Options:applyPending). `key`
 -- names both the i18n string and the widget itself; `pendingKey` is the
 -- field written on `pending`, since it isn't always the same name (the
 -- displayMode row's pending field is `windowMode`). `valueOf(option, index)`
 -- picks what actually gets stored -- defaults to the option itself, but the
 -- resolution row stores the index instead (see resolutionIndexFor).
+---@param key string # names the i18n string and description key
+---@param options any[]
+---@param format fun(option: any): string
+---@param pendingKey string # the field written on `pending`
+---@param valueOf? fun(option: any, index: integer): any # defaults to the option itself
+---@return table
 function Options:buildPendingSelector(key, options, format, pendingKey, valueOf)
     valueOf = valueOf or function(option) return option end
     local selector = UI.Selector.new{
@@ -278,9 +308,13 @@ function Options:buildPendingSelector(key, options, format, pendingKey, valueOf)
     return selector
 end
 
--- Graphics-tab toggle (currently just VSync); same pending/sync contract as
+--- Graphics-tab toggle (currently just VSync); same pending/sync contract as
 -- buildPendingSelector above. `transform`, if given, converts the widget's
 -- boolean into whatever `pending[pendingKey]` actually stores.
+---@param key string # names the i18n string and description key
+---@param pendingKey string # the field written on `pending`
+---@param transform? fun(value: boolean): any
+---@return table
 function Options:buildPendingToggle(key, pendingKey, transform)
     transform = transform or function(value) return value end
     local toggle = UI.Toggle.new{
@@ -295,11 +329,12 @@ function Options:buildPendingToggle(key, pendingKey, transform)
     return toggle
 end
 
+--- the two prompts this screen owns: the countdown that auto-reverts an
+-- applied graphics change, and the one that catches leaving with edits
+-- outstanding
 function Options:buildDialogs()
     local blip = UI.Sfx.focus
 
-    -- the countdown is the whole point: if the new mode is unreadable, doing
-    -- nothing has to be the safe choice
     self.revertDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.revert.title") end,
         message = function(dialog)
@@ -317,14 +352,11 @@ function Options:buildDialogs()
         },
     }
 
-    -- raised by Back/Esc when graphics edits are still pending; cancelling
-    -- keeps the player here with the edits intact
     self.unappliedDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.unapplied.title") end,
         message = function() return I18n.t("dialog.unapplied.message") end,
         onCancel = function() self.unappliedDialog:close() end,
         buttons = {
-            -- discard first, matching the revert dialog's "commits nothing" order
             { label = function() return I18n.t("dialog.unapplied.discard") end,
               danger = true,
               onSelect = function()
@@ -335,8 +367,6 @@ function Options:buildDialogs()
             { label = function() return I18n.t("dialog.unapplied.apply") end,
               onSelect = function()
                   self.unappliedDialog:close()
-                  -- applyPending raises the revert countdown, so the exit
-                  -- waits on the player confirming the new mode works
                   self.leaveAfterApply = true
                   self:applyPending()
               end },
@@ -347,14 +377,16 @@ function Options:buildDialogs()
     self.unappliedDialog:setFocusSound(blip)
 end
 
+---@return table|nil # the open dialog, if either is
 function Options:activeDialog()
     if self.revertDialog and self.revertDialog:isOpen() then return self.revertDialog end
     if self.unappliedDialog and self.unappliedDialog:isOpen() then return self.unappliedDialog end
     return nil
 end
 
--- rebuilds the focus list for the active tab: tab bar, then the tab's
+--- rebuilds the focus list for the active tab: tab bar, then the tab's
 -- widgets, then footer buttons -- drives both focus order and layout below
+---@param index integer
 function Options:selectTab(index)
     self.activeTab = index
     self.tabBar.index = index -- direct field set never fires onChange, so no recursion
@@ -371,11 +403,12 @@ function Options:selectTab(index)
     self:layout() -- a different tab has a different row count
 end
 
--- lines the description area needs: the longest description in this tab,
--- wrapped to the panel width. Measured over the whole tab, not the focused
--- row, so the panel doesn't jump every time focus lands on a wordier row.
 local DESC_MAX_LINES = 3 -- caps one runaway string from squeezing the rows it describes; draw clips past this
 
+--- how many lines to reserve for the description row: the tallest any widget
+-- on this tab needs, capped, so the reserved space doesn't jump as focus moves
+---@param width number # wrap width
+---@return integer # 1..DESC_MAX_LINES
 function Options:descriptionLines(width)
     local font = UI.Theme.font("small")
     local most = 1
@@ -386,7 +419,6 @@ function Options:descriptionLines(width)
             most = math.max(most, #wrapped)
         end
     end
-    -- the resolution row's inert-state line isn't any widget's descKey
     if self.tabs[self.activeTab].name == "graphics" then
         local _, wrapped = font:getWrap(I18n.t("options.desc.resolutionBorderless"), width)
         most = math.max(most, #wrapped)
@@ -395,7 +427,7 @@ function Options:descriptionLines(width)
     return math.min(most, DESC_MAX_LINES)
 end
 
--- Computes every rect this screen draws. Called on enter/resize/tab switch,
+--- Computes every rect this screen draws. Called on enter/resize/tab switch,
 -- never from draw -- hit-testing reads these bounds, and laying out during
 -- draw meant input for a frame was answered against the previous geometry.
 --
@@ -419,9 +451,12 @@ function Options:layout()
     local descH = UI.Theme.font("small"):getHeight()
         * self:descriptionLines(panelW - UI.Theme.px(PANEL_PAD) * 2)
 
-    -- tab bar + tab rows + footer buttons are all one row tall, with a gap after each but the last
     local rowCount = 1 + rows + #footer
     local gapCount = rows + #footer + 1
+    ---@param rowH number
+    ---@param gap number
+    ---@param pad number
+    ---@return number
     local function stackHeight(rowH, gap, pad)
         return rowCount * rowH + gapCount * gap + pad * 2 + descH
     end
@@ -430,7 +465,6 @@ function Options:layout()
     local stackTop = headingBottom + m.rowGap
     local budget = UI.Label.hintY() - m.rowGap - stackTop
 
-    -- floors derived from the font, not hardcoded, so a row can't shrink past its own label
     local minRow = UI.Theme.font("body"):getHeight() + UI.Theme.px(8)
     local minGap = UI.Theme.px(4)
     local minPad = UI.Theme.px(6)
@@ -438,7 +472,6 @@ function Options:layout()
     local rowH, gap, pad = m.rowHeight, m.rowGap, UI.Theme.px(PANEL_PAD)
 
     if stackHeight(rowH, gap, pad) > budget then
-        -- whitespace first, all of it proportionally, down to the floors
         local slack = gapCount * (gap - minGap) + 2 * (pad - minPad)
         local need = stackHeight(rowH, gap, pad) - budget
         if slack > 0 then
@@ -447,7 +480,6 @@ function Options:layout()
             pad = minPad + math.floor((pad - minPad) * keep)
         end
 
-        -- then, only then, the rows themselves
         if stackHeight(rowH, gap, pad) > budget then
             local forRows = budget - gapCount * gap - pad * 2 - descH
             rowH = math.max(minRow, math.floor(forRows / rowCount))
@@ -457,7 +489,6 @@ function Options:layout()
     local panelH = pad * 2 + rows * rowH + (rows - 1) * gap
     local stackH = stackHeight(rowH, gap, pad)
 
-    -- preferred pose, clamped so the whole stack stays inside the budget
     local aboveH = rowH + gap -- tab bar and its gap
     local top = math.max(stackTop,
         math.min(h * PANEL_Y_RATIO - aboveH, stackTop + budget - stackH))
@@ -483,7 +514,6 @@ function Options:layout()
             rowH)
     end
 
-    -- height is the reserved one, so draw can tell whether it reaches the hint line
     local footerBottom = panelY + panelH + gap + #footer * (rowH + gap)
     self.descRect = { x = panelX, y = footerBottom, w = panelW, h = descH }
 
@@ -491,11 +521,13 @@ function Options:layout()
     if self.unappliedDialog then self.unappliedDialog:layout() end
 end
 
+--- re-lays out for the new window size
 function Options:resize()
     self:layout()
 end
 
--- resolution row gets a different line when inert, since "greyed out with no reason" is the confusion to avoid
+--- resolution row gets a different line when inert, since "greyed out with no reason" is the confusion to avoid
+---@return string|nil # an i18n key, or nil when the focused row has nothing to say
 function Options:focusedDescription()
     local widget = self.group:focused()
     if not widget or not widget.descKey then return nil end
@@ -505,7 +537,7 @@ function Options:focusedDescription()
     return widget.descKey
 end
 
--- StateManager calls enter(previousName, ...); opts.returnTo wins, else
+--- StateManager calls enter(previousName, ...); opts.returnTo wins, else
 -- wherever we came from. Guard stops Options targeting itself if re-entered.
 function Options:enter(previousName, opts)
     Presence.set{ details = "Options", state = "Changing settings",
@@ -521,25 +553,19 @@ function Options:enter(previousName, opts)
         self.group.onFocusChanged = UI.Sfx.focus
     end
 
+    --- writes the live settings out; the immediate-apply rows call this directly
     local function persist()
         Settings.save(self.settings)
     end
 
     if not self.tabs then
-        -- labels are functions so they re-read the active language every
-        -- draw -- changing language updates the screen live, no rebuild
 
-        -- Audio tab: all three sliders apply live and persist immediately.
-        -- Master scales every channel via love.audio.setVolume; Music/SFX
-        -- are independent channels (core/audio.lua).
         self.volumeSlider = self:buildVolumeSlider("volume", love.audio.setVolume, true)
         self.musicVolumeSlider = self:buildVolumeSlider("musicVolume",
             function(v) Audio.setVolume("music", v) end, false)
         self.sfxVolumeSlider = self:buildVolumeSlider("sfxVolume",
             function(v) Audio.setVolume("sfx", v) end, true)
 
-        -- Interface tab: language/theme/title font/cursor/motion/stats
-        -- sharing, all live and persisted immediately, same as Audio.
         self.languageSelector = UI.Selector.new{
             label = function() return I18n.t("options.language") end,
             options = I18n.available(),
@@ -553,8 +579,6 @@ function Options:enter(previousName, opts)
         }
         self.languageSelector.descKey = 'options.desc.language'
 
-        -- live and persisted immediately too: unlike a resolution a palette
-        -- can't leave the player unable to see the screen
         self.themeSelector = UI.Selector.new{
             label = function() return I18n.t("options.theme") end,
             options = UI.Theme.available(),
@@ -568,8 +592,6 @@ function Options:enter(previousName, opts)
         }
         self.themeSelector.descKey = 'options.desc.theme'
 
-        -- also live/immediate: a font swap can't strand the player either,
-        -- and only touches the wordmark, so nothing else needs a rebuild
         self.titleFontSelector = UI.Selector.new{
             label = function() return I18n.t("options.titleFont") end,
             options = GameTitle.available(),
@@ -583,18 +605,12 @@ function Options:enter(previousName, opts)
         }
         self.titleFontSelector.descKey = 'options.desc.titleFont'
 
-        -- live/immediate too; UI.Cursor owns actually swapping the OS
-        -- pointer back in, this just tells it to
         self.customCursorToggle = self:buildSettingToggle("customCursor", UI.Cursor.setEnabled)
 
-        -- live/immediate; UI.Motion is the one thing every ambient-animation
-        -- module reads to dampen itself, see ui/core/motion.lua
         self.reducedMotionToggle = self:buildSettingToggle("reducedMotion", UI.Motion.setReduced)
 
-        -- a privacy switch that waited for a restart wouldn't really be one
         self.shareStatsToggle = self:buildSettingToggle("shareStats", Stats.setEnabled)
 
-        -- Graphics tab: writes to pending only; Apply commits.
         self.resolutionSelector = self:buildPendingSelector("resolution", RESOLUTIONS,
             function(o) return o[1] .. "x" .. o[2] end,
             "resIndex", function(_, index) return index end)
@@ -613,12 +629,8 @@ function Options:enter(previousName, opts)
         self.vsyncToggle = self:buildPendingToggle("vsync", "vsync",
             function(value) return value and 1 or 0 end)
 
-        -- just a love.run loop flag, not a window mode -- can't strand the
-        -- player, so unlike vsync above it applies live, see buildSettingToggle
         self.uncapFpsToggle = self:buildSettingToggle("uncapFps", FrameLimiter.setUncapped)
 
-        -- purely cosmetic, so unlike the rest of this tab it applies live
-        -- rather than waiting on Apply -- see buildSettingToggle
         self.showNebulaToggle = self:buildSettingToggle("showNebula",
             function(value) self:setNebulaVisible(value) end)
 
@@ -631,8 +643,6 @@ function Options:enter(previousName, opts)
         }
         self.applyButton.descKey = 'options.desc.apply'
 
-        -- reads self.returnTo when clicked rather than capturing it, since
-        -- this block only runs on the first visit
         self.backButton = UI.Button.new{
             label = function() return I18n.t("options.back") end,
             onSelect = function() self:goBack() end,
@@ -665,7 +675,6 @@ function Options:enter(previousName, opts)
         }
     end
 
-    -- a fresh visit never inherits an open modal
     self.revertDialog:close()
     self.unappliedDialog:close()
     self.revertTo = nil
@@ -686,23 +695,27 @@ function Options:enter(previousName, opts)
     self:selectTab(self.tabBar.index)
 end
 
--- a modal owns every input while open; the screen behind keeps drawing but
+--- a modal owns every input while open; the screen behind keeps drawing but
 -- stops responding. Dialog exposes the same verbs FocusGroup does, so
 -- routing is just a choice of receiver.
+---@return table # the open dialog, or the screen's own focus group
 function Options:inputTarget()
     return self:activeDialog() or self.group
 end
 
+--- routed to whatever currently owns input
 function Options:update(dt)            self:inputTarget():update(dt)            end
 function Options:mousepressed(x, y, b) self:inputTarget():mousepressed(x, y, b) end
 function Options:mousereleased(x, y, b) self:inputTarget():mousereleased(x, y, b) end
 
+---@param x number
+---@param y number
 function Options:mousemoved(x, y)
     self.mouseX, self.mouseY = x, y
     self:inputTarget():mousemoved(x, y)
 end
 
--- written out, not routed: a modal's own Esc cancels the modal, only an unmodal screen leaves
+--- written out, not routed: a modal's own Esc cancels the modal, only an unmodal screen leaves
 function Options:keypressed(key)
     local dialog = self:activeDialog()
     if dialog then return dialog:keypressed(key) end
@@ -710,6 +723,8 @@ function Options:keypressed(key)
     return self.group:keypressed(key)
 end
 
+--- heading, tab bar, the active tab's panel, footer buttons, the focused row's
+-- description, and any open dialog over all of it
 function Options:draw()
     local h = love.graphics.getHeight()
     local panel = self.panel
@@ -720,8 +735,6 @@ function Options:draw()
         font = UI.Theme.font("heading"),
     }
 
-    -- tab bar and footer sit outside the panel, tab rows inside it, so
-    -- drawing happens in three passes rather than through the focus group's own draw
     self.tabBar:draw()
 
     UI.Theme.panel(panel.x, panel.y, panel.w, panel.h)
@@ -736,8 +749,6 @@ function Options:draw()
     local desc = self.descRect
     local descKey = self:focusedDescription()
     if descKey then
-        -- clipped to the reserved height; the scissor only matters if a
-        -- future string exceeds DESC_MAX_LINES
         love.graphics.setScissor(math.floor(desc.x), math.floor(desc.y),
             math.ceil(desc.w), math.ceil(desc.h))
         UI.Label.draw{
@@ -751,8 +762,6 @@ function Options:draw()
         love.graphics.setScissor()
     end
 
-    -- description and hint share one line at the bottom; the tallest stack
-    -- leaves room for only one, and description (about the focused row) wins
     if desc.y + desc.h <= UI.Label.hintY() then
         local onGraphics = self.tabs[self.activeTab].name == "graphics"
         UI.Label.hint(I18n.t(onGraphics and "options.hint.graphics" or "options.hint.general"))

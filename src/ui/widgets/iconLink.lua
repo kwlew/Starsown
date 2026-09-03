@@ -1,4 +1,4 @@
--- A small hover/press/open-URL icon button for external links (GitHub,
+--- A small hover/press/open-URL icon button for external links (GitHub,
 -- Discord, ...) -- the main menu's corner marks. Not on the Widget base:
 -- these live outside any FocusGroup (mouse-only, no keyboard focus), so
 -- there's no glow/label/enabled contract to inherit.
@@ -18,6 +18,8 @@ IconLink.__index = IconLink
 local HOVER_COLOR = { 0.80, 0.80, 0.80 }
 local HOVER_GLOW, IDLE_GLOW = 1, 0.45
 
+---@param config table # { mark: string, url: string }
+---@return table
 function IconLink.new(config)
     return setmetatable({
         mark = config.mark, -- name in ui.icons.marks
@@ -28,20 +30,33 @@ function IconLink.new(config)
     }, IconLink)
 end
 
+---@param x number
+---@param y number
+---@param w number
+---@param h number
 function IconLink:setBounds(x, y, w, h)
     self.x, self.y, self.w, self.h = x, y, w, h
 end
 
+---@param px number
+---@param py number
+---@return boolean
 function IconLink:contains(px, py)
     return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
 end
 
+---@param px number
+---@param py number
 function IconLink:mousemoved(px, py)
     self.hover = self:contains(px, py)
 end
 
--- returns true if it captured the click, so a caller can stop routing it
+--- returns true if it captured the click, so a caller can stop routing it
 -- further down (to another link, or the starfield behind everything)
+---@param px number
+---@param py number
+---@param button integer
+---@return boolean captured
 function IconLink:mousepressed(px, py, button)
     if button ~= 1 or not self:contains(px, py) then return false end
     self.pressed = true
@@ -49,7 +64,11 @@ function IconLink:mousepressed(px, py, button)
     return true
 end
 
--- only fires on a full press+release on the mark, not a click that drags off
+--- opens the URL in the player's browser, but only on a full press+release on
+-- the mark -- not a click that drags off
+---@param px number
+---@param py number
+---@param button integer
 function IconLink:mousereleased(px, py, button)
     if button ~= 1 or not self.pressed then return end
     self.pressed = false
@@ -58,6 +77,7 @@ function IconLink:mousereleased(px, py, button)
     end
 end
 
+--- brighter, with a stronger bloom, while hovered
 function IconLink:draw()
     Marks.draw(self.mark, self.x, self.y, self.w,
         self.hover and HOVER_COLOR or Theme.colors.textDim,

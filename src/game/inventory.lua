@@ -1,4 +1,4 @@
--- A fixed run of slots. A slot is nil or { id = "scrap", count = n }; nothing
+--- A fixed run of slots. A slot is nil or { id = "scrap", count = n }; nothing
 -- outside here should build one by hand, since take/put hand them back and
 -- forth already.
 --
@@ -17,6 +17,8 @@ Inventory.__index = Inventory
 
 local DEFAULT_SLOTS = 24
 
+---@param config? table # { slots?: integer }
+---@return table
 function Inventory.new(config)
     config = config or {}
     return setmetatable({
@@ -25,10 +27,13 @@ function Inventory.new(config)
     }, Inventory)
 end
 
+---@param index integer
+---@return table|nil # { id: string, count: integer }; the live slot, not a copy
 function Inventory:get(index)
     return self.slots[index]
 end
 
+---@return boolean
 function Inventory:isEmpty()
     for i = 1, self.size do
         if self.slots[i] then return false end
@@ -36,6 +41,9 @@ function Inventory:isEmpty()
     return true
 end
 
+--- across every slot, not just the first
+---@param id string
+---@return integer
 function Inventory:count(id)
     local total = 0
     for i = 1, self.size do
@@ -45,8 +53,11 @@ function Inventory:count(id)
     return total
 end
 
--- tops up partial stacks before opening a fresh slot, so picking things up
+--- tops up partial stacks before opening a fresh slot, so picking things up
 -- doesn't fragment the bag. Returns what wouldn't fit.
+---@param id string # an unknown item is refused outright
+---@param count? integer # defaults to 1
+---@return integer # leftover; 0 when it all fit
 function Inventory:add(id, count)
     count = count or 1
     if count <= 0 or not Items.get(id) then return count end
@@ -74,14 +85,19 @@ function Inventory:add(id, count)
     return count
 end
 
+--- lifts the whole stack out, leaving the slot empty
+---@param index integer
+---@return table|nil # { id: string, count: integer }
 function Inventory:take(index)
     local slot = self.slots[index]
     self.slots[index] = nil
     return slot
 end
 
--- half rounded up, so taking half of one leaves nothing behind rather than
+--- half rounded up, so taking half of one leaves nothing behind rather than
 -- splitting a stack that can't be split
+---@param index integer
+---@return table|nil # { id: string, count: integer }
 function Inventory:takeHalf(index)
     local slot = self.slots[index]
     if not slot then return nil end
@@ -92,15 +108,16 @@ function Inventory:takeHalf(index)
     return { id = slot.id, count = half }
 end
 
--- merges onto a matching stack, swaps otherwise; returns the leftover (nil
+--- merges onto a matching stack, swaps otherwise; returns the leftover (nil
 -- when the whole stack fit)
+---@param index integer
+---@param stack table|nil # { id: string, count: integer }
+---@return table|nil # { id: string, count: integer }; leftover, or what was displaced
 function Inventory:put(index, stack)
     if not stack then return nil end
 
     local slot = self.slots[index]
     if not slot then
-        -- a copy, not the caller's table: aliasing the same stack into a slot
-        -- and into whatever is still holding it corrupts both, silently
         self.slots[index] = { id = stack.id, count = stack.count }
         return nil
     end
@@ -117,7 +134,10 @@ function Inventory:put(index, stack)
     return slot
 end
 
--- one of `stack` into a slot; the leftover is what the caller keeps holding
+--- one of `stack` into a slot; the leftover is what the caller keeps holding
+---@param index integer
+---@param stack table|nil # { id: string, count: integer }
+---@return table|nil # { id: string, count: integer }
 function Inventory:putOne(index, stack)
     if not stack then return nil end
 
@@ -132,6 +152,9 @@ function Inventory:putOne(index, stack)
     return stack
 end
 
+--- merge or swap between two slots
+---@param from integer
+---@param to integer
 function Inventory:move(from, to)
     if from == to then return end
     self.slots[from] = self:put(to, self:take(from))

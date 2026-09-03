@@ -1,4 +1,4 @@
--- F4 overlay for the play screen: where you are on the grid, where the cursor
+--- F4 overlay for the play screen: where you are on the grid, where the cursor
 -- is, and which inputs are down right now. core/debug.lua's F3 panel is the
 -- engine-level one (fps, memory) and knows nothing about a world, so this is a
 -- separate module in the opposite corner and the two can be read at once.
@@ -19,28 +19,38 @@ local CHIP = 22
 local CHIP_GAP = 4
 local CHIP_RADIUS = 4
 
--- tiles around the player that get their coordinates written on them; labelling
--- every visible tile buries the world under four hundred numbers
 local LABEL_RADIUS = 3
 local LABEL_FIT = 0.88 -- of the tile's width, so a two-part label stays inside its own square
 
 local ACTION_KEY = { up = "W", left = "A", down = "S", right = "D" }
 local BOTTOM_ROW = { "left", "down", "right" }
 
+---@return boolean visible
 function Overlay.toggle()
     Overlay.visible = not Overlay.visible
     return Overlay.visible
 end
 
+---@param world table
+---@param col integer
+---@param row integer
+---@param color number[]
+---@param alpha? number
 local function outlineTile(world, col, row, color, alpha)
     local x, y = world:tileOrigin(col, row)
     Theme.setColor(color, alpha or 1)
     love.graphics.rectangle("line", x, y, World.TILE, World.TILE)
 end
 
--- drawn inside the camera transform: 1/zoom brings the glyphs back to the size
+--- drawn inside the camera transform: 1/zoom brings the glyphs back to the size
 -- they were rasterized at, and the fit factor shrinks a wide label the rest of
 -- the way so it stays inside the square it names
+---@param world table
+---@param col integer
+---@param row integer
+---@param font any # a love.Font
+---@param zoom number # the camera's, to undo
+---@param alpha number
 local function tileLabel(world, col, row, font, zoom, alpha)
     local text = col .. "," .. row
     local width = font:getWidth(text)
@@ -54,6 +64,10 @@ local function tileLabel(world, col, row, font, zoom, alpha)
         0, scale, scale)
 end
 
+--- the in-world half: tile coordinates around the player, the player's and
+-- aim's own tiles outlined, and the swipe's reach. Call inside the camera
+-- transform.
+---@param ctx table # reads ctx.world, ctx.camera and ctx.player
 function Overlay.drawWorld(ctx)
     local world, camera, player = ctx.world, ctx.camera, ctx.player
     local colors = Theme.colors
@@ -77,7 +91,6 @@ function Overlay.drawWorld(ctx)
     outlineTile(world, mouseCol, mouseRow, colors.warning, 0.9)
     outlineTile(world, playerCol, playerRow, colors.accent, 0.9)
 
-    -- the swing's reach, which is otherwise only visible for the 0.16s it fires
     Theme.setColor(colors.accent, 0.25)
     love.graphics.arc("line", "open", player.x, player.y, Swipe.REACH,
         player.facing - Swipe.ARC / 2, player.facing + Swipe.ARC / 2)
@@ -85,6 +98,13 @@ function Overlay.drawWorld(ctx)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+---@param x number
+---@param y number
+---@param w number
+---@param h number
+---@param label string
+---@param held boolean # lights it up
+---@param font any # a love.Font
 local function chip(x, y, w, h, label, held, font)
     local colors = Theme.colors
     Theme.setColor(held and colors.accentDark or colors.panel, 0.9)
@@ -98,7 +118,11 @@ local function chip(x, y, w, h, label, held, font)
         y + (h - font:getHeight()) / 2)
 end
 
--- the WASD cross with the mouse button under it, lit for whatever is down
+--- the WASD cross with the mouse button under it, lit for whatever is down
+---@param ctx table # reads ctx.player
+---@param x number # top-left of the cross
+---@param y number
+---@param font any # a love.Font
 local function drawInputs(ctx, x, y, font)
     local size = Theme.px(CHIP)
     local step = size + Theme.px(CHIP_GAP)
@@ -113,6 +137,9 @@ local function drawInputs(ctx, x, y, font)
         "LMB", ctx.player.attacking, font)
 end
 
+--- the readout panel, top right, in screen space -- opposite corner from
+-- core/debug.lua's F3 panel so both can be up at once
+---@param ctx table # reads ctx.world, ctx.player, ctx.enemies and ctx.pauseState
 function Overlay.drawScreen(ctx)
     local world, player = ctx.world, ctx.player
     local colors = Theme.colors
@@ -135,6 +162,7 @@ function Overlay.drawScreen(ctx)
         { "speed", ("%.0f"):format(player:speed()) },
         { "height", ("%.1f"):format(player.z) },
         { "swipe", player.swipe:ready() and "ready" or ("%.2fs"):format(player.swipe.cooldown) },
+        { "hp", ("%d / %d"):format(player.hp, player.maxHp) },
         { "enemies", tostring(#ctx.enemies) },
         { "state", ctx.pauseState or "running" },
         { "ground", World.TILE .. "px " .. (world.texture and "textured" or "flat") },
@@ -143,7 +171,6 @@ function Overlay.drawScreen(ctx)
     local gap = pad / 2 -- between the readout and the input chips
     local chipsHeight = Theme.px(CHIP) * 3 + Theme.px(CHIP_GAP) * 2
     local height = pad * 2 + lineHeight * #rows + gap + chipsHeight
-    -- top-right, since core/debug.lua's F3 panel owns the top-left
     local x = love.graphics.getWidth() - width - pad
     local y = pad
 

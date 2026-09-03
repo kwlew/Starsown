@@ -56,6 +56,8 @@ end
 
 local json = {}
 
+---@param t table
+---@return boolean # true when the keys are exactly 1..n
 local function isArray(t)
     local n = 0
     for k in pairs(t) do
@@ -67,12 +69,17 @@ end
 
 local escapeMap = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
 
+---@param s string
+---@return string
 local function escapeStr(s)
     return (s:gsub('[%z\1-\31\\"]', function(c)
         return escapeMap[c] or string.format('\\u%04x', c:byte())
     end))
 end
 
+--- anything that isn't a string, number, boolean, nil or table encodes as null
+---@param v any
+---@return string
 function json.encode(v)
     local t = type(v)
     if t == "string" then
@@ -99,15 +106,23 @@ function json.encode(v)
     return "null"
 end
 
+--- enough of a parser for Discord's replies. Returns nil rather than raising on
+-- malformed input -- a bad frame shouldn't take the game down.
+---@param str any # the JSON text
+---@return any|nil
 function json.decode(str)
     local pos = 1
     local parseValue
 
+    --- advances `pos` past any whitespace
     local function skipWhitespace()
         local _, e = str:find("^%s*", pos)
         pos = e + 1
     end
 
+    --- \u escapes past ASCII become "?": Discord's replies are ASCII in practice,
+    -- and nothing here reads the text back out
+    ---@return string
     local function parseString()
         pos = pos + 1
         local startPos = pos
@@ -142,6 +157,7 @@ function json.decode(str)
         return table.concat(buf)
     end
 
+    ---@return number|nil
     local function parseNumber()
         local s, e = str:find("^%-?%d+%.?%d*[eE]?[+%-]?%d*", pos)
         local numStr = str:sub(s, e)
@@ -149,6 +165,7 @@ function json.decode(str)
         return tonumber(numStr)
     end
 
+    ---@return table
     local function parseObject()
         pos = pos + 1
         local obj = {}
@@ -169,6 +186,7 @@ function json.decode(str)
         return obj
     end
 
+    ---@return any[]
     local function parseArray()
         pos = pos + 1
         local arr = {}
@@ -185,6 +203,7 @@ function json.decode(str)
         return arr
     end
 
+    --- any JSON value, dispatched on its first character
     parseValue = function()
         skipWhitespace()
         local c = str:sub(pos, pos)
@@ -205,6 +224,8 @@ end
 
 -- frame packing helpers (4-byte little-endian uint32 headers)
 
+---@param n integer
+---@return string # 4 bytes, little endian
 local function packU32LE(n)
     return string.char(
         n % 256,
@@ -214,6 +235,9 @@ local function packU32LE(n)
     )
 end
 
+---@param s string
+---@param offset integer # 1-based
+---@return integer
 local function unpackU32LE(s, offset)
     local b1, b2, b3, b4 = s:byte(offset, offset + 3)
     return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216
@@ -221,6 +245,9 @@ end
 
 -- Pipe: platform-specific transport (Windows named pipe / Unix socket)
 
+--- The transport, one implementation per platform below. Both provide the same
+-- four methods: write(data) -> boolean, available() -> bytes waiting or nil
+-- when the platform can't peek, read(n) -> string|nil, and close().
 local Pipe = {}
 Pipe.__index = Pipe
 local getCurrentPid -- filled in per-platform below
@@ -253,8 +280,13 @@ if isWindows then
     local GENERIC_WRITE = 0x40000000
     local OPEN_EXISTING = 3
 
+    --- sent with every activity, so Discord can clear the presence if the game
+    -- dies without calling shutdown()
     getCurrentPid = function() return tonumber(kernel32.GetCurrentProcessId()) end
 
+    --- UTF-16 for CreateFileW; the paths here are ASCII, so this widens byte by byte
+    ---@param s string
+    ---@return ffi.cdata*
     local function toWideString(s)
         local buf = ffi.new("WCHAR[?]", #s + 1)
         for i = 1, #s do buf[i - 1] = s:byte(i) end
@@ -262,6 +294,8 @@ if isWindows then
         return buf
     end
 
+    --- tries discord-ipc-0 through -9; nil when none of them answer
+    ---@return table|nil
     function Pipe.connect()
         for i = 0, 9 do
             local path = "\\\\.\\pipe\\discord-ipc-" .. i
@@ -274,6 +308,8 @@ if isWindows then
         return nil
     end
 
+    ---@param data string
+    ---@return boolean sent
     function Pipe:write(data)
         local written = ffi.new("DWORD[1]")
         local ok = kernel32.WriteFile(self.handle, data, #data, written, nil)
@@ -281,6 +317,7 @@ if isWindows then
     end
 
     -- bytes currently sitting in the pipe, without blocking
+    ---@return any # bytes waiting
     function Pipe:available()
         local totalAvail = ffi.new("DWORD[1]")
         local ok = kernel32.PeekNamedPipe(self.handle, nil, 0, nil, totalAvail, nil)
@@ -288,6 +325,8 @@ if isWindows then
         return tonumber(totalAvail[0])
     end
 
+    ---@param n integer # bytes to read
+    ---@return string|nil
     function Pipe:read(n)
         local buf = ffi.new("char[?]", n)
         local readCount = ffi.new("DWORD[1]")
@@ -296,6 +335,7 @@ if isWindows then
         return ffi.string(buf, tonumber(readCount[0]))
     end
 
+    --- releases the handle
     function Pipe:close()
         kernel32.CloseHandle(self.handle)
     end
@@ -322,8 +362,12 @@ elseif isLinux or isMac then
     local F_SETFL     = 4
     local O_NONBLOCK  = isMac and 0x0004 or 0x800 -- differs between Linux and Darwin libc
 
+    --- sent with every activity, so Discord can clear the presence if the game
+    -- dies without calling shutdown()
     getCurrentPid = function() return tonumber(C.getpid()) end
 
+    --- where Discord's socket may live, best guess first
+    ---@return string[]
     local function candidateDirs()
         local dirs = {}
         for _, name in ipairs({ "XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP" }) do
@@ -334,6 +378,9 @@ elseif isLinux or isMac then
         return dirs
     end
 
+    --- tries discord-ipc-0 through -9 in every candidate directory, and switches
+    -- the socket it finds to non-blocking; nil when none of them answer
+    ---@return table|nil
     function Pipe.connect()
         for _, dir in ipairs(candidateDirs()) do
             for i = 0, 9 do
@@ -356,14 +403,19 @@ elseif isLinux or isMac then
         return nil
     end
 
+    ---@param data string
+    ---@return boolean sent
     function Pipe:write(data)
         local n = C.write(self.fd, data, #data)
         return n == #data
     end
 
     -- already non-blocking; no cheap "peek" on Unix, so the connection layer loops read() until it's empty
+    ---@return nil
     function Pipe:available() return nil end
 
+    ---@param n integer # bytes to read
+    ---@return string|nil # nil when nothing is waiting
     function Pipe:read(n)
         local buf = ffi.new("char[?]", n)
         local result = C.read(self.fd, buf, n)
@@ -371,6 +423,7 @@ elseif isLinux or isMac then
         return ffi.string(buf, result)
     end
 
+    --- closes the socket
     function Pipe:close()
         C.close(self.fd)
     end
@@ -384,10 +437,15 @@ end
 local Connection = {}
 Connection.__index = Connection
 
+---@param pipe table
+---@return table
 function Connection.new(pipe)
     return setmetatable({ pipe = pipe, buffer = "" }, Connection)
 end
 
+--- reads whatever is waiting into the buffer, without blocking either way:
+-- Windows can say how much is there, so it reads exactly that; Unix has no
+-- cheap peek, so it reads chunks off a non-blocking socket until one comes up short
 function Connection:pump()
     if self.pipe.available and self.pipe:available() ~= nil then
         -- Windows: ask how many bytes are waiting, read exactly that many
@@ -407,6 +465,9 @@ function Connection:pump()
     end
 end
 
+--- one complete frame, or nil while the buffer holds only part of one
+---@return integer|nil opcode
+---@return string? payload
 function Connection:popFrame()
     if #self.buffer < 8 then return nil end
     local opcode = unpackU32LE(self.buffer, 1)
@@ -417,10 +478,14 @@ function Connection:popFrame()
     return opcode, payload
 end
 
+---@param opcode integer # 0 HANDSHAKE, 1 FRAME, 2 CLOSE, 3 PING, 4 PONG
+---@param payloadStr string
+---@return boolean sent
 function Connection:sendFrame(opcode, payloadStr)
     return self.pipe:write(packU32LE(opcode) .. packU32LE(#payloadStr) .. payloadStr)
 end
 
+--- closes the underlying pipe
 function Connection:close()
     self.pipe:close()
 end
@@ -438,17 +503,22 @@ local state = "disconnected" -- disconnected -> handshaking -> connected
 local retryTimer = 0
 local nonceCounter = 0
 
+---@return string # unique per message, which is how a reply is matched to its command
 local function nextNonce()
     nonceCounter = nonceCounter + 1
     return tostring(os.time()) .. "-" .. nonceCounter
 end
 
+--- records the app id and arms the connect; update() does the connecting
+---@param discordApplicationId string
 function RPC.initialize(discordApplicationId)
     clientId = discordApplicationId
     state = "disconnected"
     retryTimer = 0
 end
 
+--- one attempt at the local IPC socket, sending the handshake if it opens. A
+-- failure is silent -- Discord simply may not be running yet.
 local function tryConnect()
     local pipe = Pipe.connect()
     if pipe then
@@ -458,6 +528,8 @@ local function tryConnect()
     end
 end
 
+---@param opcode integer
+---@param payload string
 local function handleFrame(opcode, payload)
     if opcode == 1 then
         local msg = json.decode(payload)
@@ -477,6 +549,11 @@ local function handleFrame(opcode, payload)
     end
 end
 
+--- drives both the reconnect backoff and the read loop, so it needs a real dt:
+-- called with none, the retry timer never advances and a failed connect is
+-- permanent. A read that throws drops back to disconnected rather than
+-- propagating.
+---@param dt number
 function RPC.update(dt)
     dt = dt or 0
 
@@ -508,6 +585,8 @@ function RPC.update(dt)
     end
 end
 
+---@param activity table # details/state/timestamps/assets
+---@return boolean # sent; false while the connection isn't up
 function RPC.setActivity(activity)
     if state ~= "connected" or not conn then return false end
     local payload = json.encode({
@@ -521,6 +600,7 @@ function RPC.setActivity(activity)
     return conn:sendFrame(1, payload)
 end
 
+---@return boolean sent
 function RPC.clearActivity()
     if state ~= "connected" or not conn then return false end
     local payload = json.encode({
@@ -531,14 +611,18 @@ function RPC.clearActivity()
     return conn:sendFrame(1, payload)
 end
 
+---@return boolean # true only once Discord has answered READY
 function RPC.isReady()
     return state == "connected"
 end
 
+---@return string|nil
 function RPC.getLastError()
     return RPC.lastError
 end
 
+--- sends CLOSE and drops the connection, so the presence clears now rather than
+-- when Discord notices the process is gone
 function RPC.shutdown()
     if conn then
         conn:sendFrame(2, "") -- opcode 2 = CLOSE

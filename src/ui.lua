@@ -1,4 +1,4 @@
--- namespace: local UI = require "ui"; UI.Theme.colors.accent, UI.Button.new{...}
+--- namespace: local UI = require "ui"; UI.Theme.colors.accent, UI.Button.new{...}
 -- .lua not ui/init.lua because package.path here has no ?/init.lua
 
 return {

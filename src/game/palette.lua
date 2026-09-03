@@ -1,4 +1,4 @@
--- Colors for the things that live in the world, deliberately outside
+--- Colors for the things that live in the world, deliberately outside
 -- ui/core/theme.lua. A theme is chrome, and there are twelve of them: under
 -- "ruby" an enemy painted with Theme.colors.danger is a red shape on a
 -- red-tinted floor and stops reading as an enemy. The grid behind them is
@@ -18,13 +18,10 @@ return {
     health  = { 0.95, 0.33, 0.32 },
     healthTrack = { 0.09, 0.09, 0.12 },
 
-    -- item material classes, named for what they look like rather than for any
-    -- one item, so new items reuse them (see game/items.lua)
     metal  = { 0.74, 0.77, 0.83 },
     plant  = { 0.52, 0.78, 0.42 },
     energy = { 0.64, 0.50, 0.98 },
 
-    -- the ground, until a grass texture replaces it (see game/world.lua)
     ground     = { 0.17, 0.24, 0.15 },
     groundAlt  = { 0.20, 0.28, 0.18 },
     groundLine = { 0.11, 0.16, 0.10 },

@@ -1,4 +1,4 @@
--- The pause overlay: a scrim, a heading and a menu over whatever the screen
+--- The pause overlay: a scrim, a heading and a menu over whatever the screen
 -- last drew. It owns nothing about the game -- the screen decides what pausing
 -- means and passes in what the entries do.
 --
@@ -19,6 +19,8 @@ PauseMenu.__index = PauseMenu
 local HEADING_Y_RATIO = 0.26
 local MENU_Y_RATIO = 0.40
 
+---@param config table # { items: table[], onCancel?: fun() }; items are passed straight to Menu.new
+---@return table
 function PauseMenu.new(config)
     local self = setmetatable({
         open = false,
@@ -31,28 +33,35 @@ function PauseMenu.new(config)
     return self
 end
 
+---@return boolean
 function PauseMenu:isOpen()
     return self.open
 end
 
+--- shows it with focus back on the first entry
 function PauseMenu:openMenu()
     self.open = true
     self.menu:setFocus(1) -- always lands on Resume, never on wherever it was left
     self:layout()
 end
 
+--- hides it; the screen decides what that means for the world underneath
 function PauseMenu:close()
     self.open = false
 end
 
+--- call on open and on resize
 function PauseMenu:layout()
     self.menu:layout(love.graphics.getHeight() * MENU_Y_RATIO)
 end
 
+---@param dt number
 function PauseMenu:update(dt)
     self.menu:update(dt)
 end
 
+---@param key string
+---@return boolean consumed
 function PauseMenu:keypressed(key)
     if key == "escape" then
         if self.onCancel then self.onCancel() end
@@ -61,11 +70,13 @@ function PauseMenu:keypressed(key)
     return self.menu:keypressed(key)
 end
 
+--- pass-throughs to the menu
 function PauseMenu:mousemoved(x, y)     return self.menu:mousemoved(x, y)        end
 function PauseMenu:mousepressed(x, y, b) return self.menu:mousepressed(x, y, b)  end
 function PauseMenu:mousereleased(x, y, b) return self.menu:mousereleased(x, y, b) end
 function PauseMenu:hovering(x, y)       return self.menu:hovering(x, y)          end
 
+--- scrim, heading and the menu, over whatever the screen last drew
 function PauseMenu:draw()
     Theme.setColor(Theme.colors.scrim)
     love.graphics.rectangle("fill", 0, 0, love.graphics.getDimensions())

@@ -1,4 +1,4 @@
--- Fixed night sky behind the loading screen and menu: twinkling points plus a
+--- Fixed night sky behind the loading screen and menu: twinkling points plus a
 -- few constellations linking some of them.
 
 local Theme = require "ui.core.theme"
@@ -8,12 +8,53 @@ local Motion = require "ui.core.motion"
 local Stars = {}
 Stars.__index = Stars
 
+local STAR_VERTEX_FORMAT = {
+    { "VertexPosition", "float", 2 },
+    { "VertexColor", "float", 4 },
+    { "StarData", "float", 3 },
+}
+
+local twinkleShader
+
+--- built on first use and shared. The twinkle runs in the vertex shader off
+-- per-star attributes, so the whole sky is one draw call with no per-frame
+-- work on the CPU.
+---@return any # a love.Shader
+local function getTwinkleShader()
+    if not twinkleShader then
+        twinkleShader = love.graphics.newShader([[
+            vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
+            {
+                return color;
+            }
+        ]], [[
+            attribute vec3 StarData;
+
+            extern number time;
+            extern number oscillation;
+
+            vec4 position(mat4 transform_projection, vec4 vertex_position)
+            {
+                number brightness = clamp(
+                    StarData.x + sin(StarData.y + time * StarData.z) * oscillation,
+                    0.0, 1.0);
+                VaryingColor.rgb *= brightness;
+                return transform_projection * vertex_position;
+            }
+        ]])
+    end
+    return twinkleShader
+end
+
+---@param config? table # every field below may be overridden
+---@return table
 function Stars.new(config)
     config = config or {}
     return setmetatable({
         stars = {},
         chains = {}, -- one flat {x,y,x,y,...} polyline per constellation
-        points = {}, -- per-star {x,y,r,g,b,a} for one batched points() call, rewritten each frame
+        mesh = nil,
+        time = 0,
         amountMin = config.amountMin or 150,
         amountMax = config.amountMax or 190,
         brightnessOscillation = config.brightnessOscillation or 0.7,
@@ -30,6 +71,13 @@ function Stars.new(config)
     }, Stars)
 end
 
+---@param x number
+---@param y number
+---@param blinkSpeedMin number
+---@param blinkSpeedMax number
+---@param brightnessMin number
+---@param brightnessMax number
+---@return table
 local function newStar(x, y, blinkSpeedMin, blinkSpeedMax, brightnessMin, brightnessMax)
     return {
         x = x,
@@ -40,9 +88,11 @@ local function newStar(x, y, blinkSpeedMin, blinkSpeedMax, brightnessMin, bright
     }
 end
 
--- random-walks a chain of stars across the screen, linking each consecutive
+--- random-walks a chain of stars across the screen, linking each consecutive
 -- pair; keeps a heading and turns gently each step so it flows like a real
 -- constellation, and reflects off screen edges instead of piling up on the border
+---@param w number
+---@param h number
 function Stars:spawnConstellation(w, h)
     local starCount = Math.randInt(self.constellationStarsMin, self.constellationStarsMax)
     local margin = math.min(self.constellationSpread, math.min(w, h) / 3)
@@ -63,7 +113,6 @@ function Stars:spawnConstellation(w, h)
         local nx = x + math.cos(heading) * dist
         local ny = y + math.sin(heading) * dist
 
-        -- reflect off whichever edge the next step would cross, so the chain turns back inward
         if nx < margin or nx > w - margin then heading = math.pi - heading end
         if ny < margin or ny > h - margin then heading = -heading end
         x = Math.clamp(x + math.cos(heading) * dist, 0, w)
@@ -75,9 +124,9 @@ function Stars:spawnConstellation(w, h)
     end
 end
 
+--- regenerates the whole sky at a fixed 1920x1080, never at the window size:
+-- the window is only a viewport onto it, so a resize doesn't reshuffle the stars
 function Stars:spawnStars()
-    -- fixed 1920x1080 space, not the window: it's the largest supported
-    -- resolution, so the sky never regenerates on a resolution change
     local w, h = 1920, 1080
     self.stars = {}
     self.chains = {}
@@ -94,49 +143,46 @@ function Stars:spawnStars()
     self:buildBatches()
 end
 
--- static half of the draw: positions never move, so a frame only rewrites
--- color (see draw). Stars outside a smaller window aren't culled -- measured, no difference.
+--- bakes every star into one static point mesh, twinkle parameters and all
 function Stars:buildBatches()
-    local points = {}
+    local vertices = {}
     for i, s in ipairs(self.stars) do
-        points[i] = { s.x, s.y, 1, 1, 1, 1 }
+        vertices[i] = {
+            s.x, s.y,
+            1, 1, 1, 1,
+            s.brightness, s.blinkPhase, s.blinkSpeed,
+        }
     end
-    self.points = points
+    self.mesh = love.graphics.newMesh(STAR_VERTEX_FORMAT, vertices, "points", "static")
+    getTwinkleShader()
 end
 
+--- only advances the clock; the twinkle itself is the shader's job
+---@param dt number
 function Stars:update(dt)
-    for _, s in ipairs(self.stars) do
-        s.blinkPhase = s.blinkPhase + dt * s.blinkSpeed
-    end
+    self.time = self.time + dt
 end
 
+--- constellation lines, then the whole sky in a single shaded draw
 function Stars:draw()
-    if self.alpha <= 0 then return end
+    if self.alpha <= 0 or not self.mesh then return end
 
     Theme.setColor(Theme.colors.textDim, self.lineAlpha * self.alpha)
     for _, chain in ipairs(self.chains) do
         love.graphics.line(chain)
     end
 
-    -- one points() call for the whole sky; twinkle written into each vertex's
-    -- own color instead of a setColor per star, since this runs ~190x/frame
-    -- and the Lua->C crossings are the cost
     local oscillation = Motion.reduced and 0 or self.brightnessOscillation -- reduced motion: no twinkle
-    local alpha = self.alpha
-    local points = self.points
-    for i, s in ipairs(self.stars) do
-        local brightness = s.brightness + math.sin(s.blinkPhase) * oscillation
-        if brightness < 0 then brightness = 0 elseif brightness > 1 then brightness = 1 end
-        local p = points[i]
-        p[3], p[4], p[5], p[6] = brightness, brightness, brightness, alpha
-    end
+    local shader = getTwinkleShader()
+    shader:send("time", self.time)
+    shader:send("oscillation", oscillation)
 
     local prevSize = love.graphics.getPointSize()
     love.graphics.setPointSize(2)
-    -- per-point colors are multiplied by the draw color, so the theme's star
-    -- tint applies to the whole sky at once
-    Theme.setColor(Theme.colors.star, 1)
-    love.graphics.points(points)
+    Theme.setColor(Theme.colors.star, self.alpha)
+    love.graphics.setShader(shader)
+    love.graphics.draw(self.mesh)
+    love.graphics.setShader()
     love.graphics.setPointSize(prevSize)
 end
 

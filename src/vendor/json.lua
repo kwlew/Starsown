@@ -11,12 +11,17 @@ local escapes = {
     b = '\b', f = '\f', n = '\n', r = '\r', t = '\t',
 }
 
+---@param str string
+---@param i integer # 1-based byte offset
+---@return integer # the first non-whitespace offset at or after i
 local function skipWhitespace(str, i)
     local _, j = str:find("^[ \t\r\n]*", i)
     return j + 1
 end
 
 -- encodes a Unicode code point as UTF-8 (LÖVE renders UTF-8 strings directly)
+---@param cp integer # a Unicode code point
+---@return string
 local function utf8Encode(cp)
     if cp < 0x80 then
         return string.char(cp)
@@ -37,6 +42,12 @@ end
 
 local parseValue -- forward declaration (values nest recursively)
 
+--- Handles the full escape set, including \uXXXX and the surrogate pairs that
+-- encode anything past the BMP.
+---@param str string
+---@param i integer # offset of the opening quote
+---@return string value
+---@return integer # next offset just past the closing quote
 local function parseString(str, i)
     -- i points at the opening quote
     local out = {}
@@ -77,6 +88,10 @@ local function parseString(str, i)
     error("json: unterminated string")
 end
 
+---@param str string
+---@param i integer
+---@return number value
+---@return integer next
 local function parseNumber(str, i)
     local numStr = str:match("^%-?%d+%.?%d*[eE]?[%+%-]?%d*", i)
     local n = tonumber(numStr)
@@ -84,6 +99,10 @@ local function parseNumber(str, i)
     return n, i + #numStr
 end
 
+---@param str string
+---@param i integer # offset of the opening bracket
+---@return any[] value
+---@return integer next
 local function parseArray(str, i)
     local arr = {}
     local j = skipWhitespace(str, i + 1)
@@ -104,6 +123,10 @@ local function parseArray(str, i)
     end
 end
 
+---@param str string
+---@param i integer # offset of the opening brace
+---@return table value
+---@return integer next
 local function parseObject(str, i)
     local obj = {}
     local j = skipWhitespace(str, i + 1)
@@ -134,6 +157,13 @@ local function parseObject(str, i)
     end
 end
 
+--- any JSON value, dispatched on its first character. Raises with the byte
+-- position on anything malformed, which is what lets callers pcall and fall
+-- back (see core/i18n.lua).
+---@param str string
+---@param i integer
+---@return any value
+---@return integer next
 function parseValue(str, i)
     i = skipWhitespace(str, i)
     local c = str:sub(i, i)
@@ -155,6 +185,10 @@ function parseValue(str, i)
     error(("json: unexpected character '%s' at %d"):format(c, i))
 end
 
+--- the whole document; trailing content past the top-level value is an error
+-- rather than ignored
+---@param str string
+---@return any
 function Json.decode(str)
     assert(type(str) == "string", "json.decode: expected a string")
     local value, i = parseValue(str, 1)

@@ -20,18 +20,13 @@ local WORK_BUDGET = 0.004  -- seconds of cooperative loading work allowed per up
 local FURNITURE_FADE = 0.45
 local SKY_FADE_SPEED = 3.0 -- alpha/sec the sky (nebula + stars) fades up
 
--- loading-screen pose of the title, eased to GameTitle.MENU_Y_RATIO at scale 1
 local TITLE_SCALE = 1.3
 local TITLE_Y_RATIO = 0.30
 
--- loading-screen pose of the version label: big and centered, eased on the
--- same outro timeline as the title down into mainMenu's exact small corner
--- position and color, so the hand-off lands on an identical frame
 local VERSION_BIG_SIZE = 64 -- design-space font px, native raster size (see buildBigVersionLabel)
 local VERSION_BIG_Y_RATIO = 0.85
 local VERSION_PAD = 12 -- must match mainMenu.lua's CORNER_PAD
 
--- vertical anchors for the loading furniture, as fractions of window height
 local HEADING_Y_RATIO = 0.52
 local BAR_Y_RATIO = 0.64
 local BAR_W_RATIO = 0.5
@@ -39,13 +34,17 @@ local BAR_H = 26 -- design-space px
 
 local Loading = {}
 
--- nil until the task that builds it has run, so both callers can fire from the first frame
+--- nil until the task that builds it has run, so both callers can fire from the first frame
+---@param layer table|nil
+---@param dt number
 local function fadeInSky(layer, dt)
     if not layer then return end
     layer:update(dt)
     layer.alpha = Math.clamp01(layer.alpha + dt * SKY_FADE_SPEED)
 end
 
+--- the small corner pose, matching what the main menu draws
+---@return table # a TextFactory
 local function buildVersionLabel()
     return TextFactory:new{
         text = "v" .. Globals.game.version,
@@ -54,10 +53,11 @@ local function buildVersionLabel()
     }
 end
 
--- big loading-screen pose of the same label: same typeface as buildVersionLabel,
+--- big loading-screen pose of the same label: same typeface as buildVersionLabel,
 -- rasterized at its own native size rather than stretched up from the small
 -- role's tiny glyph texture, so it draws crisp -- drawVersionScaled only ever
 -- scales it *down* toward the small pose, never up
+---@return table # a TextFactory
 local function buildBigVersionLabel()
     return TextFactory:new{
         text = "v" .. Globals.game.version,
@@ -87,6 +87,11 @@ local STATES = {
     { "achievements", "states.achievements" },
 }
 
+--- the load itself, as weighted tasks. Each `run` gets a `yield(fraction)` to
+-- report progress and hand the frame back, and a `warn(detail)` to record a
+-- failure without taking the load down -- which is what keeps a missing
+-- font/clip/locale a warning rather than a crash.
+---@return table[]
 function Loading:buildTasks()
     return {
         {
@@ -129,7 +134,6 @@ function Loading:buildTasks()
                 self.stars = stars
                 yield(0.5)
 
-                -- settings task above already ran, so this respects a saved showNebula = false from the first frame
                 local settings = Assets.get("settings")
                 local nebula = Particles.Nebula.new{ alpha = 0, enabled = settings.showNebula }
                 Assets.set("nebula", nebula)
@@ -161,6 +165,8 @@ function Loading:buildTasks()
     }
 end
 
+---@param previousName string|nil
+---@param settings? table # the settings conf.lua already read, so they aren't loaded twice
 function Loading:enter(previousName, settings)
     love.graphics.setBackgroundColor(UI.Theme.colors.bg)
 
@@ -198,15 +204,18 @@ function Loading:enter(previousName, settings)
     self.dotTimer = 0
     self.dotCount = 0
 
+    --- handed to every task: report progress 0..1 and give the frame back
     self.yield = function(fraction) return coroutine.yield(fraction) end
+    --- handed to every task: record a failure and carry on
     self.warn = function(detail) self:recordFailure(self.label, detail) end
 end
 
--- big centered pose vs. mainMenu's exact small corner pose, so drawVersionScaled
+--- big centered pose vs. mainMenu's exact small corner pose, so drawVersionScaled
 -- only has to ease between the two endpoints computed here; versionEndScale is
 -- derived from real font metrics rather than a guessed ratio, so the big font
 -- (native size VERSION_BIG_SIZE) lands as close as possible to the small
 -- font's actual rendered size at ease = 1
+--- computes both version poses; call on resize
 function Loading:layoutVersion()
     local w, h = love.graphics.getDimensions()
     local bigFont, smallFont = self.versionBig.font, self.versionSmall.font
@@ -221,6 +230,9 @@ function Loading:layoutVersion()
     self.versionMenuY = h - pad - smallHeight
 end
 
+---@param w number
+---@param h number
+---@param rescaled boolean # the UI scale changed, so the version labels need re-rasterizing
 function Loading:resize(w, h, rescaled)
     self.title = GameTitle.build()
     if rescaled then
@@ -230,11 +242,16 @@ function Loading:resize(w, h, rescaled)
     self:layoutVersion()
 end
 
+--- a failed task is counted and logged; the screen shows how many, and the
+-- load carries on
+---@param label string|nil
+---@param detail any
 function Loading:recordFailure(label, detail)
     self.failures[#self.failures + 1] = detail
     print(("[loading] task '%s' failed: %s"):format(tostring(label), tostring(detail)))
 end
 
+---@return number # 0..1, weighted by task and including the running task's own partial
 function Loading:progress()
     if self.totalWeight == 0 then return 1 end
     local task = self.tasks[self.index]
@@ -242,10 +259,13 @@ function Loading:progress()
     return (self.doneWeight + partial) / self.totalWeight
 end
 
+---@return boolean # every task finished
 function Loading:isLoaded()
     return self.index > #self.tasks
 end
 
+--- resumes the current task's coroutine once, advancing to the next when it
+-- finishes. A task that errors is recorded and skipped rather than propagated.
 function Loading:step()
     local task = self.tasks[self.index]
     if not task then return end
@@ -280,6 +300,10 @@ function Loading:step()
     end
 end
 
+--- runs tasks until they're done or the frame's work budget is spent, so the
+-- screen keeps animating throughout. The bar is also held to MIN_FILL_TIME --
+-- a presentation beat, not a claim that work is still running.
+---@param dt number
 function Loading:update(dt)
     local animationDt = math.min(dt, 0.1)
     self.elapsed = self.elapsed + dt
@@ -322,14 +346,19 @@ function Loading:update(dt)
     end
 end
 
+---@return number # 0..1, 0 until the outro begins
 function Loading:outroProgress()
     if self.phase ~= "outro" then return 0 end
     return math.min(1, self.outro / OUTRO_TIME)
 end
 
--- "Loading" stays put and the dots grow to its right; drawn as two pieces
+--- "Loading" stays put and the dots grow to its right; drawn as two pieces
 -- because centering the whole string re-centers it on every dot and makes
 -- the word itself twitch left/right
+---@param text string
+---@param dots string
+---@param y number
+---@param alpha number
 local function drawHeading(text, dots, y, alpha)
     local font = UI.Theme.font("heading")
     local width = font:getWidth(text)
@@ -341,6 +370,15 @@ local function drawHeading(text, dots, y, alpha)
                    align = "left", font = font, alpha = alpha }
 end
 
+--- eases the version label between its two poses, so the hand-off to the main
+-- menu lands on an identical frame
+---@param version table # a TextFactory
+---@param bigX number # loading pose
+---@param bigY number
+---@param menuX number # main-menu pose
+---@param menuY number
+---@param endScale number # scale at the menu pose
+---@param ease number # 0..1
 local function drawVersionScaled(version, bigX, bigY, menuX, menuY, endScale, ease)
     local scale = 1 + (endScale - 1) * ease
     local x = bigX + (menuX - bigX) * ease
@@ -355,6 +393,8 @@ local function drawVersionScaled(version, bigX, bigY, menuX, menuY, endScale, ea
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+--- sky, title and version throughout; the heading, bar and any failure count
+-- fade out during the outro
 function Loading:draw()
     if not self.firstDrawAt then
         self.firstDrawAt = love.timer.getTime()
@@ -362,7 +402,6 @@ function Loading:draw()
     end
     local w, h = love.graphics.getDimensions()
     local outro = self:outroProgress()
-    -- furniture clears out first so the title finishes its travel against an empty screen
     local alpha = 1 - math.min(1, outro / FURNITURE_FADE)
 
     if self.nebula then self.nebula:draw() end

@@ -1,4 +1,4 @@
--- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
+--- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
 -- themed buttons. Also the splash tag hanging under the title
 -- (see ui/text/splash.lua).
 
@@ -18,20 +18,19 @@ local Format        = require "utils.format"
 local Stats         = require "services.stats"
 local Settings      = require "core.settings"
 
--- fractions of window size, so layout survives resizing at any resolution;
--- the title's ratio lives in gameTitle.lua since loading animates to it
 local MENU_Y_RATIO = 0.44
 
 local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
 local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
 local SOCIAL_ICON_SIZE = 26
 local CORNER_PAD = 12
-local CORNER_GAP = 10 -- between the online-count label and the version label it sits beside
+local CORNER_GAP = 8 -- gap between version and online players labels, bottom-right corner.
 
 local MainMenu = {}
 
 local buildTitle = GameTitle.build
 
+---@return table # a TextFactory
 local function buildVersionLabel()
     return TextFactory:new{
         text = "v" .. Globals.game.version,
@@ -40,6 +39,9 @@ local function buildVersionLabel()
     }
 end
 
+---@param count integer|nil # nil draws nothing rather than a 0 -- the counter is
+-- unknown until the first successful response
+---@return table|nil # a TextFactory
 local function buildOnlinePlayersLabel(count)
     if not count then return nil end
     return TextFactory:new{
@@ -49,12 +51,21 @@ local function buildOnlinePlayersLabel(count)
     }
 end
 
+--- reuses the backdrop the loading screen already built, and only generates one
+-- if there is nothing to inherit. Alpha is reset because loading may have
+-- handed it over mid-fade.
+---@param existing table|nil
+---@param name string # the key loading stored it under
+---@param build fun(): table
+---@return table
 local function inheritSky(existing, name, build)
     local layer = existing or Assets.get(name) or build()
     layer.alpha = 1 -- loading may have handed it over mid-fade
     return layer
 end
 
+--- records the answer so the prompt is never asked twice, and applies it now
+---@param enabled boolean
 function MainMenu:saveStatsConsent(enabled)
     local settings = Settings.load()
     settings.shareStats = enabled
@@ -64,6 +75,7 @@ function MainMenu:saveStatsConsent(enabled)
     self.statsConsentDialog:close()
 end
 
+--- Decline is listed first, so pressing Enter reflexively can't opt someone in
 function MainMenu:buildStatsConsentDialog()
     if self.statsConsentDialog then return end
 
@@ -71,27 +83,27 @@ function MainMenu:buildStatsConsentDialog()
         title = function() return I18n.t("menu.statsConsent.title") end,
         message = function() return I18n.t("menu.statsConsent.message") end,
         buttons = {
-            -- The safe choice is first, so keyboard confirmation never opts
-            -- the player in merely because they pressed Enter reflexively.
             { label = function() return I18n.t("menu.statsConsent.decline") end,
               onSelect = function() self:saveStatsConsent(false) end },
             { label = function() return I18n.t("menu.statsConsent.accept") end,
               onSelect = function() self:saveStatsConsent(true) end },
         },
-        -- Escape and clicking the scrim are explicit declines rather than a
+        --- Escape and clicking the scrim are explicit declines rather than a
         -- way to postpone the question and accidentally enable collection.
         onCancel = function() self:saveStatsConsent(false) end,
     }
     self.statsConsentDialog:setFocusSound(UI.Sfx.focus)
 end
 
+--- rebuilds what depends on the window and inherits what the loading screen
+-- already made; the menu itself is stateless between visits and built once
+---@param previousName string|nil # the entrance animation only plays coming from loading
 function MainMenu:enter(previousName)
     UI.Music.start()
     self.title = buildTitle()
     self.version = buildVersionLabel()
     self.onlineCount = Stats.online
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-    -- bottom-left row, github first; order here is left-to-right order (see layout)
     self.links = self.links or {
         UI.IconLink.new{ mark = "github", url = GITHUB_URL },
         UI.IconLink.new{ mark = "discord", url = DISCORD_URL },
@@ -107,8 +119,6 @@ function MainMenu:enter(previousName)
         return Particles.Nebula.new{}:bake()
     end)
 
-    -- picked once per session, like the menu below, so it doesn't reroll
-    -- every time the player bounces back from Options
     self.splash = self.splash or Splash.pick()
 
     if not self.menu then -- stateless between visits, so build it just once
@@ -137,7 +147,6 @@ function MainMenu:enter(previousName)
         self.menu:onFocusChanged(UI.Sfx.focus)
     end
 
-    -- Fade from loading.
     if previousName == "loading" then
         self.menu:playIntro()
     end
@@ -155,6 +164,7 @@ function MainMenu:enter(previousName)
     end
 end
 
+--- the title, the corner links and labels, and the menu column
 function MainMenu:layout()
     local w, h = love.graphics.getDimensions()
     local pad = UI.Theme.px(CORNER_PAD)
@@ -183,6 +193,9 @@ function MainMenu:layout()
     if self.statsConsentDialog then self.statsConsentDialog:layout() end
 end
 
+--- rebuilds the online-players label when the figure changes, which is why it
+-- re-lays out from here
+---@param dt number
 function MainMenu:update(dt)
     self.nebula:update(dt)
     self.stars:update(dt)
@@ -201,6 +214,9 @@ function MainMenu:update(dt)
     end
 end
 
+---@param w number
+---@param h number
+---@param rescaled boolean # the UI scale changed too, so the corner labels need rebuilding at the new font size
 function MainMenu:resize(w, h, rescaled)
     self.title = buildTitle()
     if rescaled then
@@ -210,6 +226,7 @@ function MainMenu:resize(w, h, rescaled)
     self:layout()
 end
 
+---@param key string
 function MainMenu:keypressed(key)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:keypressed(key)
@@ -217,7 +234,8 @@ function MainMenu:keypressed(key)
     self.menu:keypressed(key)
 end
 
--- true if the pointer is over any corner icon link -- used to color the cursor
+--- true if the pointer is over any corner icon link -- used to color the cursor
+---@return boolean
 function MainMenu:anyLinkHover()
     for _, link in ipairs(self.links) do
         if link.hover then return true end
@@ -225,6 +243,8 @@ function MainMenu:anyLinkHover()
     return false
 end
 
+---@param x number
+---@param y number
 function MainMenu:mousemoved(x, y)
     if self.statsConsentDialog:isOpen() then
         self.statsConsentDialog:mousemoved(x, y)
@@ -236,6 +256,11 @@ function MainMenu:mousemoved(x, y)
     self.mouseX, self.mouseY = x, y
 end
 
+--- routed in order: dialog, menu, corner links, then the sky -- so a click only
+-- pops a star when it landed on nothing else
+---@param x number
+---@param y number
+---@param button integer
 function MainMenu:mousepressed(x, y, button)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:mousepressed(x, y, button)
@@ -250,6 +275,9 @@ function MainMenu:mousepressed(x, y, button)
     Stats.pop(rainbow and "rainbow" or golden and "golden" or "normal")
 end
 
+---@param x number
+---@param y number
+---@param button integer
 function MainMenu:mousereleased(x, y, button)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:mousereleased(x, y, button)
@@ -258,6 +286,8 @@ function MainMenu:mousereleased(x, y, button)
     for _, link in ipairs(self.links) do link:mousereleased(x, y, button) end
 end
 
+--- back to front: nebula, stars, shooting stars, corner chrome, title, splash,
+-- menu, and the consent dialog over everything
 function MainMenu:draw()
     self.nebula:draw()
 
@@ -287,7 +317,6 @@ function MainMenu:draw()
         return
     end
 
-    -- link hover never carries danger (they're plain links), so the menu's own flag decides the color
     local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
     UI.Cursor.setHover(self.mouseX ~= nil and (self:anyLinkHover() or overMenu), dangerous)
 end

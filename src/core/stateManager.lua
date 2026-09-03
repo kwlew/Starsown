@@ -1,15 +1,3 @@
--- Finite state machine for screens. A state is a table that may implement any
--- of enter(previousStateName, ...), update(dt), draw(), and any LÖVE input
--- callback. Every method is optional.
---
---   StateManager.register("mainMenu", require "states.mainMenu")
---   StateManager.switch("mainMenu")
---   StateManager.fadeTo("options", { returnTo = "mainMenu" })
---
--- No leave() hook: cleanup is destination-dependent (menu->game stops the
--- music, menu->options must not), which leave() can't express since it
--- doesn't know where you're going. The arriving state gets previousName instead.
-
 local Theme = require "ui.core.theme"
 
 local StateManager = {
@@ -18,11 +6,14 @@ local StateManager = {
     currentName = nil,
 }
 
--- fade-through-black; declared above switch() since switch() assigns to it
--- and a local further down isn't in scope inside a function above it
-local FADE_HALF = 0.14 -- seconds for each of out and in
-local fade = nil       -- { phase = "out" | "in", t, name, args }
+local FADE_HALF = 0.14
+local fade = nil
 
+--- a state is a plain table with optional enter/update/draw and LÖVE input
+-- callbacks -- every method optional, plus chordpressed(key) for F3 chords
+---@param name string
+---@param state table
+---@return table state
 function StateManager.register(name, state)
     assert(type(name) == "string", "StateManager.register: name must be a string")
     assert(state ~= nil, "StateManager.register: state cannot be nil")
@@ -30,14 +21,20 @@ function StateManager.register(name, state)
     return state
 end
 
+---@param name string
+---@return table|nil
 function StateManager.get(name)
     return StateManager.states[name]
 end
 
+--- what "back" means for a screen reachable from more than one place: an
 -- explicit opts.returnTo wins, else wherever the player came from, and never
--- selfName (a screen re-entered from itself would have no way out)
---
---   self.returnTo = StateManager.returnTarget(previousName, opts, "options")
+-- the screen itself
+---@param previousName string|nil
+---@param opts table|nil # the table passed to enter; only opts.returnTo is read
+---@param selfName string # the calling screen, so it can't return to itself
+---@param fallback? string # defaults to "mainMenu"
+---@return string
 function StateManager.returnTarget(previousName, opts, selfName, fallback)
     local target = (type(opts) == "table" and opts.returnTo) or previousName
     if not target or target == selfName then
@@ -46,11 +43,15 @@ function StateManager.returnTarget(previousName, opts, selfName, fallback)
     return target
 end
 
+--- swaps states immediately, cancelling any fade in flight. There is no
+-- leave() hook by design -- cleanup is destination-dependent, so the arriving
+-- state gets the previous name and decides.
+---@param name string
+---@param ... any # forwarded to the new state's enter(previousName, ...)
 function StateManager.switch(name, ...)
     local nextState = StateManager.states[name]
     assert(nextState, "StateManager.switch: no state registered named '" .. tostring(name) .. "'")
 
-    -- a switch supersedes any transition in flight
     fade = nil
 
     local previousName = StateManager.currentName
@@ -62,8 +63,11 @@ function StateManager.switch(name, ...)
     end
 end
 
--- loading -> menu deliberately uses the instant switch instead: that hand-off
--- has its own scripted outro and a fade would wash it out
+--- switches through the theme background colour instead of instantly. A
+-- second call while a fade is running is ignored, so a double click can't
+-- queue two transitions.
+---@param name string
+---@param ... any # forwarded to enter() when the switch lands
 function StateManager.fadeTo(name, ...)
     assert(StateManager.states[name], "StateManager.fadeTo: no state named '" .. tostring(name) .. "'")
     if fade then return end
@@ -75,17 +79,20 @@ function StateManager.fadeTo(name, ...)
     }
 end
 
+---@return boolean
 function StateManager.isTransitioning()
     return fade ~= nil
 end
 
--- 0 = fully visible, 1 = fully black
+---@return number # 0..1 opacity of the fade cover this frame
 local function fadeAlpha()
     if not fade then return 0 end
     local k = math.min(1, fade.t / FADE_HALF)
     return fade.phase == "out" and k or (1 - k)
 end
 
+--- advances the fade (switching states at its midpoint) and the current state
+---@param dt number
 function StateManager.update(dt)
     if fade then
         fade.t = fade.t + dt
@@ -93,7 +100,6 @@ function StateManager.update(dt)
             if fade.phase == "out" then
                 local pending = fade
                 StateManager.switch(pending.name, unpack(pending.args, 1, pending.args.n))
-                -- only start the fade-in if the entered state didn't start its own transition
                 if not fade then fade = { phase = "in", t = 0 } end
             else
                 fade = nil
@@ -107,6 +113,7 @@ function StateManager.update(dt)
     end
 end
 
+--- the current state, then the fade cover over it
 function StateManager.draw()
     local state = StateManager.current
     if state and state.draw then
@@ -115,18 +122,12 @@ function StateManager.draw()
 
     local alpha = fadeAlpha()
     if alpha > 0 then
-        -- fade to the theme's bg, not pure black, so it bottoms out on the
-        -- incoming screen's own backdrop
         Theme.setColor(Theme.colors.bg, alpha)
         love.graphics.rectangle("fill", 0, 0, love.graphics.getDimensions())
         love.graphics.setColor(1, 1, 1, 1)
     end
 end
 
--- dropped while transitioning so mashing Esc can't queue a second switch;
--- cursor movement/resize still get through or the far side lands with stale hover/layout.
--- keyreleased is deliberately not blocked: a release can't start a transition, and
--- swallowing it strands the key as held in whatever tracks it (see Player.held)
 local blockedWhileFading = {
     keypressed = true, chordpressed = true, textinput = true,
     mousepressed = true, mousereleased = true, wheelmoved = true,
@@ -138,7 +139,11 @@ local callbacks = {
     "resize",
 }
 
+--- forwards each LÖVE input/resize callback to the current state's own, if it
+-- has one. Input is dropped mid-fade -- everything except mouse-move and
+-- resize, which would otherwise leave stale hover/layout on arrival.
 for _, name in ipairs(callbacks) do
+    ---@diagnostic disable-next-line: assign-type-mismatch
     StateManager[name] = function(...)
         if fade and blockedWhileFading[name] then return end
         local state = StateManager.current

@@ -1,16 +1,24 @@
 local TextFactory = {}
+TextFactory.__index = TextFactory
 
-local MAX_GRADIENT_COLORS = 8 -- excludes the auto-added wrap slot
+local graphics = love.graphics
+local unpack = unpack or table.unpack
 
--- lazily built so each shader only compiles if actually used
+local MAX_GRADIENT_COLORS = 8
+
 local chromaShader = nil
 local gradientShader = nil
+local chromaScale = nil
+local gradientScale = nil
+local gradientColorCount = nil
 
+--- built on first use and shared; the rainbow fallback when no gradient is set
+---@return any # a love.Shader
 local function getChromaShader()
     if not chromaShader then
-        chromaShader = love.graphics.newShader([[
+        chromaShader = graphics.newShader([[
             extern number time;
-            extern number scale;
+            extern number invScale;
 
             vec3 hsv2rgb(vec3 c)
             {
@@ -22,7 +30,7 @@ local function getChromaShader()
             vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
             {
                 vec4 texcolor = Texel(texture, texture_coords);
-                number hue = fract(screen_coords.x / scale + time);
+                number hue = fract(screen_coords.x * invScale + time);
                 vec3 rgb = hsv2rgb(vec3(hue, 1.0, 1.0));
                 return vec4(rgb, texcolor.a) * color;
             }
@@ -31,22 +39,21 @@ local function getChromaShader()
     return chromaShader
 end
 
--- cycles through an arbitrary color list instead of the fixed rainbow;
--- colors[8] holds the wrap-around slot back to the first stop, so the loop
--- index can always read colors[i+1] safely
+--- built on first use and shared; interpolates between the theme's title stops
+---@return any # a love.Shader
 local function getGradientShader()
     if not gradientShader then
-        gradientShader = love.graphics.newShader([[
+        gradientShader = graphics.newShader([[
             extern vec3 colors[9];
             extern number colorCount;
             extern number time;
-            extern number scale;
+            extern number invScale;
 
             vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
             {
                 vec4 texcolor = Texel(texture, texture_coords);
 
-                number t = fract(screen_coords.x / scale + time);
+                number t = fract(screen_coords.x * invScale + time);
                 number scaled = t * colorCount;
                 number idx = floor(scaled);
                 number frac = scaled - idx;
@@ -68,35 +75,42 @@ local function getGradientShader()
     return gradientShader
 end
 
+--- a text mesh rasterized once and redrawn through a shader, for the animated
+-- title wordmarks. `size` builds its own font (with fontPath, if given);
+-- otherwise it uses the font it's handed.
+---@param config? table # { text?: string, fontPath?: string, font?: love.Font, size?: number, color?: number[], x?: number, y?: number, limit?: number, align?: string, speed?: number, scale?: number, gradient?: number[][] }
+---@return table
 function TextFactory:new(config)
     config = config or {}
 
     local obj = {
         text = config.text or "",
-        fontPath = config.fontPath, -- optional .ttf/.otf path used when (re)sizing
+        fontPath = config.fontPath,
         color = config.color or { 1, 1, 1, 1 },
         x = config.x or 0,
         y = config.y or 0,
-        limit = config.limit or love.graphics.getWidth(),
+        limit = config.limit or graphics.getWidth(),
         align = config.align or "left",
-        speed = config.speed or 1,   -- how fast the chroma cycles
-        scale = config.scale or 200, -- pixel span of one full color cycle
+        speed = config.speed or 1,
+        scale = config.scale or 200,
         gradient = nil,
         gradientCount = 0,
         time = 0
     }
 
     if config.size then
-        obj.font = config.fontPath and love.graphics.newFont(config.fontPath, config.size) or love.graphics.newFont(config.size)
+        obj.font = config.fontPath and graphics.newFont(config.fontPath, config.size) or graphics.newFont(config.size)
     else
-        obj.font = config.font or love.graphics.getFont()
+        obj.font = config.font or graphics.getFont()
     end
 
-    setmetatable(obj, { __index = self })
+    setmetatable(obj, self)
 
-    -- cached glyph mesh: wrapping/rasterization redone only when text or font actually changes
-    obj.textObject = love.graphics.newText(obj.font)
+    obj.textObject = graphics.newText(obj.font)
     obj.textObject:setf(obj.text, obj.limit, obj.align)
+    obj.layoutText = obj.text
+    obj.layoutLimit = obj.limit
+    obj.layoutAlign = obj.align
 
     if config.gradient then
         obj:setGradient(config.gradient)
@@ -105,24 +119,39 @@ function TextFactory:new(config)
     return obj
 end
 
+--- re-lays out only when the text or its wrap actually changed, since that
+-- re-rasterizes the whole mesh
+---@param text string
 function TextFactory:setText(text)
     self.text = text
-    self.textObject:setf(self.text, self.limit, self.align)
-end
-
-function TextFactory:setSize(size)
-    if self.fontPath then
-        self.font = love.graphics.newFont(self.fontPath, size)
-    else
-        self.font = love.graphics.newFont(size)
+    if text == self.layoutText and self.limit == self.layoutLimit and self.align == self.layoutAlign then
+        return
     end
 
-    self.textObject = love.graphics.newText(self.font)
-    self.textObject:setf(self.text, self.limit, self.align)
+    self.textObject:setf(text, self.limit, self.align)
+    self.layoutText = text
+    self.layoutLimit = self.limit
+    self.layoutAlign = self.align
 end
 
--- colors drawChroma cycles through, e.g. {{1,0,0},{0,0,1}} for red -> blue;
--- nil falls back to the default rainbow
+--- reallocates the font and re-rasterizes; too expensive for an animation
+-- frame, so scale with a transform instead (see ui/text/gameTitle.lua)
+---@param size number
+function TextFactory:setSize(size)
+    if self.fontPath then
+        self.font = graphics.newFont(self.fontPath, size)
+    else
+        self.font = graphics.newFont(size)
+    end
+
+    self.textObject = graphics.newText(self.font)
+    self.textObject:setf(self.text, self.limit, self.align)
+    self.layoutText = self.text
+    self.layoutLimit = self.limit
+    self.layoutAlign = self.align
+end
+
+---@param colors? number[][] # 2..8 RGB stops; nil falls back to the rainbow shader
 function TextFactory:setGradient(colors)
     if not colors then
         self.gradient = nil
@@ -142,25 +171,30 @@ function TextFactory:setGradient(colors)
     self.gradientCount = #colors
 end
 
+---@param x number
+---@param y number
 function TextFactory:setPosition(x, y)
     self.x = x
     self.y = y
 end
 
+--- advances the gradient's scroll; a speed of 0 holds it still (reduced motion)
+---@param dt number
 function TextFactory:update(dt)
     self.time = self.time + dt * self.speed
 end
 
+--- the mesh in its flat colour, no shader
 function TextFactory:draw()
     if self.text == "" then return end
 
-    love.graphics.setColor(self.color)
-    love.graphics.draw(self.textObject, self.x, self.y)
-    love.graphics.setColor(1, 1, 1, 1)
+    graphics.setColor(self.color)
+    graphics.draw(self.textObject, self.x, self.y)
+    graphics.setColor(1, 1, 1, 1)
 end
 
--- scrolling color cycle via shader (custom gradient, or a rainbow if none
--- set). Glyph mesh is cached, so this only re-runs the fragment shader, not text layout.
+--- the mesh through the gradient shader, or the rainbow one when no gradient
+-- is set. Hue keys off screen x, so the gradient's period scales with the text.
 function TextFactory:drawChroma()
     if self.text == "" then return end
 
@@ -169,18 +203,28 @@ function TextFactory:drawChroma()
     if self.gradient then
         shader = getGradientShader()
         shader:send("colors", unpack(self.gradient))
-        shader:send("colorCount", self.gradientCount)
+        if gradientColorCount ~= self.gradientCount then
+            gradientColorCount = self.gradientCount
+            shader:send("colorCount", gradientColorCount)
+        end
+        if gradientScale ~= self.scale then
+            gradientScale = self.scale
+            shader:send("invScale", 1 / gradientScale)
+        end
     else
         shader = getChromaShader()
+        if chromaScale ~= self.scale then
+            chromaScale = self.scale
+            shader:send("invScale", 1 / chromaScale)
+        end
     end
 
     shader:send("time", self.time)
-    shader:send("scale", self.scale)
 
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setShader(shader)
-    love.graphics.draw(self.textObject, self.x, self.y)
-    love.graphics.setShader()
+    graphics.setColor(1, 1, 1, 1)
+    graphics.setShader(shader)
+    graphics.draw(self.textObject, self.x, self.y)
+    graphics.setShader()
 end
 
 return TextFactory

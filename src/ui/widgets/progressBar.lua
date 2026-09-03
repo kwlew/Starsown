@@ -1,4 +1,4 @@
--- The glowing progress bar (extracted from the loading state): eased fill,
+--- The glowing progress bar (extracted from the loading state): eased fill,
 -- pulsing additive halo, optional percentage readout.
 --
 --   local bar = ProgressBar.new{}
@@ -12,6 +12,8 @@ local Math = require "utils.math"
 local ProgressBar = {}
 ProgressBar.__index = ProgressBar
 
+---@param config? table # { x?: number, y?: number, w?: number, h?: number, fillSpeed?: number, pulseSpeed?: number, showPercent?: boolean, alpha?: number, color?: number[] }
+---@return table
 function ProgressBar.new(config)
     config = config or {}
     return setmetatable({
@@ -30,19 +32,29 @@ function ProgressBar.new(config)
     }, ProgressBar)
 end
 
+--- the target; the drawn fill eases toward it
+---@param t number # 0..1
 function ProgressBar:setProgress(t)
     self.target = Math.clamp01(t)
 end
 
+---@return boolean # true only once the eased fill has caught up, not the moment
+-- the target hits 1 -- what an owner waits on before moving off the screen
 function ProgressBar:isComplete()
     return self.target >= 1 and self.shown >= 0.995
 end
 
+---@param dt number
 function ProgressBar:update(dt)
     self.time = self.time + dt
     self.shown = Theme.approach(self.shown, self.target, dt, self.fillSpeed)
 end
 
+--- track, glowing fill, border, and the optional readout
+---@param x? number # these also set the bar's stored geometry
+---@param y? number
+---@param w? number
+---@param h? number
 function ProgressBar:draw(x, y, w, h)
     self.x, self.y = x or self.x, y or self.y
     self.w, self.h = w or self.w, h or self.h

@@ -1,28 +1,19 @@
--- Per-category (music/sfx) volume, since love.audio.setVolume() is one global
--- multiplier over every Source. Category volume scales each Source directly;
--- the master slider still goes through love.audio.setVolume on top (Settings.apply).
---
---   Audio.play("music", source, { loop = true })
---   Audio.setVolume("music", 0.5)
---   Audio.stop("sfx", source)
---   Audio.stopAll()
-
 local Audio = {}
 
 local DEFAULT_VOLUME = 1.0
 local volumes = { music = DEFAULT_VOLUME, sfx = DEFAULT_VOLUME }
 
--- keyed by incrementing id, not array index: entries get nil'd as sources
--- finish, and a sequence with holes has undefined #/insert behavior in Lua.
--- each entry: { source, gain } -- gain is the per-play volume multiplier
 local tracked = { music = {}, sfx = {} }
 local nextId = { music = 0, sfx = 0 }
 
+--- fails loudly on a typo'd category rather than silently tracking nothing
+---@param category "music"|"sfx"
 local function assertCategory(category)
     assert(tracked[category], "Audio: unknown category '" .. tostring(category) .. "'")
 end
 
--- drop sources that finished playing so tracked doesn't grow forever
+--- drop sources that finished playing so tracked doesn't grow forever
+---@param category "music"|"sfx"
 local function prune(category)
     for id, entry in pairs(tracked[category]) do
         if not entry.source:isPlaying() then
@@ -31,6 +22,10 @@ local function prune(category)
     end
 end
 
+--- sets a category's volume and retunes everything currently playing in it,
+-- each keeping its own per-source gain
+---@param category "music"|"sfx"
+---@param value number # 0..1
 function Audio.setVolume(category, value)
     assertCategory(category)
     volumes[category] = value
@@ -39,14 +34,21 @@ function Audio.setVolume(category, value)
     end
 end
 
+---@param category "music"|"sfx"
+---@return number # 0..1
 function Audio.getVolume(category)
     assertCategory(category)
     return volumes[category]
 end
 
+--- plays a source under a category's volume and tracks it, so a later
+-- setVolume reaches it
+---@param category "music"|"sfx"
+---@param source any # a love.Source; nil is a no-op, so a failed preload doesn't crash a call site
+---@param opts? table # { volume?: number, loop?: boolean }; volume is a per-source gain on top of the category's
+---@return any # a love.Source, or nil
 function Audio.play(category, source, opts)
     assertCategory(category)
-    -- preloading is best-effort (utils/audios.lua); a failed clip is nil here
     if not source then return nil end
     opts = opts or {}
     prune(category)
@@ -61,8 +63,9 @@ function Audio.play(category, source, opts)
     return source
 end
 
--- with `source`, stops just that one; without, stops the whole category.
--- LÖVE's Source:stop() rewinds, so replaying it restarts rather than resumes.
+--- stops one source, or the whole category when `source` is omitted
+---@param category "music"|"sfx"
+---@param source? any # a love.Source
 function Audio.stop(category, source)
     assertCategory(category)
 
@@ -82,6 +85,7 @@ function Audio.stop(category, source)
     end
 end
 
+--- silences every category
 function Audio.stopAll()
     for category in pairs(tracked) do
         Audio.stop(category)

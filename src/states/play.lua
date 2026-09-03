@@ -1,4 +1,4 @@
--- The game screen: a survival RPG in the making. What exists so far is the
+--- The game screen: a survival RPG in the making. What exists so far is the
 -- ground, one enemy type, a melee swing, an inventory the drops go into, and
 -- the pause states around them.
 --
@@ -23,22 +23,23 @@ local Play = {}
 
 local ENEMY_CAP = 6
 local SPAWN_INTERVAL = 2.5
--- as multiples of the view's half-diagonal, so enemies always walk in from just
--- off-screen whatever the resolution or zoom
 local SPAWN_NEAR, SPAWN_FAR = 1.05, 1.35
--- an open world means you can simply walk away; without this the cap fills up
--- with stragglers trailing off in the dark and nothing new spawns near you
 local DESPAWN = 3
 
--- nearer the camera means standing lower, so ground y decides what overlaps
+--- nearer the camera means standing lower, so ground y decides what overlaps
 -- what; a body that leaves the ground must not slide behind what it was in
 -- front of, which drawn y would do
+---@param a table
+---@param b table
+---@return boolean
 local function byGroundY(a, b) return a.y < b.y end
 
 local INVENTORY_KEY = "e"
 local PAUSE_CHORD = "p"
 local INVENTORY_SLOTS = 24
 
+--- the pause menu, built once and reused -- it outlives any single run, which
+-- is what lets Options come back without wiping the world
 function Play:buildOverlays()
     if self.pause then return end
 
@@ -58,12 +59,15 @@ function Play:buildOverlays()
     }
 end
 
+--- a fresh world, player, bag and enemies. Only called on arriving from the
+-- main menu (or with nothing built yet), so coming back from Options resumes
+-- the run in progress.
 function Play:startRun()
     self.world = Game.World.new{}
     self.player = Game.Player.new(0, 0)
     self.inventory = Game.Inventory.new{ slots = INVENTORY_SLOTS }
     self.bag = Game.InventoryPanel.new(self.inventory)
-    self.enemies = {}
+    self.enemyManager = Game.EnemyManager.new()
     self.drawList = {} -- reused every frame; entities sorted for overlap order
     self.spawnTimer = 0
     self.quietPause = false
@@ -79,12 +83,11 @@ function Play:startRun()
     self.camera = Game.Camera.new{ zoom = UI.Theme.scale }
     self.camera:snapTo(self.player.x, self.player.y)
 
-    -- one table reused every frame; the player, the enemies and the debug
-    -- overlay all read the same view of the world from it
     self.ctx = {
         world = self.world,
         player = self.player,
-        enemies = self.enemies,
+        enemies = self.enemyManager.list,
+        enemyManager = self.enemyManager,
         camera = self.camera,
         pointerX = self.player.aimX, pointerY = self.player.aimY,
     }
@@ -92,6 +95,7 @@ function Play:startRun()
     if self.pause then self.pause:close() end
 end
 
+---@param previousName string|nil # only "mainMenu" starts a new run
 function Play:enter(previousName)
     Audio.stop("music") -- Music.stop only forgets what was playing
     UI.Music.stop()
@@ -106,8 +110,6 @@ function Play:enter(previousName)
     Game.Items.load()
     self:buildOverlays()
 
-    -- Options is reachable from the pause menu, so coming back must not wipe
-    -- the run; only arriving from the menu starts a new one.
     if not self.world or previousName == "mainMenu" then
         self:startRun()
     end
@@ -115,26 +117,32 @@ function Play:enter(previousName)
     self:layout()
 end
 
+--- call on resize; the world itself needs none
 function Play:layout()
     self.pause:layout()
     self.bag:layout()
 end
 
+---@return boolean # derived, never stored, so the two kinds of pause can't disagree
 function Play:isPaused()
     return self.pause:isOpen() or self.quietPause
 end
 
+--- closes the pause menu and drops whatever keys were held behind it
 function Play:resume()
     self.pause:close()
     self.player:releaseAll()
 end
 
+--- freezes the world and hands all input to the menu
 function Play:openPause()
     UI.Sfx.press()
     self.player:releaseAll() -- or the key held to reach the menu stays down behind it
     self.pause:openMenu()
 end
 
+--- the world keeps running while the bag is open; it only takes the player's
+-- hands off it
 function Play:toggleInventory()
     if self.bag:isOpen() then
         self.bag:close()
@@ -146,8 +154,11 @@ function Play:toggleInventory()
     UI.Sfx.press()
 end
 
+--- one enemy at a time, on a timer, just outside the view and under the cap
+---@param dt number
+---@param offscreen number # distance from the player to the corner of the view
 function Play:spawnStep(dt, offscreen)
-    if #self.enemies >= ENEMY_CAP then return end
+    if self.enemyManager:count() >= ENEMY_CAP then return end
 
     self.spawnTimer = self.spawnTimer + dt
     if self.spawnTimer < SPAWN_INTERVAL then return end
@@ -156,25 +167,41 @@ function Play:spawnStep(dt, offscreen)
     local x, y = Math.polar(self.player.x, self.player.y, Math.randAngle(),
         Math.randRange(offscreen * SPAWN_NEAR, offscreen * SPAWN_FAR))
 
-    local enemy = Game.Enemies.random(x, y)
-    if enemy then self.enemies[#self.enemies + 1] = enemy end
+    self.enemyManager:spawnRandom(x, y)
 end
 
--- everything a kill leaves behind goes straight to the bag; there are no ground
+--- everything a kill leaves behind goes straight to the bag; there are no ground
 -- items yet, so this is where loot enters the game
+---@param enemy Enemy
 function Play:collect(enemy)
     for _, drop in ipairs(Game.Enemies.rollDrops(enemy.spec)) do
         self.inventory:add(drop.id, drop.count)
     end
 end
 
--- true while the cursor sits on something worth pointing at; the cursor picks
+--- Darkwood keeps the hardware pointer itself inside the ring, not just the
+-- cursor drawn over it. Without this the OS pointer wanders off past the ring
+-- while the aim stays pinned, so pushing out and coming back leaves a dead
+-- zone the width of however far it strayed -- and with the custom cursor
+-- turned off there was nothing visibly holding it at all.
+--
+-- Only while the pointer is ours to move: an overlay wants it free, and
+-- warping an unfocused window's pointer would yank it out of whatever the
+-- player alt-tabbed to.
+function Play:tetherPointer()
+    if self.bag:isOpen() or self.pause:isOpen() then return end
+    if not self.player.aimPinned then return end
+    if not love.window.hasFocus() then return end
+
+    love.mouse.setPosition(self.camera:toScreen(self.player.aimX, self.player.aimY))
+end
+
+--- true while the cursor sits on something worth pointing at; the cursor picks
 -- up its hover color from this
+---@return boolean
 function Play:aimOverEnemy()
     local player = self.player
-    for _, enemy in ipairs(self.enemies) do
-        -- against the drawn body, not the feet: this only colors the cursor,
-        -- and it should light up when the cursor looks like it is on something
+    for _, enemy in ipairs(self.enemyManager.list) do
         if Math.length(enemy.x - player.aimX, enemy:drawY() - player.aimY) <= enemy.radius then
             return true
         end
@@ -182,6 +209,9 @@ function Play:aimOverEnemy()
     return false
 end
 
+--- the whole run: aim, player, enemies, the loot and particles a kill leaves,
+-- spawning, and the camera. Both kinds of pause return before any of it.
+---@param dt number
 function Play:update(dt)
     if self.pause:isOpen() then
         self.pause:update(dt)
@@ -191,29 +221,21 @@ function Play:update(dt)
 
     local ctx, player = self.ctx, self.player
     if self.bag:isOpen() then
-        -- hands are on the inventory, so the aim holds where it was left
         ctx.pointerX, ctx.pointerY = player.aimX, player.aimY
     else
-        -- polled rather than tracked through mousemoved, so aim is right even
-        -- when the pointer re-enters the window without moving
         ctx.pointerX, ctx.pointerY = self.camera:toWorld(love.mouse.getPosition())
     end
 
     player:update(dt, ctx)
+    self:tetherPointer() -- after the aim is final, so a walking player drags it along
 
     local offscreen = Math.length(self.camera:halfExtents())
     local despawnAt = offscreen * DESPAWN
 
-    for i = #self.enemies, 1, -1 do
-        local enemy = self.enemies[i]
-        enemy:update(dt, ctx)
-        if enemy.dead then
-            self.deaths:spawn(enemy.x, enemy:drawY(), enemy.color)
-            self:collect(enemy)
-            table.remove(self.enemies, i)
-        elseif player:distanceTo(enemy) > despawnAt then
-            table.remove(self.enemies, i) -- left far behind, and far out of sight
-        end
+    self.enemyManager:update(dt, ctx)
+    for _, enemy in ipairs(self.enemyManager:prune(player, despawnAt)) do
+        self.deaths:spawn(enemy.x, enemy:drawY(), enemy.color)
+        self:collect(enemy)
     end
 
     self.deaths:update(dt)
@@ -222,19 +244,26 @@ function Play:update(dt)
     self.camera:follow(player.x, player.y, dt)
 end
 
+---@param w number
+---@param h number
+---@param rescaled boolean # the UI scale changed, so the camera zoom follows it
 function Play:resize(w, h, rescaled)
     if rescaled then self.camera.zoom = UI.Theme.scale end
     self:layout()
 end
 
+--- F3 + P is the quiet pause: the world freezes with nothing drawn over it
+---@param key string # the key held with F3
 function Play:chordpressed(key)
-    -- F3 + P: freeze with nothing drawn over it, so the world can be looked at
     if key == PAUSE_CHORD then
         self.quietPause = not self.quietPause
         self.player:releaseAll()
     end
 end
 
+--- routed by what's open: the pause menu takes everything, the inventory takes
+-- only its own close keys, and otherwise it reaches the player
+---@param key string
 function Play:keypressed(key)
     if key == "f4" then
         Game.DebugOverlay.toggle()
@@ -263,15 +292,21 @@ function Play:keypressed(key)
     self.player:keypressed(key)
 end
 
+---@param key string
 function Play:keyreleased(key)
     self.player:keyreleased(key)
 end
 
+---@param x number
+---@param y number
 function Play:mousemoved(x, y)
     if self.pause:isOpen() then self.pause:mousemoved(x, y) end
     if self.bag:isOpen() then self.bag:mousemoved(x, y) end
 end
 
+---@param x number
+---@param y number
+---@param button integer
 function Play:mousepressed(x, y, button)
     if self.pause:isOpen() then
         self.pause:mousepressed(x, y, button)
@@ -284,6 +319,9 @@ function Play:mousepressed(x, y, button)
     if button == 1 then self.player:setAttacking(true) end
 end
 
+---@param x number
+---@param y number
+---@param button integer
 function Play:mousereleased(x, y, button)
     if self.pause:isOpen() then
         self.pause:mousereleased(x, y, button)
@@ -292,7 +330,7 @@ function Play:mousereleased(x, y, button)
     if button == 1 then self.player:setAttacking(false) end
 end
 
--- the pause menu and the inventory both need the pointer, so the tether only
+--- the pause menu and the inventory both need the pointer, so the tether only
 -- claims the cursor while the player's hands are actually on the world
 function Play:drawCursor()
     if self.pause:isOpen() then
@@ -308,20 +346,22 @@ function Play:drawCursor()
     UI.Cursor.setHover(self:aimOverEnemy())
 end
 
--- shadows all go down before any body, or a nearer entity's shadow lands on
+--- shadows all go down before any body, or a nearer entity's shadow lands on
 -- top of a farther entity that was already painted
 function Play:drawEntities()
     local list = self.drawList
     for i = #list, 1, -1 do list[i] = nil end
 
     list[1] = self.player
-    for _, enemy in ipairs(self.enemies) do list[#list + 1] = enemy end
+    for _, enemy in ipairs(self.enemyManager.list) do list[#list + 1] = enemy end
     table.sort(list, byGroundY)
 
     for _, entity in ipairs(list) do entity:drawGround() end
     for _, entity in ipairs(list) do entity:draw() end
 end
 
+--- the world through the camera, then the screen-space chrome: hint line,
+-- inventory, pause menu, debug panel, cursor
 function Play:draw()
     self.camera:attach()
     self.world:draw(self.camera:view())
@@ -335,7 +375,6 @@ function Play:draw()
     end
     self.camera:detach()
 
-    -- the hint describes controls that do nothing behind an overlay
     if not self.bag:isOpen() and not self.pause:isOpen() then
         UI.Label.hint(I18n.t("game.hint"), true)
     end
@@ -343,8 +382,6 @@ function Play:draw()
     if self.pause:isOpen() then self.pause:draw() end
 
     if Game.DebugOverlay.visible then
-        -- a quiet pause draws nothing of its own, so the overlay is the only
-        -- place it is visible at all
         self.ctx.pauseState = self.pause:isOpen() and "pause menu"
             or self.quietPause and "paused (F3+P)" or "running"
         Game.DebugOverlay.drawScreen(self.ctx)

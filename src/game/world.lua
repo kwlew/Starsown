@@ -1,4 +1,4 @@
--- The ground: an unbounded grid of TILE-sized squares. The world is meant to
+--- The ground: an unbounded grid of TILE-sized squares. The world is meant to
 -- be open, so there is no edge to walk into and nothing on the grid but
 -- ground -- tile coordinates are 0-based and run negative in both directions.
 -- World coordinates are tile pixels; the camera's zoom is what turns them into
@@ -19,6 +19,8 @@ World.TILE = 32
 
 local GRID_ALPHA = 0.55
 
+---@param config? table # { texture?: love.Image }
+---@return table
 function World.new(config)
     config = config or {}
     local self = setmetatable({}, World)
@@ -26,8 +28,7 @@ function World.new(config)
     return self
 end
 
--- nil goes back to the flat placeholder. The scale is worked out here rather
--- than per tile per frame, so any source resolution maps onto TILE.
+---@param image any # a love.Image, or nil
 function World:setTexture(image)
     self.texture = image
     if image then
@@ -36,15 +37,27 @@ function World:setTexture(image)
     end
 end
 
--- world point -> tile coordinates
+--- world point -> tile coordinates
+---@param x number
+---@param y number
+---@return integer col
+---@return integer row
 function World:toTile(x, y)
     return math.floor(x / World.TILE), math.floor(y / World.TILE)
 end
 
+---@param col integer
+---@param row integer
+---@return number # x, the tile's top-left corner in world units
+---@return number y
 function World:tileOrigin(col, row)
     return col * World.TILE, row * World.TILE
 end
 
+---@param c1 integer # inclusive tile bounds
+---@param r1 integer
+---@param c2 integer
+---@param r2 integer
 function World:drawTextured(c1, r1, c2, r2)
     local tile, image = World.TILE, self.texture
     local scaleX, scaleY = self.textureScaleX, self.textureScaleY
@@ -57,6 +70,11 @@ function World:drawTextured(c1, r1, c2, r2)
     end
 end
 
+--- the placeholder ground: an alternating checker with the grid picked out
+---@param c1 integer # inclusive tile bounds
+---@param r1 integer
+---@param c2 integer
+---@param r2 integer
 function World:drawFlat(c1, r1, c2, r2)
     local tile = World.TILE
     local left, top = self:tileOrigin(c1, r1)
@@ -85,7 +103,11 @@ function World:drawFlat(c1, r1, c2, r2)
     end
 end
 
--- only the tiles inside the camera's view; there is no other bound on them
+--- only the tiles inside the camera's view; there is no other bound on them
+---@param x1 number # world rect, from Camera:view()
+---@param y1 number
+---@param x2 number
+---@param y2 number
 function World:draw(x1, y1, x2, y2)
     local c1, r1 = self:toTile(x1, y1)
     local c2, r2 = self:toTile(x2, y2)

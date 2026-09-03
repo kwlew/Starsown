@@ -1,4 +1,4 @@
--- Official brand marks (GitHub, Discord, ...), each just a single-path SVG
+--- Official brand marks (GitHub, Discord, ...), each just a single-path SVG
 -- string plus its viewBox size -- one data table instead of one file per
 -- mark (githubMark.lua/discordMark.lua before this), since that's all any
 -- of them ever were. Each path is lazily wrapped in an SvgIcon on first
@@ -16,6 +16,9 @@ local PATHS = {
 local Marks = {}
 local cache = {}
 
+--- the SvgIcon for a mark, flattened to a mesh on first use and cached
+---@param name "github"|"discord"|string
+---@return table icon
 function Marks.get(name)
     local icon = cache[name]
     if not icon then
@@ -26,6 +29,12 @@ function Marks.get(name)
     return icon
 end
 
+---@param name string
+---@param x number
+---@param y number
+---@param size number # screen pixels; the viewBox is scaled to fit
+---@param color? number[]
+---@param glow? number # 0..1
 function Marks.draw(name, x, y, size, color, glow)
     Marks.get(name):draw(x, y, size, color, glow)
 end

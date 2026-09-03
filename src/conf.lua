@@ -1,4 +1,10 @@
 ---@diagnostic disable: duplicate-set-field, inject-field
+--- Runs before the window exists, which is why it reads the saved settings
+-- itself rather than waiting for love.load: resolution, display mode, vsync and
+-- MSAA have to be right at creation. Reading them needs the save directory, so
+-- the identity is set first. A failed or missing settings file leaves the
+-- defaults above in place.
+---@param t table # LÖVE's config table
 function love.conf(t)
     t.identity = "TD-Idle"
     t.version = "11.5"
@@ -14,7 +20,6 @@ function love.conf(t)
     t.window.fullscreen = false
     t.window.highdpi = true
 
-    -- override the defaults above with whatever's saved
     local ok, settings = pcall(function()
         love.filesystem.setIdentity(t.identity)
         return require("core.settings").load()

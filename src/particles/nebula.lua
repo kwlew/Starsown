@@ -1,5 +1,5 @@
--- Deep-space gas for the menu backdrop, baked into a Canvas once at load and
--- drawn as one textured quad per layer per frame (too expensive to redraw the
+--- Deep-space gas for the menu backdrop, baked into a Canvas once at load and
+-- composited from textured layers each frame (too expensive to redraw the
 -- stamps live). Authored in a fixed 1920x1080 space like Stars, but stretched
 -- to fit the window instead of cropped, since it's a framed composition (see
 -- centerHole) rather than a uniform starfield.
@@ -8,21 +8,22 @@ local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 local Motion = require "ui.core.motion"
 
--- authoring space + fraction it's baked at (gas is low-frequency detail, so
--- baking at half size is visually free and a lot cheaper)
 local DESIGN_W, DESIGN_H = 1920, 1080
 local CANVAS_SCALE = 0.5
+local COMPOSITE_W = Math.round(DESIGN_W * CANVAS_SCALE)
+local COMPOSITE_H = Math.round(DESIGN_H * CANVAS_SCALE)
 
--- margin baked around the design space so drift never reveals a canvas edge
 local OVERSCAN = 0.08
 local SLACK_X, SLACK_Y = DESIGN_W * OVERSCAN, DESIGN_H * OVERSCAN
 
 local BLOB_SIZE = 128 -- reusable stamp texture size, px
 
--- one soft radial stamp shared by every cloud; alpha falls off as (1-d^2)^3
--- so it's exactly zero at the edge and never shows a rim
 local blob
 
+--- the one soft round stamp every cloud is built from, generated once. Its
+-- alpha falls off cubically, which is what makes overlapping stamps read as
+-- gas rather than a pile of discs.
+---@return any # a love.Image
 local function getBlob()
     if blob then return blob end
     local data = love.image.newImageData(BLOB_SIZE, BLOB_SIZE)
@@ -39,14 +40,20 @@ local function getBlob()
     return blob
 end
 
--- Box-Muller; gaussian scatter gives a dense core + wispy edge instead of a
+--- Box-Muller; gaussian scatter gives a dense core + wispy edge instead of a
 -- uniform disc's flat middle and hard edge
+---@return number # a normally distributed sample, mean 0, deviation 1
 local function gaussian()
     local u1 = math.max(1e-9, math.random())
     local u2 = math.random()
     return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
 end
 
+---@param x number
+---@param y number
+---@param angle number radians
+---@return number x
+---@return number y
 local function rotate(x, y, angle)
     local c, s = math.cos(angle), math.sin(angle)
     return x * c - y * s, x * s + y * c
@@ -55,17 +62,20 @@ end
 local Nebula = {}
 Nebula.__index = Nebula
 
+--- nothing is generated here; see beginBake
+---@param config? table # every field below may be overridden
+---@return table
 function Nebula.new(config)
     config = config or {}
     return setmetatable({
         layers = {}, -- filled by bake()
+        composite = nil,
         time = 0,
         alpha = config.alpha or 1, -- global fade, on top of per-layer weights
         enabled = config.enabled ~= false,
         seed = config.seed,        -- set to reproduce a nebula while tuning
 
         layerCount = config.layerCount or 2, -- layer 1 = farthest, drawn first
-        -- nearest layer's opacity; kept low since UI text sits on top of this
         layerAlpha = config.layerAlpha or 0.62,
         layerFalloff = config.layerFalloff or 0.62, -- farthest layer's share of it
         parallaxMin = config.parallaxMin or 0.35,   -- farthest layer's share of the drift
@@ -79,7 +89,6 @@ function Nebula.new(config)
         aspectMin = config.aspectMin or 0.45, -- clouds stretched along their axis so they read as structure, not a smudge
         aspectMax = config.aspectMax or 0.85,
 
-        -- stamps x alpha is a budget: push it too far and the core clips to a flat opaque blob
         stampsMin = config.stampsMin or 90,
         stampsMax = config.stampsMax or 150,
         stampSizeMin = config.stampSizeMin or 0.28, -- x cloud radius
@@ -87,7 +96,6 @@ function Nebula.new(config)
         stampAlphaMin = config.stampAlphaMin or 0.024,
         stampAlphaMax = config.stampAlphaMax or 0.052,
 
-        -- dark lanes carved back out of the gas, each a short chain of stamps
         lanesPerCloud = config.lanesPerCloud or 2,
         laneSegments = config.laneSegments or 3,
         laneTurn = config.laneTurn or 0.35, -- max radians the chain swings per link
@@ -96,7 +104,6 @@ function Nebula.new(config)
 
         colors = config.colors or { Theme.colors.accent, Theme.colors.accentAlt }, -- core tint / rim tint
 
-        -- radians/sec on a sine; periods of several minutes so drift is never caught moving
         driftRateMin = config.driftRateMin or 0.008,
         driftRateMax = config.driftRateMax or 0.020,
         breatheAmount = config.breatheAmount or 0.10,
@@ -104,7 +111,18 @@ function Nebula.new(config)
     }, Nebula)
 end
 
--- one cloud's parameters, in design-space coordinates
+--- the reusable half-resolution target every layer is composited into
+---@return any # a love.Canvas
+function Nebula:ensureComposite()
+    if self.composite then return self.composite end
+    self.composite = love.graphics.newCanvas(COMPOSITE_W, COMPOSITE_H)
+    self.composite:setFilter("linear", "linear")
+    return self.composite
+end
+
+--- one cloud's parameters, in design-space coordinates. Placed on a ring
+-- around the centre, so the middle stays clear for the title and menu.
+---@return table cloud
 function Nebula:buildCloud()
     local angle = Math.randAngle()
     local ring = Math.randRange(self.centerHole, self.edgeReach)
@@ -121,12 +139,13 @@ function Nebula:buildCloud()
     }
 end
 
--- lays one cloud's gas down; caller owns the blend mode (additive) and transform
+--- lays one cloud's gas down: the stamp scattered gaussianly, tinted core-to-rim
+-- by distance out. Caller owns the blend mode (additive) and transform.
+---@param image any # a love.Image; the blob stamp
+---@param cloud table
 function Nebula:stampCloud(image, cloud)
     local origin = BLOB_SIZE / 2
     for _ = 1, cloud.stamps do
-        -- 0.42 sigma keeps ~3 std devs inside cloud.radius, so radius reads as
-        -- "where the gas gives out" rather than a hard clamp
         local ox = gaussian() * cloud.radius * 0.42
         local oy = gaussian() * cloud.radius * 0.42 * cloud.aspect
         local dx, dy = rotate(ox, oy, cloud.tilt)
@@ -135,7 +154,6 @@ function Nebula:stampCloud(image, cloud)
         local alpha = Math.randRange(self.stampAlphaMin, self.stampAlphaMax) * (0.35 + 0.65 * (1 - dist))
         local r, g, b = Theme.lerp(cloud.core, cloud.rim, dist)
 
-        -- random scale + rotation so identical stamps don't read as circles
         local sx = cloud.radius * Math.randRange(self.stampSizeMin, self.stampSizeMax) / BLOB_SIZE
         local sy = sx * Math.randRange(0.6, 1.0)
 
@@ -145,13 +163,13 @@ function Nebula:stampCloud(image, cloud)
     end
 end
 
--- dark lanes: a few thin stamps drawn back subtractively so the cloud reads
+--- dark lanes: a few thin stamps drawn back subtractively so the cloud reads
 -- as structure instead of a smooth gradient blob
+---@param image any # a love.Image; the blob stamp
+---@param cloud table
 function Nebula:carveLanes(image, cloud)
     local origin = BLOB_SIZE / 2
     for _ = 1, self.lanesPerCloud do
-        -- walk outward from the core, turning gently each link (same idea as
-        -- the constellation walk) so the lane bends like real dust
         local ox = gaussian() * cloud.radius * 0.35
         local oy = gaussian() * cloud.radius * 0.35
         local dx, dy = rotate(ox, oy, cloud.tilt)
@@ -166,7 +184,6 @@ function Nebula:carveLanes(image, cloud)
             love.graphics.setColor(1, 1, 1, alpha)
             love.graphics.draw(image, x, y, heading,
                 segment / BLOB_SIZE, thickness / BLOB_SIZE, origin, origin)
-            -- step less than a full segment so links overlap through the turn
             heading = heading + Math.randRange(-self.laneTurn, self.laneTurn)
             x = x + math.cos(heading) * segment * 0.6
             y = y + math.sin(heading) * segment * 0.6
@@ -174,15 +191,25 @@ function Nebula:carveLanes(image, cloud)
     end
 end
 
+---@param prevCanvas any # a love.Canvas, or nil
+---@param blendMode any # a love.BlendMode
+---@param alphaMode any # a love.BlendAlphaMode
+---@param r number
+---@param g number
+---@param b number
+---@param a number
 local function restoreGraphics(prevCanvas, blendMode, alphaMode, r, g, b, a)
     love.graphics.setCanvas(prevCanvas)
     love.graphics.setBlendMode(blendMode, alphaMode)
     love.graphics.setColor(r, g, b, a)
 end
 
--- Runs one drawing unit against a layer canvas and restores all graphics
+--- Runs one drawing unit against a layer canvas and restores all graphics
 -- state before returning. That makes it safe for incremental baking to pause
 -- between units while the loading screen draws normally.
+---@param canvas any # a love.Canvas
+---@param blendMode any # a love.BlendMode
+---@param draw fun() # re-raised after state is restored if it errors
 local function drawOnLayer(canvas, blendMode, draw)
     local prevCanvas = love.graphics.getCanvas()
     local prevBlend, prevAlpha = love.graphics.getBlendMode()
@@ -199,10 +226,13 @@ local function drawOnLayer(canvas, blendMode, draw)
     if not ok then error(err, 0) end
 end
 
--- Prepares an incremental bake. bakeStep() performs one canvas allocation,
--- cloud stamp, lane carve, or layer finalization at a time.
+--- plans every layer's clouds and readies the incremental bake; bakeStep()
+-- does the actual work one unit at a time
+---@return table self
 function Nebula:beginBake()
     if self.seed then math.randomseed(self.seed) end
+
+    self:ensureComposite()
 
     local canvasW = Math.round((DESIGN_W + SLACK_X) * CANVAS_SCALE)
     local canvasH = Math.round((DESIGN_H + SLACK_Y) * CANVAS_SCALE)
@@ -232,6 +262,11 @@ function Nebula:beginBake()
     return self
 end
 
+--- one unit of work: allocate a layer canvas, stamp one cloud's gas, carve one
+-- cloud's lanes, or finalize a layer. Cheap enough to run a few per frame
+-- while the loading screen keeps drawing.
+---@return boolean done
+---@return number # progress, 0..1
 function Nebula:bakeStep()
     local state = self.bakeState
     if not state then return true, 1 end
@@ -294,38 +329,45 @@ function Nebula:bakeStep()
     return done, progress
 end
 
--- Synchronous compatibility path for theme changes and other callers that
--- need the finished canvas immediately. Loading uses beginBake()/bakeStep().
+--- bakes the whole thing in one blocking call, for callers that need the
+-- finished canvas immediately (a theme change). The loading screen uses
+-- beginBake()/bakeStep() instead, so it can keep drawing.
+---@return table self
 function Nebula:bake()
     self:beginBake()
     while not self:bakeStep() do end
     return self
 end
 
+---@return boolean
 function Nebula:isBaked()
     return #self.layers > 0
 end
 
+--- only advances the clock; drift and breathing are derived from it at draw
+---@param dt number
 function Nebula:update(dt)
     self.time = self.time + dt
 end
 
+--- composites the drifting layers into the half-res canvas, then stretches that
+-- to the window in one draw
 function Nebula:draw()
     if not self.enabled or self.alpha <= 0 or #self.layers == 0 then return end
 
-    -- design space -> window, so the composition keeps its framing at every resolution
     local w, h = love.graphics.getDimensions()
-    local fx, fy = w / DESIGN_W, h / DESIGN_H
-    local sx, sy = fx / CANVAS_SCALE, fy / CANVAS_SCALE
+    local composite = self:ensureComposite()
+    local previousCanvas = love.graphics.getCanvas()
+    local previousBlend, previousAlphaMode = love.graphics.getBlendMode()
+    local previousR, previousG, previousB, previousA = love.graphics.getColor()
 
-    -- reduced motion: freeze drift/breathing at their resting position
-    -- (sin term's own average) rather than cycling through it
     local driftAmount = Motion.reduced and 0 or 1
     local breatheAmount = Motion.reduced and 0 or self.breatheAmount
 
+    love.graphics.setCanvas(composite)
+    love.graphics.clear(0, 0, 0, 0)
     love.graphics.setBlendMode("alpha", "premultiplied")
     for _, layer in ipairs(self.layers) do
-        -- amplitude capped at half the slack so the canvas still covers the design space through the whole drift
         local dx = -SLACK_X / 2 + math.sin(self.time * layer.driftRateX + layer.phaseX) * SLACK_X / 2 * layer.parallax * driftAmount
         local dy = -SLACK_Y / 2 + math.sin(self.time * layer.driftRateY + layer.phaseY) * SLACK_Y / 2 * layer.parallax * driftAmount
 
@@ -333,10 +375,15 @@ function Nebula:draw()
             * (1 + breatheAmount * math.sin(self.time * self.breatheRate + layer.breathePhase))
         a = Math.clamp01(a)
         love.graphics.setColor(a, a, a, a) -- premultiplied: alpha has to go into all 4 channels
-        love.graphics.draw(layer.canvas, fx * dx, fy * dy, 0, sx, sy)
+        love.graphics.draw(layer.canvas, dx * CANVAS_SCALE, dy * CANVAS_SCALE)
     end
-    love.graphics.setBlendMode("alpha")
+
+    love.graphics.setCanvas(previousCanvas)
     love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(composite, 0, 0, 0, w / COMPOSITE_W, h / COMPOSITE_H)
+
+    love.graphics.setBlendMode(previousBlend, previousAlphaMode)
+    love.graphics.setColor(previousR, previousG, previousB, previousA)
 end
 
 return Nebula

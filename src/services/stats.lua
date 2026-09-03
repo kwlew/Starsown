@@ -1,4 +1,3 @@
--- src/services/stats.lua
 local Json = require "vendor.json"
 
 local Stats = {}
@@ -29,9 +28,11 @@ local inflight = nil
 
 local generation = 0
 
--- Folds an arbitrary string into a non-negative number; used below to mix a
+--- Folds an arbitrary string into a non-negative number; used below to mix a
 -- fresh table's own memory address into the seed without caring what
 -- format tostring() happens to print it in on a given platform/Lua build.
+---@param s string
+---@return number
 local function hashString(s)
     local h = 0
     for i = 1, #s do
@@ -40,7 +41,7 @@ local function hashString(s)
     return h
 end
 
--- os.time() alone is a second-resolution value anyone who knows roughly
+--- os.time() alone is a second-resolution value anyone who knows roughly
 -- when the game launched can narrow to a handful of guesses, and
 -- os.clock() this early in boot is bounded to whatever sliver of CPU time
 -- the process has used so far -- neither carries remotely enough entropy
@@ -50,11 +51,13 @@ end
 -- table exposes its heap address, which moves with allocation history and
 -- ASLR and isn't derivable from outside the process -- mixing that in is
 -- what actually defeats "I know when you launched, so I can guess your ID."
+---@return number
 local function uuidSeed()
     return (os.time() * 1000003 + math.floor(os.clock() * 1000000) + hashString(tostring({}))) % 2^31
 end
 
--- random v4 UUID.
+--- random v4 UUID
+---@return string
 local function uuid()
     love.math.setRandomSeed(uuidSeed())
     return (("xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"):gsub("[xy]", function(c)
@@ -63,6 +66,9 @@ local function uuid()
     end))
 end
 
+--- this install's id, generated and saved on first use. Only ever a random
+-- UUID -- nothing about the machine or the player goes into it.
+---@return string
 local function clientId()
     local saved = love.filesystem.read(ID_FILE)
     if saved and #saved >= 36 then return saved:sub(1, 36) end
@@ -71,6 +77,10 @@ local function clientId()
     return id
 end
 
+--- reads back the pop counts a previous session couldn't deliver, then removes
+-- the file so a crash mid-send can't double-report them. Values are sanity
+-- checked and clamped, and a file that doesn't add up is dropped entirely.
+-- Also handles the older two-field format, written before rainbow stars.
 local function loadPending()
     loadedPending = true -- guards savePending: a session that never read the file must not rewrite/delete it
 
@@ -92,6 +102,7 @@ local function loadPending()
     pending.rainbow = math.min(rainbow, pending.stars - pending.golden)
 end
 
+--- writes the undelivered backlog for the next launch
 local function savePending()
     if not loadedPending then return end
     if pending.stars <= 0 then
@@ -101,11 +112,14 @@ local function savePending()
     love.filesystem.write(PENDING_FILE, ("%d %d %d"):format(pending.stars, pending.golden, pending.rainbow))
 end
 
+---@return any # a love.Thread, or nil when the worker file isn't there
 local function newWorkerThread()
     if not love.filesystem.getInfo(WORKER) then return nil end
     return love.thread.newThread(WORKER)
 end
 
+--- sends up to MAX_REPORT pops, moving them out of the backlog and into
+-- `inflight` -- so a failed request can put exactly those back
 local function dispatch()
     local stars = math.min(pending.stars, MAX_REPORT)
     local golden = math.min(pending.golden, stars)
@@ -124,17 +138,26 @@ local function dispatch()
     }
 end
 
+--- puts an undelivered report back into the backlog, capped so an endpoint
+-- that's been down for a long time can't grow it without bound
+---@param stars integer
+---@param golden integer
+---@param rainbow integer
 local function requeue(stars, golden, rainbow)
     pending.stars = math.min(pending.stars + stars, MAX_PENDING)
     pending.golden = math.min(pending.golden + golden, pending.stars)
     pending.rainbow = math.min(pending.rainbow + rainbow, pending.stars - pending.golden)
 end
 
+---@param code integer|nil # nil means the request never completed
+---@return boolean # false only for a 4xx the server won't answer differently next time
 local function retryable(code)
     if not code then return true end
     return code < 400 or code >= 500 or code == 429
 end
 
+--- drains the worker's replies. A failed request never clears a value -- nil
+-- means "unknown" and screens draw nothing rather than a 0.
 local function readResults()
     if not resultChannel then return end
 
@@ -158,6 +181,9 @@ local function readResults()
     end
 end
 
+--- starts the reporting thread, replaying any backlog from last session. A
+-- missing lua-https (the LÖVE Windows installer doesn't bundle it) degrades to
+-- no stats rather than a crash.
 function Stats.start()
     if thread or not Stats.enabled then return end
 
@@ -178,6 +204,8 @@ function Stats.start()
     thread:start(ENDPOINT, clientId(), jobName, resultName)
 end
 
+--- reads replies every frame, and sends at most one request per interval
+---@param dt number
 function Stats.update(dt)
     if not thread then return end
 
@@ -191,6 +219,8 @@ function Stats.update(dt)
     dispatch()
 end
 
+--- counts one popped star toward the next report
+---@param kind? "golden"|"rainbow" # plain stars pass nothing
 function Stats.pop(kind)
     if not Stats.enabled then return end
     if pending.stars >= MAX_PENDING then return end
@@ -203,6 +233,8 @@ function Stats.pop(kind)
     end
 end
 
+--- call on quit: drains what came back, puts anything unanswered back into the
+-- backlog, saves it, and stops the thread
 function Stats.shutdown()
     readResults() -- read whatever came back first, or a just-succeeded report gets counted again next launch
     if inflight then
@@ -217,6 +249,8 @@ function Stats.shutdown()
     thread, jobChannel, resultChannel = nil, nil, nil
 end
 
+--- forgets the counters, the backlog and the client id -- everything this
+-- machine holds about stats sharing
 local function clearLocalData()
     Stats.online, Stats.stars, Stats.golden, Stats.rainbow = nil, nil, nil, nil
     pending.stars, pending.golden, pending.rainbow = 0, 0, 0
@@ -224,10 +258,11 @@ local function clearLocalData()
     love.filesystem.remove(ID_FILE)
 end
 
+--- turning sharing off stops the thread and clears local data; a redundant
+-- "off" still clears, so the opt-out is idempotent
+---@param enabled boolean
 function Stats.setEnabled(enabled)
     if enabled == Stats.enabled then
-        -- Calling this with false also serves as an explicit privacy cleanup,
-        -- including for data left by a version that enabled stats by default.
         if not enabled then clearLocalData() end
         return
     end

@@ -1,4 +1,4 @@
--- Horizontal segmented tab bar: equal-width clickable segments with an
+--- Horizontal segmented tab bar: equal-width clickable segments with an
 -- animated sliding highlight under the active tab. Keyboard left/right (via
 -- :adjust) or Enter (:activate, cycles) also switch tabs when focused.
 --
@@ -20,6 +20,8 @@ TabBar.fontRole = "button"
 
 local SEGMENT_GAP = 6 -- design-space px, scaled through Theme.px at use
 
+---@param config table # Widget.new's fields, plus tabs: (string|fun(self: table): string)[], index: integer, onChange: fun(name: string, index: integer)
+---@return table
 function TabBar.new(config)
     local self = Widget.new(TabBar, config)
     self.tabs = config.tabs or {}
@@ -30,6 +32,11 @@ function TabBar.new(config)
     return self
 end
 
+---@param i integer
+---@return number x
+---@return number y
+---@return number w
+---@return number h
 function TabBar:segmentRect(i)
     local count = #self.tabs
     local gap = Theme.px(SEGMENT_GAP)
@@ -37,6 +44,9 @@ function TabBar:segmentRect(i)
     return self.x + (i - 1) * (segW + gap), self.y, segW, self.h
 end
 
+--- wraps past either end; onChange fires only on a real change, so a screen
+-- can sync by assigning `index` directly instead
+---@param index integer
 function TabBar:setIndex(index)
     if not self:isInteractive() then return end
     local count = #self.tabs
@@ -48,15 +58,21 @@ function TabBar:setIndex(index)
     end
 end
 
+---@param direction -1|1
 function TabBar:adjust(direction)
     self:setIndex(self.index + direction)
 end
 
+--- Enter cycles forward
 function TabBar:activate()
     self:adjust(1)
 end
 
--- returns false: a tab bar has no drag, so it never captures the mouse
+--- returns false: a tab bar has no drag, so it never captures the mouse
+---@param px number
+---@param py number
+---@param mouseButton integer
+---@return boolean # captured; always false
 function TabBar:mousepressed(px, py, mouseButton)
     if mouseButton ~= 1 or not self:isInteractive() then return false end
     for i = 1, #self.tabs do
@@ -69,6 +85,8 @@ function TabBar:mousepressed(px, py, mouseButton)
     return false
 end
 
+---@param px number
+---@param py number
 function TabBar:mousemoved(px, py)
     self.hovered = nil
     if not self:isInteractive() then return end
@@ -81,11 +99,14 @@ function TabBar:mousemoved(px, py)
     end
 end
 
+--- eases the highlight toward the active segment, so a switch slides
+---@param dt number
 function TabBar:update(dt)
     Widget.update(self, dt)
     self.highlight = Theme.approach(self.highlight, self.index, dt)
 end
 
+--- every segment, then the sliding highlight over the active one, then the labels
 function TabBar:draw()
     local c, m = Theme.colors, Theme.metrics
     local alpha = self:alpha()
@@ -98,14 +119,13 @@ function TabBar:draw()
         love.graphics.rectangle("line", sx, sy, sw, sh, m.radius, m.radius, 8)
     end
 
-    -- sliding active highlight, drawn at the eased position between segments
     local x1 = self:segmentRect(1)
     local x2, _, segW, segH = self:segmentRect(2)
     local stride = (#self.tabs > 1) and (x2 - x1) or 0
     local hx = x1 + (self.highlight - 1) * stride
 
     if self.glow > 0.01 then
-        Theme.glowRect(hx, self.y, segW, segH, m.radius, self.glow * Theme.pulse(self.time))
+        Theme.glowRect(hx, self.y, segW, segH, m.radius, self.glow * Theme.pulse(self.time), nil, true)
     end
     love.graphics.setColor(c.accentDark)
     love.graphics.rectangle("fill", hx, self.y, segW, segH, m.radius, m.radius, 8)
