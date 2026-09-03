@@ -1,4 +1,4 @@
--- The inventory grid. Click a slot to lift its stack onto the cursor, click
+--- The inventory grid. Click a slot to lift its stack onto the cursor, click
 -- another to drop it -- merging onto a matching stack, swapping otherwise.
 -- Right click splits a stack in half, and places one at a time.
 --
@@ -17,7 +17,6 @@ Panel.__index = Panel
 
 local COLS, ROWS = 6, 4
 
--- design-space px, all scaled through Theme.px at use
 local SLOT = 46
 local SLOT_GAP = 6
 local PAD = 18
@@ -25,10 +24,10 @@ local TITLE_GAP = 12
 local ICON_RATIO = 0.30 -- of the slot, so an icon never touches its border
 local COUNT_INSET = 4
 local HELD_RATIO = 0.34
--- the count sits over the corner of its own icon, so it needs an outline
--- rather than a drop shadow: a pale item and a pale digit look identical
 local COUNT_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
 
+---@param inventory table # the Inventory it draws and edits
+---@return table
 function Panel.new(inventory)
     local self = setmetatable({
         inventory = inventory,
@@ -41,16 +40,18 @@ function Panel.new(inventory)
     return self
 end
 
+---@return boolean
 function Panel:isOpen()
     return self.open
 end
 
+--- shows the grid, laid out for the current window
 function Panel:openPanel()
     self.open = true
     self:layout()
 end
 
--- whatever is on the cursor goes back in the bag; it came out of these slots,
+--- whatever is on the cursor goes back in the bag; it came out of these slots,
 -- so there is always room for it
 function Panel:close()
     if self.held then
@@ -61,10 +62,12 @@ function Panel:close()
     self.hovered = nil
 end
 
+---@return integer
 function Panel:slots()
     return COLS * ROWS
 end
 
+--- centres the panel; call on open and on resize
 function Panel:layout()
     local slot, gap, pad = Theme.px(SLOT), Theme.px(SLOT_GAP), Theme.px(PAD)
     local titleHeight = Theme.font("button"):getHeight() + Theme.px(TITLE_GAP)
@@ -77,7 +80,10 @@ function Panel:layout()
     self.gridY = bounds.y + pad + titleHeight
 end
 
--- top-left of a slot, in screen space
+--- top-left of a slot, in screen space
+---@param index integer # 1-based, row major
+---@return number x
+---@return number y
 function Panel:slotOrigin(index)
     local slot, gap, pad = Theme.px(SLOT), Theme.px(SLOT_GAP), Theme.px(PAD)
     local col = (index - 1) % COLS
@@ -85,6 +91,9 @@ function Panel:slotOrigin(index)
     return self.bounds.x + pad + col * (slot + gap), self.gridY + row * (slot + gap)
 end
 
+---@param x number
+---@param y number
+---@return integer|nil
 function Panel:slotAt(x, y)
     local size = Theme.px(SLOT)
     for index = 1, self:slots() do
@@ -94,10 +103,19 @@ function Panel:slotAt(x, y)
     return nil
 end
 
+---@param x number
+---@param y number
 function Panel:mousemoved(x, y)
     self.hovered = self:slotAt(x, y)
 end
 
+--- left click lifts or drops a whole stack, right click splits one in half and
+-- then places one at a time. Both go through Inventory's take/put pair, so the
+-- cursor is always holding at most one stack.
+---@param x number
+---@param y number
+---@param button integer
+---@return boolean consumed
 function Panel:mousepressed(x, y, button)
     local index = self:slotAt(x, y)
     self.hovered = index
@@ -112,13 +130,22 @@ function Panel:mousepressed(x, y, button)
     return true
 end
 
+---@param x number
+---@param y number
+---@return boolean # whether the point is over the panel at all
 function Panel:hovering(x, y)
     return Theme.pointIn(x, y, self.bounds.x, self.bounds.y, self.bounds.w, self.bounds.h)
 end
 
--- `corner` is the half-width of the box the count tucks into: the slot for a
+--- `corner` is the half-width of the box the count tucks into: the slot for a
 -- stack in the grid, and a little past the icon for the one on the cursor.
 -- Anchoring it to the icon instead puts the digits on top of the icon.
+---@param stack table # { id: string, count: integer }
+---@param x number # centre of the icon
+---@param y number # centre of the icon
+---@param radius number
+---@param corner number # half-width of the box the count tucks into
+---@param font any # a love.Font
 local function drawStack(stack, x, y, radius, corner, font)
     love.graphics.setColor(Items.color(stack.id))
     Shape.draw("fill", x, y, radius, Items.sides(stack.id))
@@ -139,6 +166,7 @@ local function drawStack(stack, x, y, radius, corner, font)
     Theme.popFont()
 end
 
+--- scrim, panel, title, the slot grid, and last the stack on the cursor
 function Panel:draw()
     local colors = Theme.colors
     local bounds = self.bounds

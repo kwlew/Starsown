@@ -1,4 +1,4 @@
--- A melee arc. One instance per attacker: swing() starts a sweep, update()
+--- A melee arc. One instance per attacker: swing() starts a sweep, update()
 -- advances it and resolves each target at most once per swing. There is no
 -- blade sprite -- the weapon *is* the tapering additive arc plus the sparks it
 -- throws off, which is also why the shape is all constants rather than art.
@@ -22,21 +22,23 @@ local SPARK_SCALE = 0.6
 local EDGE_WIDTH = 4
 local TIP_RADIUS = 4
 
--- exported for the debug overlay, which draws the reach it can't otherwise know
 Swipe.ARC, Swipe.REACH = ARC, REACH
 
--- shortest signed distance from `from` to `to`, in (-pi, pi]
+--- shortest signed distance from `from` to `to`, in (-pi, pi]
+---@param to number radians
+---@param from number radians
+---@return number
 local function angleDelta(to, from)
     return (to - from + math.pi) % (math.pi * 2) - math.pi
 end
 
+---@param config? table # { damage?: number, knockback?: number, lift?: number }
+---@return table
 function Swipe.new(config)
     config = config or {}
     return setmetatable({
         damage = config.damage or 1,
         knockback = config.knockback or 280,
-        -- the knockback has a height component now that there is one; a hit
-        -- pops its target a third of a tile up rather than only sliding it
         lift = config.lift or 130,
         sparks = Particles.Burst.new{
             countMin = 2, countMax = 4,
@@ -63,10 +65,16 @@ function Swipe.new(config)
     }, Swipe)
 end
 
+---@return boolean # off cooldown and not already mid-swing
 function Swipe:ready()
     return self.cooldown <= 0 and not self.active
 end
 
+--- starts a sweep centred on `angle`, mirroring the previous one's direction.
+-- Safe to call every frame: it's the cooldown that paces attacks, which is
+-- what lets holding the button chain them.
+---@param angle number radians
+---@return boolean started
 function Swipe:swing(angle)
     if not self:ready() then return false end
     self.angle = angle
@@ -79,43 +87,48 @@ function Swipe:swing(angle)
     return true
 end
 
--- 0 at the start of the sweep, 1 once the blade has crossed the whole arc
+--- 0 at the start of the sweep, 1 once the blade has crossed the whole arc
+---@return number # 0..1
 function Swipe:progress()
     return math.min(1, self.t / DURATION)
 end
 
--- the blade's offset from self.angle, in sweep-local terms: -ARC/2 to +ARC/2
+--- the blade's offset from self.angle, in sweep-local terms: -ARC/2 to +ARC/2
+---@param progress number # 0..1
+---@return number radians
 local function bladeOffset(progress)
     return ARC * (progress - 0.5)
 end
 
+---@return number # radians, where the leading edge is right now
 function Swipe:bladeAngle()
     return self.angle + self.dir * bladeOffset(self:progress())
 end
 
--- a target is hit the frame the leading edge reaches it, so a swing sweeps
--- across a crowd rather than resolving all of it at once
-function Swipe:resolve(targets, progress)
-    if not targets then return end
+--- a target is hit the frame the leading edge reaches it, so a swing sweeps
+-- across a crowd rather than resolving all of it at once. Takes the
+-- EnemyManager rather than a bare list: the hit test still walks `list` (it
+-- needs the geometry), but the hit itself goes through `manager:damage(id,
+-- ...)` -- the sanctioned way to apply damage, see game/enemyManager.lua.
+---@param manager table|nil # an EnemyManager
+---@param progress number # 0..1
+function Swipe:resolve(manager, progress)
+    if not manager then return end
     local blade = bladeOffset(progress)
     local half = ARC / 2
 
-    for _, target in ipairs(targets) do
+    for _, target in ipairs(manager.list) do
         if not target.dead and not self.hit[target] then
             local dx, dy = target.x - self.x, target.y - self.y
             local distance = Math.length(dx, dy)
             if distance <= REACH + target.radius then
-                -- widen the window by the target's own angular size, or a small
-                -- body at full reach slips between two frames of the sweep
                 local slack = math.atan(target.radius / math.max(distance, 1))
                 local offset = angleDelta(math.atan2(dy, dx), self.angle) * self.dir
                 if offset >= -half - slack and offset <= blade + slack then
                     self.hit[target] = true
                     local nx, ny = dx / math.max(distance, 0.001), dy / math.max(distance, 0.001)
-                    target:damage(self.damage, nx * self.knockback, ny * self.knockback, self.lift)
+                    manager:damage(target.id, self.damage, nx * self.knockback, ny * self.knockback, self.lift)
 
-                    -- struck on the blade, so the sparks fly at the blade's
-                    -- height rather than off the ground under it
                     local reach = distance - target.radius
                     self.impact:spawn(self.x + nx * reach, self.drawY + ny * reach, Palette.blade)
                 end
@@ -124,6 +137,10 @@ function Swipe:resolve(targets, progress)
     end
 end
 
+--- sparks along the blade at a fixed interval, so the trail's density doesn't
+-- depend on the frame rate
+---@param dt number
+---@param progress number # 0..1
 function Swipe:emitSparks(dt, progress)
     if progress >= 1 then return end
     self.sparkTimer = self.sparkTimer + dt
@@ -136,10 +153,13 @@ function Swipe:emitSparks(dt, progress)
     end
 end
 
--- the attacker is passed whole so a swing started mid-run travels with them --
+--- the attacker is passed whole so a swing started mid-run travels with them --
 -- and so the blade can be painted at the body's height while the hit test it
 -- resolves stays on the ground plane, where every other distance is measured
-function Swipe:update(dt, owner, targets)
+---@param dt number
+---@param owner table # the attacker; read for position and draw height
+---@param manager table|nil # an EnemyManager, or nil for a swing that hits nothing
+function Swipe:update(dt, owner, manager)
     self.x, self.y = owner.x, owner.y
     self.drawY = owner:drawY()
     self.cooldown = math.max(0, self.cooldown - dt)
@@ -150,13 +170,18 @@ function Swipe:update(dt, owner, targets)
 
     self.t = self.t + dt
     local progress = self:progress()
-    self:resolve(targets, progress)
+    self:resolve(manager, progress)
     self:emitSparks(dt, progress)
 
     if self.t >= DURATION + AFTERGLOW then self.active = false end
 end
 
--- one spoke of the blade, from the inner radius out to the tip
+--- one spoke of the blade, from the inner radius out to the tip
+---@param angle number radians
+---@param width number # line width
+---@param alpha number
+---@return number tipX
+---@return number tipY
 function Swipe:bladeLine(angle, width, alpha)
     local innerX, innerY = Math.polar(self.x, self.drawY, angle, INNER)
     local tipX, tipY = Math.polar(self.x, self.drawY, angle, REACH)
@@ -167,6 +192,8 @@ function Swipe:bladeLine(angle, width, alpha)
     return tipX, tipY
 end
 
+--- the arc as a fan of spokes fading back from the leading edge, plus the
+-- sparks and impact debris
 function Swipe:draw()
     if self.active then
         local progress = self:progress()
@@ -176,8 +203,6 @@ function Swipe:draw()
 
         love.graphics.setBlendMode("add")
 
-        -- spokes across the swept band read as motion blur; the ramp puts the
-        -- brightness at the leading edge where the blade actually is
         for i = 0, SEGMENTS do
             local k = i / SEGMENTS
             self:bladeLine(self.angle + self.dir * (tail + (blade - tail) * k),

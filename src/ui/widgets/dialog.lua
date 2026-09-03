@@ -1,4 +1,4 @@
--- Modal confirmation box: a scrim over the screen, a centered panel with a
+--- Modal confirmation box: a scrim over the screen, a centered panel with a
 -- title and wrapped message, and a row of buttons. While open it owns all
 -- input -- the screen underneath keeps drawing but stops responding.
 --
@@ -33,6 +33,9 @@ local BUTTON_GAP = 12
 local TITLE_GAP = 10    -- title baseline to message
 local BUTTON_GAP_Y = 18 -- message to button row
 
+--- built once and reopened, not rebuilt per prompt
+---@param config table # { title: string|fun(self: table): string, message: string|fun(self: table): string, buttons?: { label: any, onSelect?: fun(), danger?: boolean }[], onCancel?: fun(self: table), timeout?: number, onTimeout?: fun(self: table) }
+---@return table
 function Dialog.new(config)
     local self = setmetatable({
         title = config.title,
@@ -60,14 +63,19 @@ function Dialog.new(config)
     return self
 end
 
+---@return boolean
 function Dialog:isOpen()
     return self.open
 end
 
+---@param fn fun(widget: table, index: integer)
 function Dialog:setFocusSound(fn)
     self.group.onFocusChanged = fn
 end
 
+--- shows it, restarts any countdown, and focuses the first button -- so the
+-- listed order decides what Enter does (see the stats consent prompt, which
+-- lists Decline first for exactly this reason)
 function Dialog:openDialog()
     self.open = true
     self.remaining = self.timeout
@@ -75,19 +83,23 @@ function Dialog:openDialog()
     self:layout()
 end
 
+--- hides it without cancelling; what a button's own handler calls when done
 function Dialog:close()
     self.open = false
 end
 
+---@return string
 function Dialog:titleText()
     return Theme.resolveLabel(self.title, self)
 end
 
+---@return string
 function Dialog:messageText()
     return Theme.resolveLabel(self.message, self)
 end
 
--- panel is sized to its content: message wraps to the panel's inner width, panel grows to fit
+--- panel is sized to its content: message wraps to the panel's inner width,
+-- panel grows to fit. Call on open and on resize.
 function Dialog:layout()
     local w, h = love.graphics.getDimensions()
     local pad = Theme.px(PANEL_PAD)
@@ -126,6 +138,7 @@ function Dialog:layout()
     end
 end
 
+--- the Esc/scrim path: onCancel decides what that means, or it just closes
 function Dialog:cancel()
     if self.onCancel then
         self.onCancel(self)
@@ -134,22 +147,31 @@ function Dialog:cancel()
     end
 end
 
+--- left/right walk the button row, since it's laid out horizontally
+---@param key string
+---@return boolean consumed
 function Dialog:keypressed(key)
     if key == "escape" then
         self:cancel()
         return true
     end
-    -- left/right feel more natural than up/down for a horizontal button row
     if key == "left" or key == "a" then return self.group:keypressed("up") end
     if key == "right" or key == "d" then return self.group:keypressed("down") end
     return self.group:keypressed(key)
 end
 
+---@param x number
+---@param y number
+---@return boolean consumed
 function Dialog:mousemoved(x, y)
     return self.group:mousemoved(x, y)
 end
 
--- a click outside the panel cancels, the way clicking off a modal usually does
+--- a click outside the panel cancels, the way clicking off a modal usually does
+---@param x number
+---@param y number
+---@param button integer
+---@return boolean # consumed; always true
 function Dialog:mousepressed(x, y, button)
     if self.group:mousepressed(x, y, button) then return true end
     if button == 1 and not Theme.pointIn(x, y, self.panel.x, self.panel.y, self.panel.w, self.panel.h) then
@@ -158,14 +180,25 @@ function Dialog:mousepressed(x, y, button)
     return true -- modal: nothing behind the scrim ever sees the click
 end
 
+---@param x number
+---@param y number
+---@param button integer
+---@return boolean consumed
 function Dialog:mousereleased(x, y, button)
     return self.group:mousereleased(x, y, button)
 end
 
+---@param x number
+---@param y number
+---@return boolean hovering
+---@return boolean? danger
 function Dialog:hovering(x, y)
     return self.group:hovering(x, y)
 end
 
+--- runs the countdown, if there is one; onTimeout fires once and the timer
+-- clears itself
+---@param dt number
 function Dialog:update(dt)
     self.group:update(dt)
 
@@ -178,6 +211,7 @@ function Dialog:update(dt)
     end
 end
 
+--- scrim, panel, title, wrapped message, buttons
 function Dialog:draw()
     local c = Theme.colors
     local pad = Theme.px(PANEL_PAD)

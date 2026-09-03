@@ -1,24 +1,4 @@
--- Localization: loads assets/lang/<code>/*.json, exposes t(key). Missing
--- key/language falls back to English (or the key itself) so bad translation
--- data can't crash the UI.
---
---   I18n.load()
---   I18n.setLanguage("pt")
---   I18n.t("menu.play")            -- "Jogar" (or "Play", or "menu.play")
---   I18n.available()               -- { {code="en", name="English"}, ... }
---
--- One directory per language (assets/lang/en/, es/, pt/), one file per
--- topic inside it (menu.json, options.json, ...) -- every .json file found
--- in a language's directory is merged into that language's catalog, so a
--- new topic is just a new file, no code change here. _meta.json is the one
--- place `language.name`/`language.code` live, so a topic file can never
--- accidentally shadow it.
---
---   assets/lang/en/_meta.json    -- { "language": { "name", "code" } }
---   assets/lang/en/menu.json     -- { "menu": { ... } }
---   assets/lang/en/options.json  -- { "options": { ... } }
---   ...
-
+--- Locatization code.
 local Json = require "vendor.json"
 
 local I18n = {}
@@ -26,16 +6,20 @@ local I18n = {}
 I18n.LANG_DIR = "assets/lang"
 I18n.FALLBACK = "en"
 
-local catalogs = {} -- code -> flattened { ["menu.play"] = "Play", ... }
-local names = {}    -- code -> native display name
+local catalogs = {}
+local names = {}
 
-local active = {}   -- flattened map for the current language
-local fallback = {} -- English map, consulted for missing keys
+local active = {}
+local fallback = {}
 I18n.current = I18n.FALLBACK
 
--- { menu = { play = "P" } } -> { ["menu.play"] = "P" }; non-string leaves
--- are skipped (a string array, like menu.splashes, flattens to numbered
--- keys instead -- see I18n.list).
+--- flattens a decoded JSON tree into dotted keys (menu.play). Arrays aren't
+-- special-cased, so they come out numbered (menu.splashes.1, .2, ...) --
+-- I18n.list reads those back.
+---@param tree table
+---@param prefix string|nil
+---@param out table<string, string> # accumulator, returned
+---@return table<string, string> out
 local function flatten(tree, prefix, out)
     for key, value in pairs(tree) do
         local path = prefix and (prefix .. "." .. key) or key
@@ -48,6 +32,10 @@ local function flatten(tree, prefix, out)
     return out
 end
 
+--- one JSON file, or nil (logged) if it's missing or malformed -- a bad file
+-- costs its own topic, not the whole language
+---@param path string
+---@return table|nil
 local function decodeFile(path)
     local contents = love.filesystem.read(path)
     if not contents then return nil end
@@ -60,10 +48,11 @@ local function decodeFile(path)
     return data
 end
 
--- Merges every *.json file under assets/lang/<code>/ into one flattened
--- catalog. A bad file is skipped (logged by decodeFile) rather than taking
--- the whole language down with it -- one broken topic file used to mean one
--- broken language, back when it was all a single file.
+--- merges every .json in a language's directory into one flat catalog, which
+-- is why adding a topic file needs no change here
+---@param code string # directory name under LANG_DIR
+---@return table<string, string> catalog
+---@return string|nil # the display name, from _meta.json only
 local function loadLanguage(code)
     local dir = I18n.LANG_DIR .. "/" .. code
     local map, name = {}, nil
@@ -85,7 +74,7 @@ local function loadLanguage(code)
     return map, name
 end
 
--- each subdirectory of assets/lang/ is one language, named by its code (en/, es/, ...)
+--- (re)loads every language directory, then re-applies the active language
 function I18n.load()
     catalogs, names = {}, {}
     for _, code in ipairs(love.filesystem.getDirectoryItems(I18n.LANG_DIR)) do
@@ -103,10 +92,14 @@ function I18n.load()
     I18n.setLanguage(I18n.current)
 end
 
+---@param code string
+---@return boolean
 function I18n.has(code)
     return catalogs[code] ~= nil
 end
 
+--- switches the active catalog, falling back to English for an unknown code
+---@param code string
 function I18n.setLanguage(code)
     if not catalogs[code] then
         code = I18n.FALLBACK
@@ -115,7 +108,11 @@ function I18n.setLanguage(code)
     active = catalogs[code] or {}
 end
 
--- params substitutes {name} placeholders, e.g. t("hud.wave", { n = 3 })
+--- the lookup every screen draws through. Falls back key -> English -> the
+-- key itself, so missing translation data can never blank the UI.
+---@param key string # dotted, e.g. "menu.play"
+---@param params? table<string, any> # substituted into {name} placeholders
+---@return string
 function I18n.t(key, params)
     local text = active[key] or fallback[key] or key
     if params then
@@ -127,10 +124,11 @@ function I18n.t(key, params)
     return text
 end
 
--- Every value under a numbered prefix -- "menu.splashes.1", ".2", ... --
--- collected in order until one is missing. Checked directly against
--- active/fallback rather than through t(), since t() returns the key itself
--- on a miss and would never let the loop end.
+--- reads a flattened JSON array (prefix.1, prefix.2, ...) back out in order.
+-- Checks the catalogs directly rather than going through t(), which returns
+-- the key on a miss and would never end the loop.
+---@param prefix string
+---@return string[]
 function I18n.list(prefix)
     local list = {}
     local i = 1
@@ -144,7 +142,8 @@ function I18n.list(prefix)
     return list
 end
 
--- English first, then the rest alphabetically by code
+--- every loaded language for the options selector, English first, then by code
+---@return table[] # { code: string, name: string }[]
 function I18n.available()
     local list = {}
     for code, name in pairs(names) do

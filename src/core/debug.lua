@@ -1,11 +1,3 @@
--- F3 dev overlay; a singleton since main.lua drives just the one.
---
--- F3 also carries chords (F3 + P and so on, as Minecraft does). That is why
--- the overlay toggles on the *release* of F3 rather than the press: pressing
--- it on the way down would flash the panel on and off underneath every chord.
--- A chord is reported back to main.lua, which routes it to the current state
--- as chordpressed(key) -- Debug itself has no idea what any chord means.
-
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 
@@ -16,16 +8,21 @@ local Debug = {
     visible = false,
 }
 
--- read straight off the keyboard rather than tracked through keypressed, so an
--- F3 release swallowed by a lost window focus can't leave chording stuck on
+---@return boolean # true while F3 is held
+---@nodiscard
 local function chording()
     return love.keyboard.isDown("f3")
 end
 
-local chorded = false -- something was pressed while F3 was held
+local chorded = false
 
--- returns (consumed, chordKey). main.lua sends chordKey on to the current
--- state; anything else consumed is F3 itself and goes no further.
+--- F3's own press is swallowed (the overlay toggles on release instead, so a
+-- chord doesn't flash it), and any other key pressed while F3 is held comes
+-- back as a chord for the current state to handle instead of a normal press
+---@param key string
+---@param isrepeat boolean
+---@return boolean handled
+---@return string? # the chord key to route to the state's chordpressed
 function Debug.keypressed(key, isrepeat)
     if key == "f3" then
         if not isrepeat then chorded = false end
@@ -38,21 +35,29 @@ function Debug.keypressed(key, isrepeat)
     return false
 end
 
+--- toggles the overlay on F3's release, unless the hold was used as a chord
+---@param key string
+---@return boolean handled
 function Debug.keyreleased(key)
     if key ~= "f3" then return false end
     if not chorded then Debug.toggle() end
     return true
 end
 
+---@return boolean visible
 function Debug.toggle()
     Debug.visible = not Debug.visible
     return Debug.visible
 end
 
+--- the project's degrade-don't-crash path: a native message box for a failure
+-- worth telling the player about
+---@param message string
 function Debug.error(message)
     love.window.showMessageBox("Error", message, "error")
 end
 
+--- samples fps/memory/latency, only while the overlay is up
 function Debug:update()
     if not Debug.visible then return end
     Debug.fps = love.timer.getFPS()
@@ -60,6 +65,7 @@ function Debug:update()
     Debug.latency = Math.round(love.timer.getDelta() * 1000)
 end
 
+--- the F3 panel, top left; game/debugOverlay.lua owns the play screen's own
 function Debug:draw()
     if not Debug.visible then return end
 

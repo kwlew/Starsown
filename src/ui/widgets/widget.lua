@@ -1,4 +1,4 @@
--- The base every UI widget is built on. Button, Toggle, Slider, Selector,
+--- The base every UI widget is built on. Button, Toggle, Slider, Selector,
 -- and TabBar all declared the same fields and contains/labelText/update
 -- bodies; this holds them once so each widget only writes what differs.
 --
@@ -28,12 +28,18 @@ Widget.__index = Widget
 
 Widget.fontRole = "body" -- overridden per class (see Button/TabBar)
 
--- lookup goes instance -> class -> Widget, so a class table only carries its own overrides
+--- lookup goes instance -> class -> Widget, so a class table only carries its own overrides
+---@param class table # the subclass table
+---@return table class
 function Widget.extend(class)
     class.__index = class
     return setmetatable(class, { __index = Widget })
 end
 
+--- the fields every widget shares; a subclass constructor adds only its own
+---@param class table
+---@param config table # { label?: string|fun(self: table): string, enabled?: boolean, danger?: boolean, font?: love.Font|string, x?: number, y?: number, w?: number, h?: number }
+---@return table
 function Widget.new(class, config)
     return setmetatable({
         label   = config.label or "",      -- string, or function(self) -> string
@@ -51,39 +57,55 @@ function Widget.new(class, config)
     }, class)
 end
 
--- set by a layout pass (see each screen's layout()), never during draw
+--- set by a layout pass (see each screen's layout()), never during draw
+---@param x number
+---@param y number
+---@param w number
+---@param h number
 function Widget:setBounds(x, y, w, h)
     self.x, self.y, self.w, self.h = x, y, w, h
 end
 
+---@param px number
+---@param py number
+---@return boolean
 function Widget:contains(px, py)
     return Theme.pointIn(px, py, self.x, self.y, self.w, self.h)
 end
 
+---@return boolean # whether input and the lit look apply at all
 function Widget:isInteractive()
     return self.enabled
 end
 
+---@return string # the label, resolved if it's a function
 function Widget:labelText()
     return Theme.resolveLabel(self.label, self)
 end
 
--- resolved per draw, not in the constructor, so a Theme.rescale is picked up without rebuilding
+--- resolved per draw, not in the constructor, so a Theme.rescale is picked up without rebuilding
+---@return any # a love.Font
 function Widget:getFont()
     return Theme.fontFor(self.font, self.fontRole)
 end
 
+---@return number # 0..1, folding in both the disabled dim and an entrance animation
 function Widget:alpha()
     return (self.enabled and 1 or 0.4) * self.introAlpha
 end
 
--- overridden by widgets with a second reason to glow (a Slider stays lit for the length of a drag)
+--- overridden by widgets with a second reason to glow (a Slider stays lit for the length of a drag)
+---@return boolean
 function Widget:isLit()
     return self.focused
 end
 
--- default: a left-click inside the row activates it; returns false, only a
+--- default: a left-click inside the row activates it; returns false, only a
 -- widget with a drag (Slider) captures the mouse
+---@param px number
+---@param py number
+---@param mouseButton integer
+---@return boolean # captured whether the widget wants further mouse events
 function Widget:mousepressed(px, py, mouseButton)
     if mouseButton == 1 and self:contains(px, py) and self.activate then
         self:activate()
@@ -91,18 +113,24 @@ function Widget:mousepressed(px, py, mouseButton)
     return false
 end
 
+--- the shared row background: glow, fill and border
+---@param alpha? number # defaults to the widget's own
 function Widget:drawRow(alpha)
     Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
         alpha or self:alpha(), self.danger and "danger" or "accent")
 end
 
--- caller owns the font stack, since most rows reuse the pushed font for a value column afterwards
+--- caller owns the font stack, since most rows reuse the pushed font for a value column afterwards
+---@param font any # a love.Font; already pushed by the caller
+---@param alpha number
 function Widget:drawLabel(font, alpha)
     Theme.setColor(Theme.colors.text, alpha)
     love.graphics.print(self:labelText(), self.x + Theme.metrics.padding,
         Theme.centerY(self.y, self.h, font))
 end
 
+--- eases the focus glow; subclasses call this before their own easing
+---@param dt number
 function Widget:update(dt)
     self.time = self.time + dt
     local lit = self:isLit() and self:isInteractive()

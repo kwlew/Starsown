@@ -1,5 +1,3 @@
--- src/ui/core/cursor.lua
-
 local Theme = require "ui.core.theme"
 local Motion = require "ui.core.motion"
 local Globals = require "globals";
@@ -24,28 +22,41 @@ local wasDown = false
 local click = nil
 local pinnedX, pinnedY = nil, nil
 
+--- draws our own cursor and hides the OS one; call once at boot
 function Cursor.init()
     Cursor.setEnabled(true) 
 end
 
+--- the only place in this module that touches OS cursor visibility. Off shows
+-- the OS arrow instead (the options.customCursor toggle).
+---@param isEnabled boolean
 function Cursor.setEnabled(isEnabled)
     enabled = isEnabled
     love.mouse.setVisible(not enabled)
 end
 
+--- recoloured per frame by whatever the pointer is over; nothing calls this to
+-- clear, so a screen that stops asserting hover fades back to rest on its own
+---@param isHovering boolean
+---@param isDanger? boolean # draws the danger colour rather than the accent
 function Cursor.setHover(isHovering, isDanger)
     hovering = isHovering
     danger = isDanger or false
 end
 
--- Draws the cursor somewhere other than the OS pointer for one frame -- the
+--- Draws the cursor somewhere other than the OS pointer for one frame -- the
 -- play screen tethers it inside the player's reach. It lasts a single draw and
 -- whoever wants it re-asserts every frame, so a screen that stops asking (or
 -- stops existing) hands the pointer back with no teardown to forget.
+---@param x number # screen space
+---@param y number # screen space
 function Cursor.setPosition(x, y)
     pinnedX, pinnedY = x, y
 end
 
+--- eases colour and outline toward whatever setHover last asked for, and runs
+-- the click ring (suppressed under reduced motion)
+---@param dt number
 function Cursor.update(dt)
     local target = Theme.colors.cursor
     if hovering then
@@ -71,6 +82,7 @@ function Cursor.update(dt)
     end
 end
 
+--- at the OS pointer, or wherever setPosition pinned it this frame
 function Cursor.draw()
     local x, y = pinnedX, pinnedY
     pinnedX, pinnedY = nil, nil -- cleared even when disabled, so no pin goes stale

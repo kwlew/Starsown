@@ -11,6 +11,11 @@ Menu.__index = Menu
 local INTRO_DURATION = 1.2
 local INTRO_STAGGER = 0.01
 
+--- a vertical column of Buttons over a FocusGroup -- the layout every screen
+-- with a list of choices uses
+---@param items table[] # { label: string|fun(self: table): string, onSelect?: fun(self: table), enabled?: boolean, danger?: boolean }[]
+---@param font? any # a love.Font or a role name; defaults to the "button" role
+---@return table
 function Menu.new(items, font)
     local self = setmetatable({
         group = FocusGroup.new(),
@@ -36,23 +41,31 @@ function Menu.new(items, font)
     return self
 end
 
+---@return any # a love.Font
 function Menu:getFont()
     return Theme.fontFor(self.font, "button")
 end
 
+---@return table[]
 function Menu:buttons()
     return self.group.widgets
 end
 
+---@param index integer
 function Menu:setFocus(index)
     self.group:setFocus(index)
 end
 
--- fn(widget, index) fires when the player moves the focus, not when the menu is built
+--- fn(widget, index) fires when the player moves the focus, not when the menu is built
+---@param fn fun(widget: table, index: integer)
 function Menu:onFocusChanged(fn)
     self.group.onFocusChanged = fn
 end
 
+--- centres the column and sizes every button to the widest label, so one long
+-- translation widens the whole menu rather than truncating
+---@param y number # top of the first row
+---@param spacing? number # row pitch, defaults to rowHeight + rowGap
 function Menu:layout(y, spacing)
     local m = Theme.metrics
     local font = self:getFont()
@@ -69,6 +82,7 @@ function Menu:layout(y, spacing)
     end
 end
 
+--- fades the buttons in, staggered top to bottom; a no-op under reduced motion
 function Menu:playIntro()
     if Motion.reduced then return end -- reduced motion: buttons are just there, no cascade
     self.introTime = 0
@@ -77,6 +91,7 @@ function Menu:playIntro()
     end
 end
 
+---@param dt number
 function Menu:update(dt)
     self.group:update(dt)
 
@@ -92,18 +107,31 @@ function Menu:update(dt)
     end
 end
 
+--- pass-throughs to the group
 function Menu:draw()              self.group:draw()                  end
 function Menu:keypressed(key)     return self.group:keypressed(key)  end
 function Menu:mousemoved(x, y)    return self.group:mousemoved(x, y) end
 
+---@param x number
+---@param y number
+---@param button integer
+---@return boolean consumed
 function Menu:mousepressed(x, y, button)
     return self.group:mousepressed(x, y, button)
 end
 
+---@param x number
+---@param y number
+---@param button integer
+---@return boolean consumed
 function Menu:mousereleased(x, y, button)
     return self.group:mousereleased(x, y, button)
 end
 
+---@param x number
+---@param y number
+---@return boolean hovering
+---@return boolean? danger
 function Menu:hovering(x, y)
     return self.group:hovering(x, y)
 end

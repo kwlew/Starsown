@@ -1,4 +1,4 @@
--- The project's entity art is flat convex primitives, so the polygon is shared
+--- The project's entity art is flat convex primitives, so the polygon is shared
 -- rather than owned by whatever needed it first: bodies in the world draw
 -- through here and so do item icons in the inventory.
 
@@ -6,8 +6,14 @@ local Math = require "utils.math"
 
 local Shape = {}
 
--- `sides` is the whole vocabulary until there is art: nil or < 3 is a circle,
+--- `sides` is the whole vocabulary until there is art: nil or < 3 is a circle,
 -- 3 a triangle, 4 a diamond, and so on
+---@param mode "fill"|"line"
+---@param x number centre
+---@param y number centre
+---@param radius number
+---@param sides? integer
+---@param rotation? number # radians; 0 puts a vertex straight up
 function Shape.draw(mode, x, y, radius, sides, rotation)
     if not sides or sides < 3 then
         love.graphics.circle(mode, x, y, radius)

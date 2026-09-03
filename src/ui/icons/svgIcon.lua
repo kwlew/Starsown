@@ -1,4 +1,4 @@
--- Renders a single-path SVG icon (square viewBox, e.g. 24x24) straight from
+--- Renders a single-path SVG icon (square viewBox, e.g. 24x24) straight from
 -- its path string, no image asset -- flattened to a triangle-fan mesh once,
 -- then filled with an even-odd stencil each draw. Robust for concave
 -- silhouettes (unlike love.graphics.polygon, whose ear-clipping can throw on
@@ -24,6 +24,11 @@ local GLOW_ALPHA = 0.30
 
 local MAX_CACHED = 8
 
+--- splits a path string into { cmd = "M" } and { num = 12 } tokens. Arc flags
+-- are single digits with no separator ("a1 1 0 010 2"), so they're read one
+-- character at a time rather than as numbers.
+---@param d string # an SVG path's `d` attribute
+---@return table[] tokens
 local function tokenize(d)
     local tokens, i, n = {}, 1, #d
     local cmd, argIndex = nil, 0
@@ -57,7 +62,18 @@ local function tokenize(d)
     return tokens
 end
 
--- endpoint-to-center parameterization
+--- endpoint-to-center parameterization
+---@param x0 number # current point
+---@param y0 number # current point
+---@param rx number
+---@param ry number
+---@param rotDeg number # x-axis rotation, degrees
+---@param largeArc boolean
+---@param sweep boolean
+---@param x number endpoint
+---@param y number endpoint
+---@param steps integer # segments to flatten into
+---@return number[] # flat x, y pairs
 local function arcPoints(x0, y0, rx, ry, rotDeg, largeArc, sweep, x, y, steps)
     rx, ry = math.abs(rx), math.abs(ry)
     if rx == 0 or ry == 0 or (x0 == x and y0 == y) then
@@ -90,7 +106,7 @@ local function arcPoints(x0, y0, rx, ry, rotDeg, largeArc, sweep, x, y, steps)
     local cx = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2
     local cy = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2
 
-    -- signed angle from (ux,uy) to (vx,vy): cross product for sign, dot
+    --- signed angle from (ux,uy) to (vx,vy): cross product for sign, dot
     -- product (clamped against float drift) for magnitude
     local function angleBetween(ux, uy, vx, vy)
         local dot = ux * vx + uy * vy
@@ -118,23 +134,35 @@ local function arcPoints(x0, y0, rx, ry, rotDeg, largeArc, sweep, x, y, steps)
     return pts
 end
 
+--- walks the path once into a flat point list normalized to 0..1, plus the
+-- point count of each subpath (a mark like GitHub's is one outline with
+-- holes, and the stencil needs to know where each ends)
+---@param d string # path data
+---@param svgSize number # the viewBox edge, e.g. 24
+---@param steps integer # segments per curve
+---@return number[] # points; flat x, y pairs in 0..1
+---@return integer[] # subpaths; point count per subpath
 local function flatten(d, svgSize, steps)
     local tokens = tokenize(d)
     local pts, idx = {}, 1
     local subpaths, subpathPoints = {}, 0
+    --- the next numeric token, consuming it
     local function num() local t = tokens[idx]; idx = idx + 1; return t.num end
 
     local cx, cy, sx, sy, cmd = 0, 0, 0, 0, nil
+    --- records a point, normalized out of viewBox space
     local function add(x, y)
         pts[#pts + 1] = x / svgSize
         pts[#pts + 1] = y / svgSize
         subpathPoints = subpathPoints + 1
     end
 
+    --- closes the subpath in progress and begins counting a new one
     local function startSubpath()
         if subpathPoints > 0 then subpaths[#subpaths + 1] = subpathPoints end
         subpathPoints = 0
     end
+    --- flattens a cubic bezier from the current point into `steps` segments
     local function cubic(x1, y1, x2, y2, x3, y3)
         local x0, y0 = cx, cy
         for s = 1, steps do
@@ -145,6 +173,7 @@ local function flatten(d, svgSize, steps)
         end
         cx, cy = x3, y3
     end
+    --- flattens an elliptical arc from the current point to (ex, ey)
     local function arc(rx, ry, rotDeg, largeArc, sweep, ex, ey)
         local raw = arcPoints(cx, cy, rx, ry, rotDeg, largeArc, sweep, ex, ey, steps)
         for i = 1, #raw, 2 do add(raw[i], raw[i + 1]) end
@@ -184,6 +213,11 @@ local function flatten(d, svgSize, steps)
 end
 
 
+--- flattens the path to points once; the mesh itself waits for the first draw
+---@param path string # an SVG path's `d` attribute, single path only
+---@param svgSize number # the viewBox edge, e.g. 24
+---@param glow? table # { layers?: integer, spread?: number, alpha?: number }
+---@return table
 function SvgIcon.new(path, svgSize, glow)
     glow = glow or {}
     local points, subpaths = flatten(path, svgSize, 10)
@@ -198,6 +232,9 @@ function SvgIcon.new(path, svgSize, glow)
     }, SvgIcon)
 end
 
+--- a triangle fan per subpath. Overlapping fans are fine: the even-odd
+-- stencil is what turns them back into an outline with holes.
+---@return any # a love.Mesh
 function SvgIcon:buildMesh()
     local verts = {}
     local base = 1 -- flat index (1-based) of the current subpath's first point
@@ -213,6 +250,11 @@ function SvgIcon:buildMesh()
     return love.graphics.newMesh(verts, "triangles")
 end
 
+--- fills the silhouette in the current colour, via an inverting stencil so
+-- concave shapes and holes come out right
+---@param x number
+---@param y number
+---@param size number
 function SvgIcon:fillMark(x, y, size)
     self.mesh = self.mesh or self:buildMesh()
 
@@ -229,6 +271,12 @@ function SvgIcon:fillMark(x, y, size)
     love.graphics.setStencilTest()
 end
 
+--- the mark, under an additive bloom of progressively larger copies
+---@param x number
+---@param y number
+---@param size number
+---@param color number[]
+---@param glowAmount number # 0..1
 function SvgIcon:paint(x, y, size, color, glowAmount)
     if glowAmount > 0 then
         love.graphics.setBlendMode("add")
@@ -244,6 +292,12 @@ function SvgIcon:paint(x, y, size, color, glowAmount)
     self:fillMark(x, y, size)
 end
 
+--- bakes one size/colour/glow variant to its own canvas, padded for the bloom,
+-- restoring the canvas and colour it borrowed
+---@param size number
+---@param color number[]
+---@param glowAmount number
+---@return table # { canvas: love.Canvas, pad: number }
 function SvgIcon:render(size, color, glowAmount)
 
     local pad = math.ceil(size * self.glowLayers * self.glowSpread / 2) + 1
@@ -262,6 +316,13 @@ function SvgIcon:render(size, color, glowAmount)
     return { canvas = canvas, pad = pad }
 end
 
+--- draws from a per-variant canvas cache, so a hover's changing glow costs one
+-- bake per distinct value rather than a stencil pass per frame
+---@param x number
+---@param y number
+---@param size number # rounded, to keep cache keys stable
+---@param color number[]
+---@param glowAmount? number # 0..1, defaults to 0
 function SvgIcon:draw(x, y, size, color, glowAmount)
     glowAmount = glowAmount or 0
     size = Math.round(size) -- integral, so the cache key is stable

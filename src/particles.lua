@@ -1,4 +1,4 @@
--- namespace: local Particles = require "particles"; Particles.Stars.new{...}
+--- namespace: local Particles = require "particles"; Particles.Stars.new{...}
 -- .lua not particles/init.lua because package.path here has no ?/init.lua
 
 return {

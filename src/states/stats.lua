@@ -33,11 +33,16 @@ for i, row in ipairs(ROWS) do
     if row.tone == "rainbow" then CHROMA_ROW = i end
 end
 
+---@param n number|nil # nil reads as unavailable rather than 0 -- the counters
+-- stay nil until the first successful response
+---@return string
 local function valueText(n)
     if not n then return I18n.t("stats.unavailable") end
     return Format.group(n)
 end
 
+--- keeps the rainbow row's TextFactory in step with the live value and the
+-- current layout, rebuilding it only when the font actually changed
 function Stats:syncChroma()
     local row = self.rows and self.rows[CHROMA_ROW]
     if not row then return end
@@ -61,6 +66,8 @@ function Stats:syncChroma()
     end
 end
 
+---@param previousName string|nil
+---@param opts? table # { returnTo?: string }
 function Stats:enter(previousName, opts)
     Presence.set{
         details = "Stats",
@@ -88,11 +95,14 @@ function Stats:enter(previousName, opts)
     self:layout()
 end
 
+--- fades back to whichever screen opened this one
 function Stats:leave()
     UI.Sfx.select()
     StateManager.fadeTo(self.returnTo)
 end
 
+--- centres the readout, keeping it clear of the heading above and the hint
+-- line below however short the window is
 function Stats:layout()
     local w, h = love.graphics.getDimensions()
     local m = UI.Theme.metrics
@@ -118,10 +128,12 @@ function Stats:layout()
     self:syncChroma()
 end
 
+--- re-lays out for the new window size
 function Stats:resize()
     self:layout()
 end
 
+---@param dt number
 function Stats:update(dt)
     self.group:update(dt)
 
@@ -132,6 +144,7 @@ function Stats:update(dt)
     end
 end
 
+---@param key string
 function Stats:keypressed(key)
     if key == "escape" then
         self:leave()
@@ -140,14 +153,18 @@ function Stats:keypressed(key)
     self.group:keypressed(key)
 end
 
+--- pass-throughs to the focus group
 function Stats:mousepressed(x, y, button)  self.group:mousepressed(x, y, button)  end
 function Stats:mousereleased(x, y, button) self.group:mousereleased(x, y, button) end
 
+---@param x number
+---@param y number
 function Stats:mousemoved(x, y)
     self.mouseX, self.mouseY = x, y
     self.group:mousemoved(x, y)
 end
 
+---@return string|nil # a line to explain an empty readout, or nil once any value has arrived
 function Stats:statusKey()
     for _, row in ipairs(ROWS) do
         if row.get() ~= nil then return nil end
@@ -155,11 +172,15 @@ function Stats:statusKey()
     return StatsService.enabled and "stats.waiting" or "stats.sharingOff"
 end
 
+---@param tone? "gold"|"rainbow"|string
+---@return number[]
 function Stats:valueColor(tone)
     if tone == "gold" then return UI.Theme.fixedColors.gold end
     return UI.Theme.colors.accent
 end
 
+--- the rainbow row's value, through the same chroma shader as the menu title
+---@param y number
 function Stats:drawChromaValue(y)
     local row = self.rows[CHROMA_ROW]
     local offset = UI.Label.shadowOffset()
@@ -172,6 +193,8 @@ function Stats:drawChromaValue(y)
     self.chroma:drawChroma()
 end
 
+--- heading, the four rows, the back button, and a status line while nothing
+-- has arrived yet
 function Stats:draw()
     local h = love.graphics.getHeight()
 

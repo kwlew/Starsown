@@ -12,6 +12,8 @@ local Globals = require "globals"
 
 local Stats = require "services.stats"
 
+--- boot: scale the UI, read settings, apply language/theme/cursor/motion, then
+-- hand off to the loading screen, which owns the rest of the load
 ---@diagnostic disable-next-line: duplicate-set-field
 function love.load()
     love.window.setTitle(Globals.game.name)
@@ -40,6 +42,10 @@ function love.load()
     Presence.initialize()
 end
 
+--- the current state, then everything that runs regardless of which screen is
+-- up: the debug sampler, Discord presence, the stats heartbeat, the cursor and
+-- the menu music crossfade
+---@param dt number
 function love.update(dt)
     StateManager.update(dt)
     Debug:update()
@@ -49,22 +55,34 @@ function love.update(dt)
     UI.Music.update(dt)
 end
 
+--- closes the Discord connection and saves any undelivered stats backlog
 function love.quit()
     Presence.shutdown()
     Stats.shutdown()
 end
 
+--- the current state, the F3 panel, then the cursor over everything
 function love.draw()
     StateManager.draw()
     Debug:draw()
     UI.Cursor.draw()
 end
 
+--- rescales the UI first, then tells the state -- which is passed whether the
+-- scale actually changed, since only then do cached fonts and labels need
+-- rebuilding
+---@param w number
+---@param h number
 function love.resize(w, h)
     local rescaled = UI.Theme.rescale(h)
     StateManager.resize(w, h, rescaled)
 end
 
+--- F3 chords are routed to the state's chordpressed instead of its keypressed;
+-- see core/debug.lua
+---@param key string
+---@param scancode string
+---@param isrepeat boolean
 function love.keypressed(key, scancode, isrepeat)
     local consumed, chord = Debug.keypressed(key, isrepeat)
     if chord then
@@ -75,6 +93,8 @@ function love.keypressed(key, scancode, isrepeat)
     StateManager.keypressed(key, scancode, isrepeat)
 end
 
+---@param key string
+---@param scancode string
 function love.keyreleased(key, scancode)
     if Debug.keyreleased(key) then return end
     StateManager.keyreleased(key, scancode)
@@ -86,6 +106,9 @@ love.mousereleased = StateManager.mousereleased
 love.mousemoved    = StateManager.mousemoved
 love.wheelmoved    = StateManager.wheelmoved
 
+--- LÖVE's main loop, replaced only to make the frame cap optional: the stock
+-- loop always sleeps, and the uncapFps setting needs that to be conditional
+---@return fun(): integer|nil # the per-frame step; returns an exit code to quit
 ---@diagnostic disable-next-line: duplicate-set-field
 function love.run()
     ---@diagnostic disable-next-line: redundant-parameter
