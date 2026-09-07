@@ -1,6 +1,8 @@
 {
   "areas": {
     "hub": "The Hub",
-    "wastes": "The Wastes"
+    "wilderness": "The Outskirts",
+    "wastes": "The Wastes",
+    "ashlands": "The Ashlands"
   }
 }

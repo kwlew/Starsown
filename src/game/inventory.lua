@@ -102,6 +102,27 @@ function Inventory:removeOne(id)
     return false
 end
 
+--- removes up to `count` units of `id`, across as many slots as it takes --
+-- the multi-unit counterpart to removeOne(), for paying a whole stack at once
+-- (a quest turn-in) rather than one unit at a time
+---@param id string
+---@param count integer
+---@return integer # how many were actually removed; less than `count` if the player didn't have enough
+function Inventory:removeCount(id, count)
+    local removed = 0
+    for i = 1, self.size do
+        if removed >= count then break end
+        local slot = self.slots[i]
+        if slot and slot.id == id then
+            local taken = math.min(slot.count, count - removed)
+            slot.count = slot.count - taken
+            removed = removed + taken
+            if slot.count <= 0 then self.slots[i] = nil end
+        end
+    end
+    return removed
+end
+
 --- lifts the whole stack out, leaving the slot empty
 ---@param index integer
 ---@return table|nil # { id: string, count: integer }

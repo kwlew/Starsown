@@ -11,6 +11,7 @@ return {
     player  = { 0.36, 0.68, 1.00 },
     blade   = { 0.86, 0.95, 1.00 }, -- the swipe arc, its sparks, the facing tick
     hostile = { 0.95, 0.33, 0.32 },
+    hostileAlt = { 0.95, 0.55, 0.20 }, -- the Ashlands' own hostile tone (game/enemies/cinder.lua)
     outline = { 0.92, 0.95, 1.00 },
     range   = { 0.72, 0.86, 1.00 }, -- the ring the cursor is tethered inside
     shadow  = { 0.03, 0.05, 0.03 }, -- what every body casts on the ground
@@ -32,4 +33,10 @@ return {
     hubGround     = { 0.16, 0.17, 0.20 },
     hubGroundAlt  = { 0.19, 0.20, 0.24 },
     hubGroundLine = { 0.10, 0.11, 0.14 },
+
+    -- the Ashlands' own ground (see game/areas/ashlands.lua) -- scorched
+    -- and warm rather than the Wastes' grass or the Hub's slate
+    ashlandsGround     = { 0.20, 0.10, 0.08 },
+    ashlandsGroundAlt  = { 0.24, 0.13, 0.10 },
+    ashlandsGroundLine = { 0.13, 0.06, 0.05 },
 }

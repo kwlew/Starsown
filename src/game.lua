@@ -16,6 +16,7 @@ return {
     NpcManager     = require "game.npcManager",
     Shops          = require "game.shops",
     ShopPanel      = require "game.shopPanel",
+    Quests         = require "game.quests",
     Items          = require "game.items",
     Skills         = require "game.skills",
     Areas          = require "game.areas",

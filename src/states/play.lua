@@ -2,12 +2,14 @@
 -- ground, one enemy type, a melee swing, an inventory the drops go into, and
 -- the pause states around them.
 --
--- Four things can be "open" over the world and they are not the same thing:
+-- Five things can be "open" over the world and they are not the same thing:
 --   * the pause menu freezes the world and takes all input
 --   * a quiet pause (F3 + P) freezes it with nothing drawn over it
 --   * the inventory leaves the world running but takes the player's hands off it
 --   * the shop panel leaves the player's movement alone, since walking away
 --     from the NPC it's open for is what closes it (see Play:update)
+--   * the dialogue/quest box freezes the world like the pause menu does --
+--     it's a deliberate modal prompt, not a live panel to browse mid-stride
 -- isPaused() is derived from the first two rather than stored, so the two can
 -- never disagree about whether time is passing.
 
@@ -31,7 +33,6 @@ local SPAWN_NEAR, SPAWN_FAR = 1.05, 1.35
 local DESPAWN = 3
 local DEFAULT_KILL_XP = 5       -- combat xp for a kill whose spec doesn't set its own xpReward
 local DEFAULT_KILL_CURRENCY = 2 -- likewise for currency, when a spec sets no currencyReward
-local EXIT_HINT_MARGIN = 60     -- world units beyond an exit's own rect that still shows the hint for it
 
 --- nearer the camera means standing lower, so ground y decides what overlaps
 -- what; a body that leaves the ground must not slide behind what it was in
@@ -70,18 +71,26 @@ function Play:buildOverlays()
               end },
         },
     }
+
+    -- rebuilt per-prompt (see Play:openDialogue/openQuest) since its title,
+    -- message and buttons all vary by what's being opened -- this is just
+    -- the placeholder so isOpen()/layout()/etc. always have something to
+    -- call before the first real one exists
+    self.dialog = UI.Dialog.new{}
+    self.dialog:setFocusSound(UI.Sfx.focus)
 end
 
 --- everything that only ever happens once per run: a fresh player, inventory
--- and bag, the shared particle pools, and the draw-order scratch buffer --
--- none of it tied to the world or to any one area. Only called on arriving
--- from the main menu (or with nothing built yet); coming back from Options
--- must not call this, or the run in progress would be lost.
+-- and bag, the world (there's exactly one, now -- see game/world.lua), the
+-- NPC roster, the shared particle pools, and the draw-order scratch buffer.
+-- Only called on arriving from the main menu (or with nothing built yet);
+-- coming back from Options must not call this, or the run in progress
+-- would be lost.
 function Play:newGame()
     self.player = Game.Player.new(0, 0)
     Game.Hud.reset() -- a new run's hp starts full; the bar shouldn't animate up to it
     self.inventory = Game.Inventory.new{ slots = INVENTORY_SLOTS }
-    self.bag = Game.InventoryPanel.new(self.inventory)
+    self.bag = Game.InventoryPanel.new(self.inventory, self.player.equipped)
     self.shop = Game.ShopPanel.new(self.inventory, {
         get = function() return self.currency end,
         spend = function(amount) self.currency = self.currency - amount end,
@@ -94,6 +103,7 @@ function Play:newGame()
 
     self.currency = 0
     self.skills = {} -- id -> { xp = number }; see game/skills.lua
+    self.quests = {} -- id -> { progress = number, complete = boolean }; see game/quests.lua
     self.stats = { kills = 0, itemsGathered = 0, playtime = 0 }
     self:loadProgress()
 
@@ -107,64 +117,37 @@ function Play:newGame()
 
     if self.pause then self.pause:close() end
 
-    self:enterArea("hub", 0, 0)
-end
-
---- a fresh world and enemy roster for wherever the player is going, with the
--- camera re-snapped to the arrival point -- everything newGame() built
--- (player, inventory, bag) is left alone, only the world around it changes.
--- An unregistered areaId (a typo, or a spec that failed to load) degrades to
--- an empty spec rather than erroring -- the world just draws as the default
--- placeholder checker, the same as before areas existed.
----@param areaId string
----@param spawnX number
----@param spawnY number
-function Play:enterArea(areaId, spawnX, spawnY)
-    self.areaId = areaId
-    local spec = Game.Areas.get(areaId) or {}
-
-    self.world = Game.World.new{ ground = spec.ground, groundAlt = spec.groundAlt, groundLine = spec.groundLine }
-
-    -- a clean arrival: at the spawn point, with no momentum or knockback
-    -- carried over from wherever the player just left
-    self.player.x, self.player.y = spawnX, spawnY
-    self.player.vx, self.player.vy = 0, 0
-    self.player.kx, self.player.ky = 0, 0
-    self.player.z, self.player.vz = 0, 0
-
+    self.world = Game.World.new()
     self.camera = Game.Camera.new{ zoom = UI.Theme.scale }
     self.camera:snapTo(self.player.x, self.player.y)
 
-    -- refreshed in place rather than replaced, so anything holding onto this
-    -- one table (Play:update's own locals included) sees the new area
-    -- without needing to re-fetch self.ctx mid-transition
-    self.ctx = self.ctx or {}
-    self.ctx.world = self.world
-    self.ctx.player = self.player
-    self.ctx.camera = self.camera
-    self.ctx.pointerX, self.ctx.pointerY = self.player.aimX, self.player.aimY
+    self.ctx = {
+        world = self.world,
+        player = self.player,
+        camera = self.camera,
+        pointerX = self.player.aimX, pointerY = self.player.aimY,
+    }
 
-    self:closeShop() -- the NPC being talked to (if any) is about to stop existing
-    self:resetNpcs(spec)
+    self:resetNpcs()
     self:resetEnemies()
 end
 
---- a fresh NpcManager for wherever the player is going, populated from the
--- area's own `npcs` list (see game/areas.lua) -- unlike resetEnemies, this
--- never runs on player death: an NPC is furniture for the area, not a
--- hostile spawn.
----@param spec table # the area spec enterArea just resolved
-function Play:resetNpcs(spec)
+--- the one NpcManager for the whole world, populated once from every
+-- registered area's own `npcs` list combined (see game/areas.lua) -- an
+-- NPC is permanent world furniture, there's no transition to rebuild it on
+-- any more.
+function Play:resetNpcs()
     self.npcManager = Game.NpcManager.new()
-    for _, entry in ipairs(spec.npcs or {}) do
-        self.npcManager:spawn(entry.id, entry.x, entry.y)
+    for _, id in ipairs(Game.Areas.ids) do
+        for _, entry in ipairs(Game.Areas.get(id).npcs or {}) do
+            self.npcManager:spawn(entry.id, entry.x, entry.y)
+        end
     end
 end
 
 --- a fresh, empty EnemyManager and the ctx/spawnTimer fields that go with it
--- -- shared by enterArea (a new world wants a new roster too) and
--- onPlayerDeath (dying clears the enemies around you without rebuilding the
--- world itself)
+-- -- shared by newGame (the first roster) and onPlayerDeath (dying clears
+-- the enemies around you without rebuilding the world itself)
 function Play:resetEnemies()
     self.enemyManager = Game.EnemyManager.new()
     self.spawnTimer = 0
@@ -173,12 +156,13 @@ function Play:resetEnemies()
 end
 
 --- pulls whatever states.loading stored under "save" into the fresh
--- inventory/currency/skills newGame() just built. An unknown item id
--- (removed in a later patch) is dropped rather than crashing -- Items is
--- guaranteed loaded by the time this runs, since Play:enter loads it before
--- newGame(). Skill entries are copied rather than aliased, the same
--- precaution the inventory loop below already takes, so mutating
--- self.skills during play can't reach back into the cached save data.
+-- inventory/currency/skills/quests/equipment newGame() just built. An
+-- unknown item id (removed in a later patch) is dropped rather than
+-- crashing -- Items is guaranteed loaded by the time this runs, since
+-- Play:enter loads it before newGame(). Skill and quest entries are copied
+-- rather than aliased, the same precaution the inventory loop below already
+-- takes, so mutating self.skills/self.quests during play can't reach back
+-- into the cached save data.
 function Play:loadProgress()
     local save = Assets.get("save")
     if not save then return end
@@ -189,6 +173,10 @@ function Play:loadProgress()
         self.skills[id] = { xp = entry.xp }
     end
 
+    for id, entry in pairs(save.quests) do
+        self.quests[id] = { progress = entry.progress, complete = entry.complete }
+    end
+
     for key, value in pairs(save.stats) do
         self.stats[key] = value
     end
@@ -196,6 +184,16 @@ function Play:loadProgress()
     for i, slot in ipairs(save.inventory) do
         if slot and Game.Items.get(slot.id) then
             self.inventory:put(i, { id = slot.id, count = slot.count })
+        end
+    end
+
+    -- re-validated against the item registry here rather than in
+    -- core/save.lua, same reasoning as the inventory loop above -- and
+    -- against the item's own current `slot`, in case a later patch
+    -- repurposes the id to something no longer equippable there
+    for slotName, itemId in pairs(save.equipped) do
+        if Game.Items.get(itemId) and Game.Items.slot(itemId) == slotName then
+            self.player.equipped[slotName] = itemId
         end
     end
 end
@@ -214,6 +212,8 @@ function Play:snapshot()
         currency = self.currency,
         inventory = slots,
         skills = self.skills,
+        quests = self.quests,
+        equipped = self.player.equipped,
         stats = self.stats,
     }
 end
@@ -242,6 +242,8 @@ function Play:enter(previousName)
     Game.Items.load()
     Game.Skills.load()
     Game.Areas.load()
+    Game.Shops.load()
+    Game.Quests.load()
     self:buildOverlays()
 
     if not self.world or previousName == "mainMenu" then
@@ -256,6 +258,7 @@ function Play:layout()
     self.pause:layout()
     self.bag:layout()
     self.shop:layout()
+    self.dialog:layout()
 end
 
 ---@return boolean # derived, never stored, so the two kinds of pause can't disagree
@@ -290,14 +293,14 @@ function Play:toggleInventory()
 end
 
 --- one enemy at a time, on a timer, just outside the view and under the cap.
--- A noSpawn area (the Hub) skips this outright -- the whole point of a safe
--- home base -- rather than filtering per-area spawn tables, which is still
--- to come (Phase 4).
+-- Resolved against wherever the roll actually lands, not the player's own
+-- position -- a spawn point that lands in a noSpawn band (the Hub, or the
+-- peaceful ring around it) skips this outright, and one that lands in the
+-- Wastes only ever produces grunts, the Ashlands only cinders (see
+-- Areas.at).
 ---@param dt number
 ---@param offscreen number # distance from the player to the corner of the view
 function Play:spawnStep(dt, offscreen)
-    local spec = Game.Areas.get(self.areaId)
-    if spec and spec.noSpawn then return end
     if self.enemyManager:count() >= ENEMY_CAP then return end
 
     self.spawnTimer = self.spawnTimer + dt
@@ -307,7 +310,10 @@ function Play:spawnStep(dt, offscreen)
     local x, y = Math.polar(self.player.x, self.player.y, Math.randAngle(),
         Math.randRange(offscreen * SPAWN_NEAR, offscreen * SPAWN_FAR))
 
-    self.enemyManager:spawnRandom(x, y)
+    local area = Game.Areas.at(x, y)
+    if area.noSpawn then return end
+
+    self.enemyManager:spawnRandom(x, y, area.enemyTable)
 end
 
 --- everything a kill leaves behind goes straight to the bag; there are no
@@ -317,6 +323,9 @@ end
 -- changes once the requirement is met), it just never reaches the bag.
 -- Combat is the only skill anything grants XP for today; a kill grants it
 -- regardless of loot, since dying to something is proof enough of the fight.
+-- This is also the one place both quest objective types get checked -- a
+-- "collect" quest against whatever just landed in the bag, a "kill" quest
+-- against the kill itself.
 ---@param enemy Enemy
 function Play:collect(enemy)
     local gathered = 0
@@ -326,6 +335,7 @@ function Play:collect(enemy)
             -- add() hands back what wouldn't fit, so a full bag counts only
             -- what actually landed
             gathered = gathered + drop.count - self.inventory:add(drop.id, drop.count)
+            Game.Quests.checkObjective(self.quests, "collect", drop.id, self.inventory:count(drop.id))
         end
     end
 
@@ -333,15 +343,17 @@ function Play:collect(enemy)
     self.stats.itemsGathered = self.stats.itemsGathered + gathered
     self.currency = self.currency + (enemy.spec.currencyReward or DEFAULT_KILL_CURRENCY)
     Game.Skills.grantXp(self.skills, "combat", enemy.spec.xpReward or DEFAULT_KILL_XP)
+    Game.Quests.checkObjective(self.quests, "kill", enemy.spec.id, 1)
 end
 
 --- the consequence is deliberately minimal and easy to change later: full hp,
--- back at the world origin (there's no Hub yet to respawn at instead), and a
--- clean slate of enemies so respawning isn't an immediate second death.
--- Losing items/currency on death is an open design decision (see PLAN.md's
--- "Death consequences finalized" and "Open Design Decisions" sections) and
--- isn't implemented here -- keeping everything is the safer default until
--- that's actually decided.
+-- back at the world origin -- which is the Hub's own center, so death
+-- already returns the player home -- and a clean slate of enemies so
+-- respawning isn't an immediate second death. Losing items/currency on
+-- death is an open design decision (see PLAN.md's "Death consequences
+-- finalized" and "Open Design Decisions" sections) and isn't implemented
+-- here -- keeping everything is the safer default until that's actually
+-- decided.
 function Play:onPlayerDeath()
     self.player:respawn(0, 0)
     self:resetEnemies()
@@ -365,26 +377,11 @@ function Play:tetherPointer()
     love.mouse.setPosition(self.camera:toScreen(self.player.aimX, self.player.aimY))
 end
 
---- the current area's one hand-placed exit rectangle, if it has one -- see
--- game/areas.lua
----@return table|nil
-function Play:currentExit()
-    local spec = Game.Areas.get(self.areaId)
-    return spec and spec.exit
-end
-
---- true while the player is within `rect`, expanded by `margin` on every
--- side -- margin 0 is the exact trigger a transition fires on; a positive
--- margin is the wider "close enough to hint at it" zone around that
----@param rect table # { x, y, w, h }, centered at (x, y)
----@param margin? number # defaults to 0
----@return boolean
-function Play:playerInRect(rect, margin)
-    margin = margin or 0
-    local player = self.player
-    local halfW, halfH = rect.w / 2 + margin, rect.h / 2 + margin
-    return player.x >= rect.x - halfW and player.x <= rect.x + halfW
-        and player.y >= rect.y - halfH and player.y <= rect.y + halfH
+--- the area whose radius band the player is currently standing in -- see
+-- game/areas.lua's Areas.at; always returns a spec, never nil
+---@return table
+function Play:currentBiome()
+    return Game.Areas.at(self.player.x, self.player.y)
 end
 
 --- true while the cursor sits on something worth pointing at; the cursor picks
@@ -440,6 +437,10 @@ function Play:interact()
         self.player:setAttacking(false) -- movement keeps working (see Play:update); only the swing cancels
         self.interactingNpc = npc.id
         self.shop:openPanel(npc.spec.shop, Game.Npcs.name(npc.spec.id))
+    elseif npc.spec.interaction == "dialogue" then
+        self:openDialogue(npc)
+    elseif npc.spec.interaction == "quest" then
+        self:openQuest(npc)
     end
 end
 
@@ -449,17 +450,143 @@ function Play:closeShop()
     self.interactingNpc = nil
 end
 
+--- the single "Close" button both the dialogue box and every read-only quest
+-- state (in progress, already turned in) share
+---@return table[]
+function Play:closeButton()
+    return { { label = function() return I18n.t("dialog.close") end,
+               onSelect = function() self.dialog:close() end } }
+end
+
+--- one line of flavor text (see game/npcs.lua's `interaction = "dialogue"`),
+-- closed with a single button -- unlike the shop, this is a fully modal
+-- prompt (see Play:update), since there's nothing to browse
+---@param npc Npc
+function Play:openDialogue(npc)
+    UI.Sfx.press()
+    self.player:releaseAll()
+
+    self.dialog = UI.Dialog.new{
+        title = Game.Npcs.name(npc.spec.id),
+        message = I18n.t("game.dialogue." .. npc.spec.dialogue),
+        buttons = self:closeButton(),
+        onCancel = function() self.dialog:close() end,
+    }
+    self.dialog:setFocusSound(UI.Sfx.focus)
+    self.dialog:openDialog()
+end
+
+--- the offer/progress/thanks line for a quest-giver's dialog, per
+-- Game.Quests' three states -- see game/quests.lua's header for why
+-- "collect" reads live inventory rather than the persisted `progress`.
+-- "kill" quests use their own generic offer/progress/done strings (no item
+-- to name, so no need for one -- see game/quests/cullGrunts.lua) rather
+-- than sharing "collect"'s `{item}`-shaped ones.
+---@param spec table # a game/quests/*.lua spec
+---@return string
+function Play:questMessage(spec)
+    local objective = spec.objective
+
+    if objective.type == "kill" then
+        if Game.Quests.isComplete(self.quests, spec.id) then
+            return I18n.t("game.quest.doneKill")
+        end
+        if not Game.Quests.isAccepted(self.quests, spec.id) then
+            return I18n.t("game.quest.offerKill", { count = objective.count })
+        end
+        return I18n.t("game.quest.progressKill",
+            { progress = Game.Quests.progressOf(self.quests, spec.id), count = objective.count })
+    end
+
+    if Game.Quests.isComplete(self.quests, spec.id) then
+        return I18n.t("game.quest.done")
+    end
+
+    local itemName = Game.Items.name(objective.item)
+    if not Game.Quests.isAccepted(self.quests, spec.id) then
+        return I18n.t("game.quest.offer", { item = itemName, count = objective.count })
+    end
+
+    local progress = math.min(self.inventory:count(objective.item), objective.count)
+    return I18n.t("game.quest.progress", { item = itemName, progress = progress, count = objective.count })
+end
+
+--- not-yet-accepted offers Decline/Accept, a ready one offers Turn In,
+-- anything else (in progress, already turned in) just offers Close -- one
+-- dialog built fresh per state rather than one reused box with swappable
+-- buttons, since Dialog's button row is fixed at construction
+---@param npc Npc
+function Play:openQuest(npc)
+    local spec = Game.Quests.get(npc.spec.quest)
+    if not spec then return end
+
+    UI.Sfx.press()
+    self.player:releaseAll()
+
+    local buttons
+    if not Game.Quests.isAccepted(self.quests, spec.id) then
+        buttons = {
+            { label = function() return I18n.t("game.quest.decline") end,
+              onSelect = function() self.dialog:close() end },
+            { label = function() return I18n.t("game.quest.accept") end,
+              onSelect = function()
+                  Game.Quests.accept(self.quests, spec.id)
+                  self.dialog:close()
+              end },
+        }
+    elseif Game.Quests.ready(self.quests, self.inventory, spec.id) then
+        buttons = { { label = function() return I18n.t("game.quest.turnIn") end,
+                      onSelect = function() self:turnInQuest(spec) end } }
+    else
+        buttons = self:closeButton()
+    end
+
+    self.dialog = UI.Dialog.new{
+        title = Game.Npcs.name(npc.spec.id),
+        message = self:questMessage(spec), -- static: nothing changes while a modal dialog is open
+        buttons = buttons,
+        onCancel = function() self.dialog:close() end,
+    }
+    self.dialog:setFocusSound(UI.Sfx.focus)
+    self.dialog:openDialog()
+end
+
+--- pays a "collect" objective's cost (Quests.ready already confirmed the
+-- player can afford it), grants the reward, and marks the quest turned in
+---@param spec table # a game/quests/*.lua spec
+function Play:turnInQuest(spec)
+    if spec.objective.type == "collect" then
+        self.inventory:removeCount(spec.objective.item, spec.objective.count)
+    end
+
+    local reward = spec.reward or {}
+    if reward.currency then self.currency = self.currency + reward.currency end
+    if reward.xp then Game.Skills.grantXp(self.skills, reward.xp.skill, reward.xp.amount) end
+    for _, item in ipairs(reward.items or {}) do
+        self.inventory:add(item.id, item.count)
+    end
+
+    Game.Quests.complete(self.quests, spec.id)
+    UI.Sfx.select()
+    self.dialog:close()
+end
+
 --- the whole run: aim, player, enemies, the loot and particles a kill leaves,
--- spawning, and the camera. Both kinds of pause return before any of it.
+-- spawning, and the camera. Both kinds of pause, and the modal dialog box,
+-- all return before any of it.
 ---@param dt number
 function Play:update(dt)
     if self.pause:isOpen() then
         self.pause:update(dt)
         return
     end
+    if self.dialog:isOpen() then
+        self.dialog:update(dt)
+        return
+    end
     if self.quietPause then return end
 
-    self.stats.playtime = self.stats.playtime + dt -- past both pauses, so only live play counts
+    self.stats.playtime = self.stats.playtime + dt -- past every pause/modal, so only live play counts
 
     local ctx, player = self.ctx, self.player
     if self.bag:isOpen() or self.shop:isOpen() then
@@ -480,12 +607,6 @@ function Play:update(dt)
         if not npc or not self:withinInteractRange(npc) then self:closeShop() end
     end
 
-    local exit = self:currentExit()
-    if exit and self:playerInRect(exit) then
-        self:enterArea(exit.target, exit.spawnX, exit.spawnY)
-        return -- everything below reads ctx/enemyManager/camera, all just rebuilt for the new area
-    end
-
     self.npcManager:update(dt, ctx)
 
     local offscreen = Math.length(self.camera:halfExtents())
@@ -503,7 +624,10 @@ function Play:update(dt)
     self.deaths:update(dt)
     self:spawnStep(dt, offscreen)
 
-    self.camera:follow(player.x, player.y, dt)
+    -- only the Hub's own spec sets `bounds` -- everywhere else this is nil,
+    -- which is exactly "follow unclamped," the same as an open wilderness
+    -- always has
+    self.camera:follow(player.x, player.y, dt, self:currentBiome().bounds)
 end
 
 ---@param w number
@@ -523,8 +647,9 @@ function Play:chordpressed(key)
     end
 end
 
---- routed by what's open: the pause menu takes everything, the inventory takes
--- only its own close keys, and otherwise it reaches the player
+--- routed by what's open: the pause menu and the dialog box take everything,
+-- the inventory takes only its own close keys, and otherwise it reaches the
+-- player
 ---@param key string
 function Play:keypressed(key)
     if key == "f4" then
@@ -534,6 +659,11 @@ function Play:keypressed(key)
 
     if self.pause:isOpen() then
         self.pause:keypressed(key)
+        return
+    end
+
+    if self.dialog:isOpen() then
+        self.dialog:keypressed(key)
         return
     end
 
@@ -575,6 +705,7 @@ end
 ---@param y number
 function Play:mousemoved(x, y)
     if self.pause:isOpen() then self.pause:mousemoved(x, y) end
+    if self.dialog:isOpen() then self.dialog:mousemoved(x, y) end
     if self.bag:isOpen() then self.bag:mousemoved(x, y) end
     if self.shop:isOpen() then self.shop:mousemoved(x, y) end
 end
@@ -585,6 +716,10 @@ end
 function Play:mousepressed(x, y, button)
     if self.pause:isOpen() then
         self.pause:mousepressed(x, y, button)
+        return
+    end
+    if self.dialog:isOpen() then
+        self.dialog:mousepressed(x, y, button)
         return
     end
     if self.bag:isOpen() then
@@ -606,6 +741,10 @@ function Play:mousereleased(x, y, button)
         self.pause:mousereleased(x, y, button)
         return
     end
+    if self.dialog:isOpen() then
+        self.dialog:mousereleased(x, y, button)
+        return
+    end
     if button == 1 then self.player:setAttacking(false) end
 end
 
@@ -614,6 +753,10 @@ end
 function Play:drawCursor()
     if self.pause:isOpen() then
         UI.Cursor.setHover(self.pause:hovering(love.mouse.getPosition()))
+        return
+    end
+    if self.dialog:isOpen() then
+        UI.Cursor.setHover(self.dialog:hovering(love.mouse.getPosition()))
         return
     end
     if self.bag:isOpen() then
@@ -627,23 +770,6 @@ function Play:drawCursor()
 
     UI.Cursor.setPosition(self.camera:toScreen(self.player.aimX, self.player.aimY))
     UI.Cursor.setHover(self:aimOverEnemy())
-end
-
---- a single hand-placed rectangle marking the way to another area (see
--- game/areas.lua) -- drawn in world space, under the camera transform, so
--- it sits on the ground the same way anything else here does
----@param exit table # { x, y, w, h }, centered at (x, y)
-function Play:drawExit(exit)
-    local glow = Game.Palette.energy
-    local x, y = exit.x - exit.w / 2, exit.y - exit.h / 2
-
-    love.graphics.setColor(glow[1], glow[2], glow[3], 0.30)
-    love.graphics.rectangle("fill", x, y, exit.w, exit.h)
-    love.graphics.setColor(glow)
-    love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", x, y, exit.w, exit.h)
-    love.graphics.setLineWidth(1)
-    love.graphics.setColor(1, 1, 1, 1)
 end
 
 --- shadows all go down before any body, or a nearer entity's shadow lands on
@@ -667,9 +793,6 @@ function Play:draw()
     self.camera:attach()
     self.world:draw(self.camera:view())
 
-    local exit = self:currentExit()
-    if exit then self:drawExit(exit) end
-
     self:drawEntities()
     self.player.swipe:draw()
     self.deaths:draw()
@@ -681,12 +804,11 @@ function Play:draw()
 
     -- every overlay takes the screen while it's up (each draws its own scrim),
     -- so the HUD and the hint row go with them
-    if not self.bag:isOpen() and not self.pause:isOpen() and not self.shop:isOpen() then
+    if not self.bag:isOpen() and not self.pause:isOpen() and not self.shop:isOpen()
+        and not self.dialog:isOpen() then
         Game.Hud.draw(self.player, self.currency, self.skills)
 
-        if exit and self:playerInRect(exit, EXIT_HINT_MARGIN) then
-            UI.Label.hint(I18n.t("game.area.exitHint", { area = Game.Areas.name(exit.target) }), true)
-        elseif self.nearbyNpc then
+        if self.nearbyNpc then
             UI.Label.hint(I18n.t("game.npc.interactHint",
                 { key = INTERACT_KEY:upper(), name = Game.Npcs.name(self.nearbyNpc.spec.id) }), true)
         else
@@ -696,9 +818,11 @@ function Play:draw()
     if self.bag:isOpen() then self.bag:draw() end
     if self.pause:isOpen() then self.pause:draw() end
     if self.shop:isOpen() then self.shop:draw() end
+    if self.dialog:isOpen() then self.dialog:draw() end
 
     if Game.DebugOverlay.visible then
         self.ctx.pauseState = self.pause:isOpen() and "pause menu"
+            or self.dialog:isOpen() and "dialog"
             or self.quietPause and "paused (F3+P)" or "running"
         Game.DebugOverlay.drawScreen(self.ctx)
     end

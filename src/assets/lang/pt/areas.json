@@ -1,6 +1,8 @@
 {
   "areas": {
     "hub": "O Centro",
-    "wastes": "Os Ermos"
+    "wilderness": "Os Arredores",
+    "wastes": "Os Ermos",
+    "ashlands": "As Cinzas"
   }
 }

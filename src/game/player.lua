@@ -11,6 +11,7 @@ local World = require "game.world"
 local Swipe = require "game.swipe"
 local Palette = require "game.palette"
 local Perspective = require "game.perspective"
+local Items = require "game.items"
 local Math = require "utils.math"
 
 ---@class Player : Entity
@@ -22,6 +23,8 @@ local Math = require "utils.math"
 ---@field aimPinned boolean true while the pointer is pushing against the ring
 ---@field rangeGlow number
 ---@field swipe table
+---@field equipped table<string, string> slot name -> item id; see game/inventoryPanel.lua
+---@field baseSwipe table the un-equipped damage/knockback/lift, captured once at construction
 local Player = Entity.extend()
 
 Player.RADIUS = World.TILE / 2 -- "the size of a block", so this follows the tile
@@ -64,7 +67,25 @@ function Player.new(x, y)
     self.aimPinned = false
     self.rangeGlow = 0
     self.swipe = Swipe.new{}
+    self.equipped = {} -- slot name -> item id, mutated directly by game/inventoryPanel.lua's equip slots
+    -- captured from the fresh Swipe's own defaults rather than duplicated as
+    -- constants here, so applyWeaponStats() has something to revert to on
+    -- unequip without this file needing to know what those defaults are
+    self.baseSwipe = { damage = self.swipe.damage, knockback = self.swipe.knockback, lift = self.swipe.lift }
     return self
+end
+
+--- re-derives the swipe's damage/knockback/lift from whatever's in the
+-- weapon slot, falling back to the un-equipped baseline otherwise. Called
+-- every update rather than only when equipment changes -- Items.get() is a
+-- cheap hash lookup, and it's simpler than wiring a change notification
+-- back from whichever panel just edited self.equipped.
+function Player:applyWeaponStats()
+    local weaponId = self.equipped.weapon
+    local base = self.baseSwipe
+    self.swipe.damage = (weaponId and Items.damage(weaponId)) or base.damage
+    self.swipe.knockback = (weaponId and Items.knockback(weaponId)) or base.knockback
+    self.swipe.lift = (weaponId and Items.lift(weaponId)) or base.lift
 end
 
 --- held is event-driven (see the note in core/stateManager.lua on why
@@ -77,7 +98,7 @@ end
 
 --- back to a fresh-spawn state at (x, y): full hp, no knockback/flash/stagger/
 -- height, hands off the world. states/play.lua calls this on death rather
--- than building a new Player, so ctx.player (set in Play:enterArea) and
+-- than building a new Player, so ctx.player (set once in Play:newGame) and
 -- anything else already holding this table keep pointing at something live.
 ---@param x number
 ---@param y number
@@ -175,6 +196,7 @@ end
 ---@param ctx table # reads ctx.enemies, ctx.pointerX/pointerY and ctx.enemyManager
 function Player:update(dt, ctx)
     Entity.update(self, dt)
+    self:applyWeaponStats()
 
     local dx, dy = self:moveInput()
     self.vx = Math.damp(self.vx, dx * SPEED, ACCEL, dt)

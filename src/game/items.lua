@@ -21,6 +21,11 @@
 -- for the one item that sets it today). It only ever gates whether a rolled
 -- drop actually reaches the inventory (Play:collect) -- it isn't enforced
 -- anywhere else yet (there's no crafting or shop to gate too).
+--
+-- `damage`/`knockback`/`lift` are optional too, read by
+-- Player:applyWeaponStats() for whatever's in the "weapon" `slot` -- a
+-- weapon-tagged item that omits one just doesn't change that stat from the
+-- player's own un-equipped baseline (see game/items/ironSword.lua).
 
 local Palette = require "game.palette"
 local I18n = require "core.i18n"
@@ -127,6 +132,27 @@ end
 function Items.slot(id)
     local spec = Items.specs[id]
     return spec and spec.slot
+end
+
+---@param id string
+---@return number|nil # nil if the spec doesn't set one -- the wielder's own baseline applies instead
+function Items.damage(id)
+    local spec = Items.specs[id]
+    return spec and spec.damage
+end
+
+---@param id string
+---@return number|nil
+function Items.knockback(id)
+    local spec = Items.specs[id]
+    return spec and spec.knockback
+end
+
+---@param id string
+---@return number|nil
+function Items.lift(id)
+    local spec = Items.specs[id]
+    return spec and spec.lift
 end
 
 return Items

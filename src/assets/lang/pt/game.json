@@ -8,14 +8,14 @@
       "quit": "Sair para o menu"
     },
     "inventory": {
-      "title": "Inventário"
+      "title": "Inventário",
+      "slot": {
+        "weapon": "Arma"
+      }
     },
     "hud": {
       "coins": "Moedas: {n}",
       "level": "{skill} Nv {n}"
-    },
-    "area": {
-      "exitHint": "Entre na luz para ir para {area}"
     },
     "npc": {
       "interactHint": "{key}: falar com {name}"
@@ -24,6 +24,21 @@
       "title": "Loja",
       "buy": "Comprar",
       "sell": "Vender"
+    },
+    "dialogue": {
+      "wanderer": "As estrelas não caem por acaso, sabia? Todo núcleo que você encontra já foi algo maior.",
+      "scout": "Se for longe o bastante para o oeste, o chão começa a fumegar. Nada voltou de lá... ainda."
+    },
+    "quest": {
+      "decline": "Recusar",
+      "accept": "Aceitar",
+      "turnIn": "Entregar",
+      "offer": "A sucata está se acumulando lá fora e não tenho mãos livres para recolhê-la. Traga-me {count} {item} e cuidarei da sua recompensa.",
+      "progress": "{item}: {progress} / {count}",
+      "done": "Obrigado de novo pela ajuda.",
+      "offerKill": "Inimigos continuam avançando desde as terras selvagens. Elimine {count} deles e cuidarei da sua recompensa.",
+      "progressKill": "Eliminados: {progress} / {count}",
+      "doneKill": "Bom trabalho. São menos alguns para se preocupar."
     }
   }
 }

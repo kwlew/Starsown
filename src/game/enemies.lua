@@ -217,14 +217,29 @@ function Enemies.spawn(id, x, y)
     return Enemy.new(spec, x, y)
 end
 
---- one enemy of a random registered type, or nil if none are loaded
+--- one enemy of a random registered type, or nil if none are loaded. `pool`
+-- restricts the pick to just those ids (an area's `enemyTable`, see
+-- game/areas.lua) -- an unregistered id in the pool is dropped, and a pool
+-- that resolves to nothing at all falls back to every registered type
+-- rather than spawning nothing, the same "degrade, don't break" reasoning
+-- Areas.at already applies to a world point past every registered band.
 ---@param x number
 ---@param y number
+---@param pool? string[] # enemy ids to pick from; nil/empty/all-invalid means every registered type
 ---@return Enemy|nil
-function Enemies.random(x, y)
-    local count = #Enemies.ids
+function Enemies.random(x, y, pool)
+    local ids = Enemies.ids
+    if pool and #pool > 0 then
+        local valid = {}
+        for _, id in ipairs(pool) do
+            if Enemies.specs[id] then valid[#valid + 1] = id end
+        end
+        if #valid > 0 then ids = valid end
+    end
+
+    local count = #ids
     if count == 0 then return nil end
-    return Enemies.spawn(Enemies.ids[math.random(count)], x, y)
+    return Enemies.spawn(ids[math.random(count)], x, y)
 end
 
 return Enemies

@@ -1,6 +1,8 @@
 {
   "areas": {
     "hub": "Хаб",
-    "wastes": "Пустоши"
+    "wilderness": "Окрестности",
+    "wastes": "Пустоши",
+    "ashlands": "Пепелища"
   }
 }

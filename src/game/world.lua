@@ -4,18 +4,20 @@
 -- World coordinates are tile pixels; the camera's zoom is what turns them into
 -- screen space.
 --
--- Ground has no art yet, so it draws as two alternating flat shades with the
--- grid picked out. Hand it a texture and every tile picks it up instead, and
--- the placeholder checker and gridlines go away with it:
+-- There is exactly one World for the whole game (see states/play.lua) --
+-- areas aren't separate instances any more, just named rings of distance
+-- from the origin (see game/areas.lua). Ground has no art yet, so it draws
+-- as two alternating flat shades with the grid picked out, and which
+-- shades a given tile uses comes from Areas.at(tileX, tileY) -- the Hub's
+-- slate plaza vs. the Wastes' default grass, resolved per tile so the
+-- palette actually changes exactly at a ring boundary. Hand the whole
+-- world a texture and every tile picks it up instead, uniformly, and the
+-- placeholder checker and per-area palettes go away with it:
 --
 --   world:setTexture(love.graphics.newImage("assets/tiles/grass.png"))
---
--- Short of real art, an area (see game/areas.lua) can still read as its own
--- place by naming its own ground/groundAlt/groundLine keys from
--- game/palette.lua -- the Hub's slate plaza vs. the Wastes' default grass,
--- say -- rather than every World sharing the one checker.
 
 local Palette = require "game.palette"
+local Areas = require "game.areas"
 
 local World = {}
 World.__index = World
@@ -24,16 +26,9 @@ World.TILE = 32
 
 local GRID_ALPHA = 0.55
 
----@param config? table # { texture?: love.Image, ground?: string, groundAlt?: string, groundLine?: string }
 ---@return table
-function World.new(config)
-    config = config or {}
-    local self = setmetatable({}, World)
-    self:setTexture(config.texture)
-    self.groundColor = (config.ground and Palette[config.ground]) or Palette.ground
-    self.groundAltColor = (config.groundAlt and Palette[config.groundAlt]) or Palette.groundAlt
-    self.groundLineColor = (config.groundLine and Palette[config.groundLine]) or Palette.groundLine
-    return self
+function World.new()
+    return setmetatable({}, World)
 end
 
 ---@param image any # a love.Image, or nil
@@ -78,36 +73,35 @@ function World:drawTextured(c1, r1, c2, r2)
     end
 end
 
---- the placeholder ground: an alternating checker with the grid picked out
+--- the placeholder ground: an alternating checker with the grid picked out,
+-- one tile at a time -- which area (and so which palette) a tile belongs to
+-- can change from one tile to the next near a ring boundary, so there's no
+-- single fill-the-whole-rect-at-once shortcut any more. Each tile draws its
+-- own border in its own area's line colour too, so two tiles sharing an
+-- edge across a boundary very occasionally overdraw each other rather than
+-- one winning arbitrarily -- a fine trade at flat-placeholder fidelity, and
+-- moot once real tile art replaces this entirely.
 ---@param c1 integer # inclusive tile bounds
 ---@param r1 integer
 ---@param c2 integer
 ---@param r2 integer
 function World:drawFlat(c1, r1, c2, r2)
     local tile = World.TILE
-    local left, top = self:tileOrigin(c1, r1)
-    local width = (c2 - c1 + 1) * tile
-    local height = (r2 - r1 + 1) * tile
 
-    love.graphics.setColor(self.groundColor)
-    love.graphics.rectangle("fill", left, top, width, height)
-
-    love.graphics.setColor(self.groundAltColor)
     for row = r1, r2 do
         for col = c1, c2 do
-            if (col + row) % 2 == 0 then
-                love.graphics.rectangle("fill", col * tile, row * tile, tile, tile)
-            end
-        end
-    end
+            local x, y = col * tile, row * tile
+            local area = Areas.at(x + tile / 2, y + tile / 2) -- the tile's centre decides its area
+            local ground = (area.ground and Palette[area.ground]) or Palette.ground
+            local groundAlt = (area.groundAlt and Palette[area.groundAlt]) or Palette.groundAlt
+            local groundLine = (area.groundLine and Palette[area.groundLine]) or Palette.groundLine
 
-    love.graphics.setColor(self.groundLineColor[1], self.groundLineColor[2],
-        self.groundLineColor[3], GRID_ALPHA)
-    for col = c1, c2 + 1 do
-        love.graphics.line(col * tile, top, col * tile, top + height)
-    end
-    for row = r1, r2 + 1 do
-        love.graphics.line(left, row * tile, left + width, row * tile)
+            love.graphics.setColor((col + row) % 2 == 0 and groundAlt or ground)
+            love.graphics.rectangle("fill", x, y, tile, tile)
+
+            love.graphics.setColor(groundLine[1], groundLine[2], groundLine[3], GRID_ALPHA)
+            love.graphics.rectangle("line", x, y, tile, tile)
+        end
     end
 end
 

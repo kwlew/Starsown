@@ -9,10 +9,12 @@
 -- `color` names a key in game/palette.lua and `sides` a silhouette (see
 -- game/shape.lua) -- the same placeholder-shape vocabulary items/enemies use
 -- until there's art. `interaction` names what states/play.lua's interact key
--- opens ("shop" is the only one wired up so far -- see game/shopPanel.lua);
--- `shop` names a game/shops/*.lua id for that case. Display names are never
--- in the spec; they come from assets/lang/*/npcs.json through I18n, same as
--- items/areas.
+-- opens, and a second field names *what* depending on which:
+--   "shop"     -- `shop` names a game/shops/*.lua id (game/shopPanel.lua)
+--   "dialogue" -- `dialogue` names a game.dialogue.* key in game.json
+--   "quest"    -- `quest` names a game/quests/*.lua id
+-- Display names are never in the spec; they come from assets/lang/*/npcs.json
+-- through I18n, same as items/areas.
 --
 -- A spec that fails to load is skipped and logged rather than taking the
 -- game down with it.

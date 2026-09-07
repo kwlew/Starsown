@@ -4,6 +4,7 @@
   },
   "dialog": {
     "cancel": "Cancel",
+    "close": "Close",
     "revert": {
       "title": "Keep these settings?",
       "message": "Reverting in {n}s if you don't confirm.",
