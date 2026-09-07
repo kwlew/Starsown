@@ -2,6 +2,7 @@ local Debug = require "core.debug"
 local StateManager = require "core.stateManager"
 local Presence = require "services.presence"
 local Settings = require "core.settings"
+local Assets = require "core.assets"
 local FrameLimiter = require "core.frameLimiter"
 local I18n = require "core.i18n"
 local UI = require "ui"
@@ -55,8 +56,13 @@ function love.update(dt)
     UI.Music.update(dt)
 end
 
---- closes the Discord connection and saves any undelivered stats backlog
+--- closes the Discord connection and saves any undelivered stats backlog;
+-- also gives whichever state is up a chance to persist, since closing the
+-- window is as much "the run ending" as quitting to the main menu is
 function love.quit()
+    local state = StateManager.current
+    if state and state.persist then state:persist() end
+
     Presence.shutdown()
     Stats.shutdown()
 end
@@ -68,13 +74,18 @@ function love.draw()
     UI.Cursor.draw()
 end
 
---- rescales the UI first, then tells the state -- which is passed whether the
--- scale actually changed, since only then do cached fonts and labels need
--- rebuilding
+--- rescales the UI first, tracks a live window drag (the window is
+-- resizable now -- see conf.lua), then tells the state -- which is passed
+-- whether the scale actually changed, since only then do cached fonts and
+-- labels need rebuilding
 ---@param w number
 ---@param h number
 function love.resize(w, h)
     local rescaled = UI.Theme.rescale(h)
+
+    local settings = Assets.get("settings")
+    if settings then Settings.trackWindowResize(settings, w, h) end
+
     StateManager.resize(w, h, rescaled)
 end
 

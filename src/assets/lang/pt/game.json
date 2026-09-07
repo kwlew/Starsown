@@ -9,6 +9,21 @@
     },
     "inventory": {
       "title": "Inventário"
+    },
+    "hud": {
+      "coins": "Moedas: {n}",
+      "level": "{skill} Nv {n}"
+    },
+    "area": {
+      "exitHint": "Entre na luz para ir para {area}"
+    },
+    "npc": {
+      "interactHint": "{key}: falar com {name}"
+    },
+    "shop": {
+      "title": "Loja",
+      "buy": "Comprar",
+      "sell": "Vender"
     }
   }
 }

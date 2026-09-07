@@ -7,6 +7,7 @@
 --       id = "darter", sides = 3, radius = 11, speed = 130, hp = 2,
 --       color = "hostile", -- a key in game/palette.lua, not a literal
 --       damage = 1, attackInterval = 0.6, -- both optional, see the defaults below
+--       xpReward = 5, currencyReward = 2, -- both optional, see Play:collect
 --       behave = function(self, dt, ctx) ... end, -- optional, defaults to chase
 --       drops = { { id = "scrap", min = 1, max = 3 }, { id = "core", chance = 0.1 } },
 --   }

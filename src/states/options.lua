@@ -31,13 +31,78 @@ local PANEL_MAX_W     = 560
 
 local REVERT_SECONDS = 10
 
-local RESOLUTIONS = { {1024, 768}, {1280, 720}, {1440, 1080}, {1600, 900}, {1680, 1050}, {1920, 1080} }
+local WINDOWED_FLOOR = { 1280, 720 } -- the one size always on offer if a desktop-size query ever fails
+local DESKTOP_FRACTIONS = { 1, 0.75, 0.5 } -- of the selected display's desktop size, for windowed sizing
 
 local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates against the same list at boot
 
 local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
 
 local Options = {}
+
+---@return integer[] # 1..love.window.getDisplayCount(); LÖVE exposes no monitor names to label these with
+local function displayOptions()
+    local options = {}
+    for i = 1, love.window.getDisplayCount() do options[i] = i end
+    return options
+end
+
+--- exclusive fullscreen offers exactly the modes the display reports
+-- (de-duplicated by size, largest first) -- getFullscreenModes is
+-- specifically about fullscreen capability, so it's never used for the
+-- windowed case below, which asks a different question entirely.
+---@param display integer
+---@return table[] # { {w, h}, ... }
+local function exclusiveResolutions(display)
+    local modes = love.window.getFullscreenModes(display)
+    table.sort(modes, function(a, b)
+        if a.width ~= b.width then return a.width > b.width end
+        return a.height > b.height
+    end)
+
+    local seen, list = {}, {}
+    for _, mode in ipairs(modes) do
+        local key = mode.width .. "x" .. mode.height
+        if not seen[key] then
+            seen[key] = true
+            list[#list + 1] = { mode.width, mode.height }
+        end
+    end
+    return list
+end
+
+--- windowed sizing is capped to the display's own desktop size rather than
+-- offering anything getFullscreenModes reports -- a windowed size larger
+-- than the desktop makes no more sense than a fullscreen mode the display
+-- doesn't support. A monitor smaller than 1280x720 gets fractions of its own
+-- (smaller) desktop instead of that floor -- see resolutionsFor, which only
+-- falls back to WINDOWED_FLOOR if this returns nothing at all.
+---@param display integer
+---@return table[] # { {w, h}, ... }, largest first
+local function windowedResolutions(display)
+    local deskW, deskH = love.window.getDesktopDimensions(display)
+    if type(deskW) ~= "number" or deskW <= 0 or deskH <= 0 then return {} end
+
+    local seen, list = {}, {}
+    for _, fraction in ipairs(DESKTOP_FRACTIONS) do
+        local w, h = math.floor(deskW * fraction), math.floor(deskH * fraction)
+        local key = w .. "x" .. h
+        if not seen[key] and w > 0 and h > 0 then
+            seen[key] = true
+            list[#list + 1] = { w, h }
+        end
+    end
+    return list
+end
+
+---@param display integer
+---@param windowMode string
+---@return table[] # { {w, h}, ... }; never empty
+local function resolutionsFor(display, windowMode)
+    local list = (windowMode == "exclusive") and exclusiveResolutions(display) or windowedResolutions(display)
+    if #list == 0 then list[1] = WINDOWED_FLOOR end
+    return list
+end
 
 --- index of the first entry `matches` accepts, or 1 -- a saved value no
 -- longer on offer (a resolution the monitor lost) falls back to the first option
@@ -69,12 +134,10 @@ local function titleFontIndexFor(id)
     return indexWhere(GameTitle.available(), function(e) return e.id == id end)
 end
 
----@param settings table
+---@param display integer
 ---@return integer
-local function resolutionIndexFor(settings)
-    return indexWhere(RESOLUTIONS, function(r)
-        return r[1] == settings.res_x and r[2] == settings.res_y
-    end)
+local function displayIndexFor(display)
+    return indexWhere(displayOptions(), function(n) return n == display end)
 end
 
 ---@param settings table
@@ -89,10 +152,53 @@ local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
 
+--- recomputes the resolution list for the pending display+mode combo --
+-- either can change which list applies -- and guarantees (targetW, targetH)
+-- is actually one of the options, inserting it at the front if the "nice"
+-- list (resolutionsFor's desktop fractions / reported fullscreen modes)
+-- doesn't already include it. This isn't the usual "falls back to index 1
+-- when no longer on offer" rule every other selector in this file uses:
+-- resetPending() calls this with the live settings' own res_x/res_y to seed
+-- pending from, and those don't necessarily land on one of the curated
+-- sizes (the game's own 1280x720 default doesn't match any fraction of a
+-- 1920x1080 desktop, say) -- silently swapping in the closest offered size
+-- instead would read as an unrequested change and made Options misreport
+-- edits pending the moment it was opened.
+---@param targetW number
+---@param targetH number
+function Options:rebuildResolutions(targetW, targetH)
+    local options = resolutionsFor(self.pending.display, self.pending.windowMode)
+
+    local index = nil
+    for i, option in ipairs(options) do
+        if option[1] == targetW and option[2] == targetH then
+            index = i
+            break
+        end
+    end
+    if not index then
+        if targetW and targetH and targetW > 0 and targetH > 0 then
+            table.insert(options, 1, { targetW, targetH })
+            index = 1
+        else
+            index = 1 -- no real target to preserve (nothing selected yet); just land on the list's own first entry
+        end
+    end
+
+    self.resolutionSelector.options = options
+    self.pending.resIndex = index
+    self.resolutionSelector.index = index
+end
+
 --- keeps derived enabled-states in sync with pending; call after any mutation
 -- of `pending`. Resolution row is inert in borderless (always desktop res
--- there); Apply greys out when there's nothing to apply.
+-- there); Apply greys out when there's nothing to apply. Also re-derives the
+-- resolution list, since a display or mode change (either lands here too)
+-- can change which one applies.
 function Options:syncEnabledStates()
+    local current = self.resolutionSelector:selected()
+    self:rebuildResolutions(current and current[1] or -1, current and current[2] or -1)
+
     self.resolutionSelector.enabled = self.pending.windowMode ~= "borderless"
     self.applyButton.enabled = self:isDirty()
     self.group:refresh() -- move focus off a row that just went inert
@@ -100,10 +206,13 @@ end
 
 ---@return boolean # whether Graphics has edits waiting on Apply
 function Options:isDirty()
-    return self.pending.resIndex ~= resolutionIndexFor(self.settings)
+    local selected = self.resolutionSelector.options[self.pending.resIndex]
+    return not selected
+        or selected[1] ~= self.settings.res_x or selected[2] ~= self.settings.res_y
         or self.pending.msaa ~= self.settings.msaa
         or self.pending.windowMode ~= self.settings.windowMode
         or self.pending.vsync ~= self.settings.vsync
+        or self.pending.display ~= self.settings.display
 end
 
 --- resets pending graphics changes to the live settings and syncs widget
@@ -111,15 +220,17 @@ end
 function Options:resetPending()
     local msaaIndex = msaaIndexFor(self.settings)
     self.pending = {
-        resIndex = resolutionIndexFor(self.settings),
+        display = self.settings.display,
         msaa = MSAA[msaaIndex], -- the sample count itself, not an index, unlike resIndex (a resolution is a pair)
         windowMode = self.settings.windowMode,
         vsync = self.settings.vsync,
     }
-    self.resolutionSelector.index = self.pending.resIndex
+    self.displaySelector.index = displayIndexFor(self.pending.display)
     self.msaaSelector.index = msaaIndex
     self.windowModeSelector.index = windowModeIndexFor(self.pending.windowMode)
     self.vsyncToggle.value = self.pending.vsync == 1
+
+    self:rebuildResolutions(self.settings.res_x, self.settings.res_y)
     self:syncEnabledStates()
 end
 
@@ -131,6 +242,7 @@ function Options:graphicsSnapshot()
         msaa = self.settings.msaa,
         windowMode = self.settings.windowMode,
         vsync = self.settings.vsync,
+        display = self.settings.display,
     }
 end
 
@@ -142,11 +254,12 @@ function Options:applyPending()
 
     self.revertTo = self:graphicsSnapshot()
 
-    local res = RESOLUTIONS[self.pending.resIndex]
+    local res = self.resolutionSelector.options[self.pending.resIndex]
     self.settings.res_x, self.settings.res_y = res[1], res[2]
     self.settings.msaa = self.pending.msaa
     self.settings.windowMode = self.pending.windowMode
     self.settings.vsync = self.pending.vsync
+    self.settings.display = self.pending.display
 
     Settings.applyGraphics(self.settings)
     self:resetPending()
@@ -285,7 +398,9 @@ end
 -- field written on `pending`, since it isn't always the same name (the
 -- displayMode row's pending field is `windowMode`). `valueOf(option, index)`
 -- picks what actually gets stored -- defaults to the option itself, but the
--- resolution row stores the index instead (see resolutionIndexFor).
+-- resolution row stores the index instead (see rebuildResolutions -- its
+-- list is rebuilt live as the display/mode selectors change, so an index
+-- into it, not the pair itself, is what stays meaningful in `pending`).
 ---@param key string # names the i18n string and description key
 ---@param options any[]
 ---@param format fun(option: any): string
@@ -611,7 +726,12 @@ function Options:enter(previousName, opts)
 
         self.shareStatsToggle = self:buildSettingToggle("shareStats", Stats.setEnabled)
 
-        self.resolutionSelector = self:buildPendingSelector("resolution", RESOLUTIONS,
+        self.displaySelector = self:buildPendingSelector("display", displayOptions(),
+            function(n) return I18n.t("options.displayOption", { n = n }) end,
+            "display")
+
+        self.resolutionSelector = self:buildPendingSelector("resolution",
+            resolutionsFor(self.settings.display, self.settings.windowMode),
             function(o) return o[1] .. "x" .. o[2] end,
             "resIndex", function(_, index) return index end)
 
@@ -657,9 +777,9 @@ function Options:enter(previousName, opts)
             { name = "interface", widgets = { self.languageSelector, self.themeSelector,
                                                self.titleFontSelector, self.customCursorToggle,
                                                self.reducedMotionToggle, self.shareStatsToggle, } },
-            { name = "graphics",  widgets = { self.resolutionSelector, self.msaaSelector, self.windowModeSelector,
-                                               self.vsyncToggle, self.uncapFpsToggle, self.showNebulaToggle,
-                                               self.applyButton, } },
+            { name = "graphics",  widgets = { self.displaySelector, self.resolutionSelector, self.msaaSelector,
+                                               self.windowModeSelector, self.vsyncToggle, self.uncapFpsToggle,
+                                               self.showNebulaToggle, self.applyButton, } },
         }
 
         self.tabBar = UI.TabBar.new{

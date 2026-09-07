@@ -12,5 +12,6 @@ return {
     drops = {
         { id = "scrap", min = 1, max = 3 },
         { id = "core", chance = 0.12 },
+        { id = "denseCore", chance = 0.35 }, -- gated by Skills.meets; see game/items/denseCore.lua
     },
 }

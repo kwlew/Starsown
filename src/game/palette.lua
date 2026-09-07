@@ -25,4 +25,11 @@ return {
     ground     = { 0.17, 0.24, 0.15 },
     groundAlt  = { 0.20, 0.28, 0.18 },
     groundLine = { 0.11, 0.16, 0.10 },
+
+    -- the Hub's own ground (see game/areas/hub.lua, game/world.lua) -- a
+    -- cool slate plaza rather than the wilderness' grass, same relative
+    -- shading (groundAlt a shade lighter, groundLine a shade darker)
+    hubGround     = { 0.16, 0.17, 0.20 },
+    hubGroundAlt  = { 0.19, 0.20, 0.24 },
+    hubGroundLine = { 0.10, 0.11, 0.14 },
 }

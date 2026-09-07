@@ -4,7 +4,7 @@ local Globals   = {}
 
 Globals.game = {
     name        = "Starsown",
-    version     = "0.1.1",
+    version     = "0.2.0",
     startedAt   = 0,
 }
 

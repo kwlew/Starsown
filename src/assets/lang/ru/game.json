@@ -9,6 +9,21 @@
     },
     "inventory": {
       "title": "Инвентарь"
+    },
+    "hud": {
+      "coins": "Монеты: {n}",
+      "level": "{skill}: ур. {n}"
+    },
+    "area": {
+      "exitHint": "Войдите в свет, чтобы попасть в: {area}"
+    },
+    "npc": {
+      "interactHint": "{key}: {name} — поговорить"
+    },
+    "shop": {
+      "title": "Магазин",
+      "buy": "Купить",
+      "sell": "Продать"
     }
   }
 }

@@ -6,7 +6,7 @@
 -- defaults above in place.
 ---@param t table # LÖVE's config table
 function love.conf(t)
-    t.identity = "TD-Idle"
+    t.identity = "Starsown"
     t.version = "11.5"
     t.console = false
 
@@ -14,7 +14,7 @@ function love.conf(t)
     t.window.icon = "assets/icon/starsown-128.png"
     t.window.width = 1280
     t.window.height = 720
-    t.window.resizable = false
+    t.window.resizable = true
     t.window.vsync = 0
     t.window.msaa = 4
     t.window.fullscreen = false
@@ -27,6 +27,7 @@ function love.conf(t)
     if ok and settings then
         t.window.vsync = settings.vsync
         t.window.msaa = settings.msaa
+        t.window.display = settings.display
         if settings.windowMode == "borderless" then
             t.window.fullscreen = true
             t.window.fullscreentype = "desktop"
