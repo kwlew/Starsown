@@ -26,7 +26,7 @@ local Player = Entity.extend()
 
 Player.RADIUS = World.TILE / 2 -- "the size of a block", so this follows the tile
 Player.RANGE = World.TILE * 4  -- how far out the cursor may be pushed
-Player.MAX_HP = 10             -- no death handling yet -- see Player:damage
+Player.MAX_HP = 10
 local SPEED = 200              -- world units/sec, a bit over six tiles
 local ACCEL = 16               -- exponential approach toward the target velocity
 local NUB_INNER = 0.55         -- fraction of the radius the facing tick starts at
@@ -67,25 +67,33 @@ function Player.new(x, y)
     return self
 end
 
---- overrides Entity:damage: no death handling yet, so hp stays free to go
--- negative rather than freezing the moment it first crosses zero -- Entity's
--- own dead-gate would otherwise swallow every hit after the first kill-shot.
--- Delete the reset below once there's an actual death to trigger.
----@param amount number
----@param knockX? number
----@param knockY? number
----@param knockZ? number
-function Player:damage(amount, knockX, knockY, knockZ)
-    Entity.damage(self, amount, knockX, knockY, knockZ)
-    self.dead = false
-end
-
 --- held is event-driven (see the note in core/stateManager.lua on why
 -- keyreleased is never swallowed); a screen change still clears it, since a key
 -- let go on another screen would otherwise stay down forever
 function Player:releaseAll()
     for action in pairs(self.held) do self.held[action] = nil end
     self.attacking = false
+end
+
+--- back to a fresh-spawn state at (x, y): full hp, no knockback/flash/stagger/
+-- height, hands off the world. states/play.lua calls this on death rather
+-- than building a new Player, so ctx.player (set in Play:enterArea) and
+-- anything else already holding this table keep pointing at something live.
+---@param x number
+---@param y number
+function Player:respawn(x, y)
+    self:releaseAll()
+    self.x, self.y = x, y
+    self.hp = self.maxHp
+    self.dead = false
+    self.flash, self.stagger = 0, 0
+    self.kx, self.ky = 0, 0
+    self.z, self.vz = 0, 0
+    self.vx, self.vy = 0, 0
+    self.facing = 0
+    self.aimX, self.aimY = x + Player.RANGE, y
+    self.aimPinned = false
+    self.rangeGlow = 0
 end
 
 ---@param key string # non-movement keys are ignored

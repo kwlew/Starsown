@@ -8,6 +8,19 @@
 -- game/shape.lua) -- between them that is the whole icon until there is art.
 -- Display names are never in the spec; they come from assets/lang/*/items.json
 -- through I18n, so they translate like everything else.
+--
+-- `rarity`, `icon`, `worldImage` and `slot` are all optional and unused by
+-- anything yet: `rarity` names a tier for later UI to colour by, `icon` and
+-- `worldImage` each name a love.Image asset path (an inventory icon and a
+-- held/world sprite respectively) for whatever eventually draws one instead
+-- of the procedural shape, and `slot` names an equip slot (e.g. "weapon")
+-- for an equippable item.
+--
+-- `requires` is also optional -- a { skill, level } table game/skills.lua's
+-- Skills.meets checks a spec's owner against (see game/items/denseCore.lua
+-- for the one item that sets it today). It only ever gates whether a rolled
+-- drop actually reaches the inventory (Play:collect) -- it isn't enforced
+-- anywhere else yet (there's no crafting or shop to gate too).
 
 local Palette = require "game.palette"
 local I18n = require "core.i18n"
@@ -86,6 +99,34 @@ end
 function Items.sides(id)
     local spec = Items.specs[id]
     return spec and spec.sides
+end
+
+---@param id string
+---@return string|nil # a tier key for future UI to colour by; nil if the spec doesn't set one
+function Items.rarity(id)
+    local spec = Items.specs[id]
+    return spec and spec.rarity
+end
+
+---@param id string
+---@return string|nil # a love.Image asset path for the inventory icon; nil draws the procedural shape instead
+function Items.icon(id)
+    local spec = Items.specs[id]
+    return spec and spec.icon
+end
+
+---@param id string
+---@return string|nil # a love.Image asset path for held/world rendering; nil draws the procedural shape instead
+function Items.worldImage(id)
+    local spec = Items.specs[id]
+    return spec and spec.worldImage
+end
+
+---@param id string
+---@return string|nil # an equip slot name (e.g. "weapon"); nil if the item isn't equippable
+function Items.slot(id)
+    local spec = Items.specs[id]
+    return spec and spec.slot
 end
 
 return Items

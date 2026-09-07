@@ -9,6 +9,11 @@
 -- the placeholder checker and gridlines go away with it:
 --
 --   world:setTexture(love.graphics.newImage("assets/tiles/grass.png"))
+--
+-- Short of real art, an area (see game/areas.lua) can still read as its own
+-- place by naming its own ground/groundAlt/groundLine keys from
+-- game/palette.lua -- the Hub's slate plaza vs. the Wastes' default grass,
+-- say -- rather than every World sharing the one checker.
 
 local Palette = require "game.palette"
 
@@ -19,12 +24,15 @@ World.TILE = 32
 
 local GRID_ALPHA = 0.55
 
----@param config? table # { texture?: love.Image }
+---@param config? table # { texture?: love.Image, ground?: string, groundAlt?: string, groundLine?: string }
 ---@return table
 function World.new(config)
     config = config or {}
     local self = setmetatable({}, World)
     self:setTexture(config.texture)
+    self.groundColor = (config.ground and Palette[config.ground]) or Palette.ground
+    self.groundAltColor = (config.groundAlt and Palette[config.groundAlt]) or Palette.groundAlt
+    self.groundLineColor = (config.groundLine and Palette[config.groundLine]) or Palette.groundLine
     return self
 end
 
@@ -81,10 +89,10 @@ function World:drawFlat(c1, r1, c2, r2)
     local width = (c2 - c1 + 1) * tile
     local height = (r2 - r1 + 1) * tile
 
-    love.graphics.setColor(Palette.ground)
+    love.graphics.setColor(self.groundColor)
     love.graphics.rectangle("fill", left, top, width, height)
 
-    love.graphics.setColor(Palette.groundAlt)
+    love.graphics.setColor(self.groundAltColor)
     for row = r1, r2 do
         for col = c1, c2 do
             if (col + row) % 2 == 0 then
@@ -93,8 +101,8 @@ function World:drawFlat(c1, r1, c2, r2)
         end
     end
 
-    love.graphics.setColor(Palette.groundLine[1], Palette.groundLine[2],
-        Palette.groundLine[3], GRID_ALPHA)
+    love.graphics.setColor(self.groundLineColor[1], self.groundLineColor[2],
+        self.groundLineColor[3], GRID_ALPHA)
     for col = c1, c2 + 1 do
         love.graphics.line(col * tile, top, col * tile, top + height)
     end

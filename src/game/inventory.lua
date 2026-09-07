@@ -85,6 +85,23 @@ function Inventory:add(id, count)
     return count
 end
 
+--- removes one unit of `id` from wherever it sits in the bag (the first slot
+-- that has any); the counterpart to add() for something that sells or
+-- consumes by item id rather than by slot
+---@param id string
+---@return boolean # false if the player is holding none
+function Inventory:removeOne(id)
+    for i = 1, self.size do
+        local slot = self.slots[i]
+        if slot and slot.id == id then
+            slot.count = slot.count - 1
+            if slot.count <= 0 then self.slots[i] = nil end
+            return true
+        end
+    end
+    return false
+end
+
 --- lifts the whole stack out, leaving the slot empty
 ---@param index integer
 ---@return table|nil # { id: string, count: integer }
