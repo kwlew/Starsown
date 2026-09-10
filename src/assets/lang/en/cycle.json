@@ -1,0 +1,12 @@
+{
+  "cycle": {
+    "clock": "{time} · {phase}",
+    "dawn": "Dawn",
+    "day": "Day",
+    "dusk": "Dusk",
+    "night": "Night",
+    "safe": "Protected refuge",
+    "active": "Enemies emerging",
+    "quiet": "No new spawns"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "hub": {
+    "workshop": "Workshop",
+    "expeditions": "Expeditions",
+    "hearth": "Provisioning",
+    "combat": "Training yard",
+    "dungeons": "Dungeon research",
+    "building": "Building grounds",
+    "planned": "Planned",
+    "refuge": "STARFALL REFUGE"
+  }
+}

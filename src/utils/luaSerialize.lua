@@ -1,8 +1,8 @@
 --- Turns a plain Lua value into loadable Lua source, recursively -- the one
--- serializer core/settings.lua and core/save.lua both build their file
--- format on. A value that can't be represented (a function, userdata, a
--- table with non-string/non-array keys) serializes to the literal `nil`
--- rather than producing a file that won't load back.
+-- serializer core/settings.lua builds its file format on. A value that can't
+-- be represented (a function, userdata, a table with non-string/non-array
+-- keys) serializes to the literal `nil` rather than producing a file that
+-- won't load back.
 --
 -- A table is written as an array only when its keys are exactly 1..n with no
 -- gaps; anything else is written as a map, sorted by key so the file diffs

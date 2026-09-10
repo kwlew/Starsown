@@ -1,7 +1,6 @@
 local StateManager = require "core.stateManager"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
-local Save = require "core.save"
 local UI = require "ui"
 local I18n = require "core.i18n"
 local Audio = require "core.audio"
@@ -82,7 +81,6 @@ local CLIPS = {
 
 local STATES = {
     { "mainMenu", "states.mainMenu" },
-    { "play", "states.play" },
     { "options", "states.options" },
     { "stats", "states.stats" },
     { "achievements", "states.achievements" },
@@ -113,13 +111,6 @@ function Loading:buildTasks()
                 local settings = self.startupSettings or Settings.load()
                 Settings.apply(settings)
                 Assets.set("settings", settings)
-            end,
-        },
-        {
-            label = I18n.t("loading.task.save"),
-            weight = 1,
-            run = function()
-                Assets.set("save", Save.load())
             end,
         },
         {

@@ -65,7 +65,7 @@ function Debug:update()
     Debug.latency = Math.round(love.timer.getDelta() * 1000)
 end
 
---- the F3 panel, top left; game/debugOverlay.lua owns the play screen's own
+--- the F3 panel, top left
 function Debug:draw()
     if not Debug.visible then return end
 
