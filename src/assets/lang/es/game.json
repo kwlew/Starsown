@@ -8,14 +8,14 @@
       "quit": "Salir al menú"
     },
     "inventory": {
-      "title": "Inventario"
+      "title": "Inventario",
+      "slot": {
+        "weapon": "Arma"
+      }
     },
     "hud": {
       "coins": "Monedas: {n}",
       "level": "{skill} Nv {n}"
-    },
-    "area": {
-      "exitHint": "Entra en la luz para llegar a {area}"
     },
     "npc": {
       "interactHint": "{key}: hablar con {name}"
@@ -24,6 +24,21 @@
       "title": "Tienda",
       "buy": "Comprar",
       "sell": "Vender"
+    },
+    "dialogue": {
+      "wanderer": "Las estrellas no caen por accidente, ¿sabes? Cada núcleo que encuentras fue alguna vez algo más grande.",
+      "scout": "Si avanzas bastante hacia el oeste, el suelo empieza a humear. Nada ha vuelto desde allí... todavía."
+    },
+    "quest": {
+      "decline": "Rechazar",
+      "accept": "Aceptar",
+      "turnIn": "Entregar",
+      "offer": "Se está acumulando chatarra ahí fuera y no tengo manos libres para recogerla. Tráeme {count} {item} y me encargaré de compensarte.",
+      "progress": "{item}: {progress} / {count}",
+      "done": "Gracias de nuevo por tu ayuda.",
+      "offerKill": "Los enemigos siguen acercándose desde lo salvaje. Elimina a {count} de ellos y me encargaré de compensarte.",
+      "progressKill": "Eliminados: {progress} / {count}",
+      "doneKill": "Buen trabajo. Son unos cuantos menos de los que preocuparse."
     }
   }
 }

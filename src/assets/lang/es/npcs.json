@@ -1,5 +1,9 @@
 {
   "npcs": {
-    "blacksmith": "Herrero"
+    "blacksmith": "Herrero",
+    "wanderer": "Errante",
+    "elder": "Anciano",
+    "scout": "Explorador",
+    "warden": "Guardián"
   }
 }

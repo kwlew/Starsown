@@ -22,6 +22,8 @@ Save.defaults = {
     currency = 0,
     inventory = {}, -- index = slot number; an empty slot is `false`, never a hole
     skills = {},    -- id -> { xp = number }; see game/skills.lua
+    quests = {},    -- id -> { progress = number, complete = boolean }; see game/quests.lua
+    equipped = {},  -- slot name -> item id; see game/player.lua, game/inventoryPanel.lua
     stats = {       -- lifetime counters, kept across runs
         kills = 0,
         itemsGathered = 0,
@@ -91,6 +93,43 @@ local function validateSkills(saved)
     return skills
 end
 
+--- a malformed entry for one quest is dropped rather than zeroing the whole
+-- table, same reasoning as validateSkills. The quest id isn't checked
+-- against the quest registry here -- Quests may not be loaded yet this early
+-- in boot -- an id from a removed quest just sits unread from then on
+-- (Quests.checkObjective/ready both already tolerate an unregistered id).
+---@param saved any
+---@return table
+local function validateQuests(saved)
+    if type(saved) ~= "table" then return {} end
+    local quests = {}
+    for id, entry in pairs(saved) do
+        if type(id) == "string" and type(entry) == "table"
+            and type(entry.progress) == "number" and entry.progress >= 0 then
+            quests[id] = { progress = entry.progress, complete = entry.complete == true }
+        end
+    end
+    return quests
+end
+
+--- a malformed entry for one slot is dropped rather than zeroing the whole
+-- table, same reasoning as validateSkills/validateQuests. Neither the slot
+-- name nor the item id is checked against their registries here -- Items
+-- may not be loaded yet this early in boot -- that happens where the
+-- snapshot is actually applied to a live Player (Play:loadProgress).
+---@param saved any
+---@return table
+local function validateEquipped(saved)
+    if type(saved) ~= "table" then return {} end
+    local equipped = {}
+    for slot, itemId in pairs(saved) do
+        if type(slot) == "string" and type(itemId) == "string" then
+            equipped[slot] = itemId
+        end
+    end
+    return equipped
+end
+
 --- defaults first, then whatever the file has on top -- so a counter added
 -- in a later version reads as 0 in an old save instead of nil, and one this
 -- version no longer tracks still survives the round trip rather than being
@@ -145,6 +184,8 @@ function Save.load()
         currency = validateCurrency(data.currency),
         inventory = validateInventory(data.inventory),
         skills = validateSkills(data.skills),
+        quests = validateQuests(data.quests),
+        equipped = validateEquipped(data.equipped),
         stats = validateStats(data.stats),
     }
 end

@@ -52,9 +52,10 @@ end
 
 ---@param x number
 ---@param y number
+---@param pool? string[] # restricts the pick to these enemy ids -- see Enemies.random
 ---@return Enemy|nil # nil if no specs are loaded
-function EnemyManager:spawnRandom(x, y)
-    local enemy = Enemies.random(x, y)
+function EnemyManager:spawnRandom(x, y, pool)
+    local enemy = Enemies.random(x, y, pool)
     return enemy and self:add(enemy)
 end
 

@@ -1,6 +1,8 @@
 --- Follows a target around the world. Everything drawn between attach() and
 -- detach() is in world coordinates; toWorld/toScreen convert across the seam.
--- The world is open, so there is nothing to clamp the view against.
+-- The world is open by default, so there is nothing to clamp the view
+-- against -- an area with its own `bounds` (see game/areas.lua) is the
+-- exception, handled by follow()'s optional third argument.
 
 local Math = require "utils.math"
 
@@ -27,13 +29,32 @@ function Camera:snapTo(x, y)
     self.x, self.y = x, y
 end
 
---- eases toward a point, frame-rate independently
+--- eases toward a point, frame-rate independently. `bounds`, when given (an
+-- area's own `bounds = { w, h }`, centered on that area's local origin),
+-- keeps the camera's own view from ever showing past its edges -- omitted,
+-- the camera follows unclamped, exactly as it always has.
 ---@param x number
 ---@param y number
 ---@param dt number
-function Camera:follow(x, y, dt)
+---@param bounds? table # { w: number, h: number }
+function Camera:follow(x, y, dt, bounds)
     self.x = Math.damp(self.x, x, FOLLOW_SPEED, dt)
     self.y = Math.damp(self.y, y, FOLLOW_SPEED, dt)
+    if bounds then self:clampTo(bounds) end
+end
+
+--- pulls the camera back inside `bounds` after follow()'s easing step. When
+-- the bounded extent is narrower than the view itself on an axis, centers
+-- on that axis instead of clamping between two limits that have crossed --
+-- the letterboxed edges from World's own checker are the visible result,
+-- not an oscillating camera.
+---@param bounds table # { w: number, h: number }, centered on the world origin
+function Camera:clampTo(bounds)
+    local halfW, halfH = self:halfExtents()
+    local boundHalfW, boundHalfH = bounds.w / 2, bounds.h / 2
+
+    self.x = boundHalfW <= halfW and 0 or Math.clamp(self.x, -boundHalfW + halfW, boundHalfW - halfW)
+    self.y = boundHalfH <= halfH and 0 or Math.clamp(self.y, -boundHalfH + halfH, boundHalfH - halfH)
 end
 
 --- half the view, in world units

@@ -1,5 +1,9 @@
 {
   "npcs": {
-    "blacksmith": "Blacksmith"
+    "blacksmith": "Blacksmith",
+    "wanderer": "Wanderer",
+    "elder": "Elder",
+    "scout": "Scout",
+    "warden": "Warden"
   }
 }

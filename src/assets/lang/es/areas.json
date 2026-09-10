@@ -1,6 +1,8 @@
 {
   "areas": {
     "hub": "El Centro",
-    "wastes": "Los Páramos"
+    "wilderness": "Las Afueras",
+    "wastes": "Los Páramos",
+    "ashlands": "Las Cenizas"
   }
 }

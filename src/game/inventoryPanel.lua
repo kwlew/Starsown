@@ -1,10 +1,18 @@
---- The inventory grid. Click a slot to lift its stack onto the cursor, click
--- another to drop it -- merging onto a matching stack, swapping otherwise.
--- Right click splits a stack in half, and places one at a time.
+--- The inventory grid, plus a small column of equip slots beside it. Click a
+-- slot to lift its stack onto the cursor, click another to drop it -- merging
+-- onto a matching stack, swapping otherwise. Right click splits a stack in
+-- half, and places one at a time.
 --
 -- The held stack lives here rather than in the Inventory, because it only
 -- exists while this panel is open: closing puts it back (see close()), so
 -- there is no way to walk away holding something that belongs in a slot.
+--
+-- Equip slots are a separate cluster, not a repurposing of the grid: each
+-- one accepts only an item whose own `slot` field names it (see
+-- game/items.lua), holds at most one, and reads/writes `equipped` directly
+-- -- a live reference to Player.equipped, not a copy. `EQUIP_SLOTS` is the
+-- one place their names are listed; adding a second slot (armor, say) later
+-- is just another entry there plus an i18n label, no other change here.
 
 local Theme = require "ui.core.theme"
 local Items = require "game.items"
@@ -16,24 +24,42 @@ local Panel = {}
 Panel.__index = Panel
 
 local COLS, ROWS = 6, 4
+local EQUIP_SLOTS = { "weapon" }
 
 local SLOT = 46
 local SLOT_GAP = 6
 local PAD = 18
 local TITLE_GAP = 12
+local EQUIP_GRID_GAP = 18 -- between the equip column and the main grid
+local EQUIP_LABEL_GAP = 6 -- between an equip slot and its name below it
 local ICON_RATIO = 0.30 -- of the slot, so an icon never touches its border
 local COUNT_INSET = 4
 local HELD_RATIO = 0.34
 local COUNT_OUTLINE = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }
 
+--- the shared row look every slot (bag or equip) draws with
+---@param x number
+---@param y number
+---@param size number
+---@param lit boolean|nil
+local function drawSlotBox(x, y, size, lit)
+    local colors = Theme.colors
+    Theme.setColor(lit and colors.accentDark or colors.panelRaised)
+    love.graphics.rectangle("fill", x, y, size, size, Theme.metrics.radius)
+    Theme.setColor(lit and colors.accent or colors.panelBorder)
+    love.graphics.rectangle("line", x, y, size, size, Theme.metrics.radius)
+end
+
 ---@param inventory table # the Inventory it draws and edits
+---@param equipped table # a live reference to Player.equipped: slot name -> item id, or nil
 ---@return table
-function Panel.new(inventory)
+function Panel.new(inventory, equipped)
     local self = setmetatable({
         inventory = inventory,
+        equipped = equipped,
         open = false,
         held = nil,   -- the stack on the cursor, if any
-        hovered = nil, -- slot index under the pointer
+        hovered = nil, -- { kind = "bag", index = n } or { kind = "equip", name = s }
         bounds = { x = 0, y = 0, w = 0, h = 0 },
     }, Panel)
     self:layout()
@@ -51,7 +77,9 @@ function Panel:openPanel()
     self:layout()
 end
 
---- whatever is on the cursor goes back in the bag; it came out of these slots,
+--- whatever is on the cursor goes back in the bag; it came out of these slots
+-- (or an equip slot, in which case add() is still fine -- an unequipped item
+-- is a bag item again, same as InventoryPanel already treats it while held),
 -- so there is always room for it
 function Panel:close()
     if self.held then
@@ -67,28 +95,47 @@ function Panel:slots()
     return COLS * ROWS
 end
 
---- centres the panel; call on open and on resize
+--- centres the panel; call on open and on resize. The equip column sits to
+-- the left of the grid, vertically centred against it.
 function Panel:layout()
     local slot, gap, pad = Theme.px(SLOT), Theme.px(SLOT_GAP), Theme.px(PAD)
+    local equipGap = Theme.px(EQUIP_GRID_GAP)
     local titleHeight = Theme.font("button"):getHeight() + Theme.px(TITLE_GAP)
 
+    local gridW = COLS * slot + (COLS - 1) * gap
+    local gridH = ROWS * slot + (ROWS - 1) * gap
+    local equipH = #EQUIP_SLOTS * slot + (#EQUIP_SLOTS - 1) * gap
+
     local bounds = self.bounds
-    bounds.w = COLS * slot + (COLS - 1) * gap + pad * 2
-    bounds.h = ROWS * slot + (ROWS - 1) * gap + pad * 2 + titleHeight
+    bounds.w = slot + equipGap + gridW + pad * 2
+    bounds.h = math.max(gridH, equipH) + pad * 2 + titleHeight
     bounds.x = (love.graphics.getWidth() - bounds.w) / 2
     bounds.y = (love.graphics.getHeight() - bounds.h) / 2
+
     self.gridY = bounds.y + pad + titleHeight
+    self.gridX = bounds.x + pad + slot + equipGap
+    self.equipX = bounds.x + pad
+    self.equipY = self.gridY + (gridH - equipH) / 2
 end
 
---- top-left of a slot, in screen space
+--- top-left of a bag slot, in screen space
 ---@param index integer # 1-based, row major
 ---@return number x
 ---@return number y
 function Panel:slotOrigin(index)
-    local slot, gap, pad = Theme.px(SLOT), Theme.px(SLOT_GAP), Theme.px(PAD)
+    local slot, gap = Theme.px(SLOT), Theme.px(SLOT_GAP)
     local col = (index - 1) % COLS
     local row = math.floor((index - 1) / COLS)
-    return self.bounds.x + pad + col * (slot + gap), self.gridY + row * (slot + gap)
+    return self.gridX + col * (slot + gap), self.gridY + row * (slot + gap)
+end
+
+--- top-left of one equip slot, in screen space
+---@param index integer # 1-based into EQUIP_SLOTS
+---@return number x
+---@return number y
+function Panel:equipSlotOrigin(index)
+    local slot, gap = Theme.px(SLOT), Theme.px(SLOT_GAP)
+    return self.equipX, self.equipY + (index - 1) * (slot + gap)
 end
 
 ---@param x number
@@ -105,27 +152,88 @@ end
 
 ---@param x number
 ---@param y number
+---@return string|nil # an EQUIP_SLOTS name
+function Panel:equipSlotAt(x, y)
+    local size = Theme.px(SLOT)
+    for index, name in ipairs(EQUIP_SLOTS) do
+        local sx, sy = self:equipSlotOrigin(index)
+        if Theme.pointIn(x, y, sx, sy, size, size) then return name end
+    end
+    return nil
+end
+
+---@param x number
+---@param y number
+---@return table|nil hit # { kind = "bag", index = n } or { kind = "equip", name = s }
+function Panel:hitTest(x, y)
+    local index = self:slotAt(x, y)
+    if index then return { kind = "bag", index = index } end
+
+    local name = self:equipSlotAt(x, y)
+    if name then return { kind = "equip", name = name } end
+
+    return nil
+end
+
+---@param x number
+---@param y number
 function Panel:mousemoved(x, y)
-    self.hovered = self:slotAt(x, y)
+    self.hovered = self:hitTest(x, y)
+end
+
+--- swaps whatever's on the cursor with whatever's equipped in `name`. A held
+-- stack is only accepted if it's a single unit of an item actually tagged
+-- for this slot -- equipment doesn't stack, so anything else is refused
+-- outright (the held stack comes back unchanged) rather than silently
+-- dropping the extra units or equipping the wrong kind of item.
+---@param name string # an EQUIP_SLOTS entry
+---@param held table|nil # { id: string, count: integer }
+---@return table|nil # the new held stack
+function Panel:swapEquip(name, held)
+    local equippedId = self.equipped[name]
+
+    if held then
+        if held.count ~= 1 or Items.slot(held.id) ~= name then return held end
+        self.equipped[name] = held.id
+        return equippedId and { id = equippedId, count = 1 } or nil
+    end
+
+    if not equippedId then return nil end
+    self.equipped[name] = nil
+    return { id = equippedId, count = 1 }
 end
 
 --- left click lifts or drops a whole stack, right click splits one in half and
--- then places one at a time. Both go through Inventory's take/put pair, so the
--- cursor is always holding at most one stack.
+-- then places one at a time. Bag slots go through Inventory's take/put pair;
+-- equip slots go through swapEquip -- either way the cursor holds at most
+-- one stack.
+--
+-- The `if self.held then ... else ... end` shape below matters: a plain
+-- `self.held and bag:put(...) or bag:take(...)` looks equivalent but isn't
+-- -- put()/putOne() both return `nil` on a fully successful placement (the
+-- slot was empty, or the whole stack merged in), and `nil` is falsy, so the
+-- `or` would silently fall through and take the stack right back off the
+-- slot it was just dropped on.
 ---@param x number
 ---@param y number
 ---@param button integer
 ---@return boolean consumed
 function Panel:mousepressed(x, y, button)
-    local index = self:slotAt(x, y)
-    self.hovered = index
-    if not index then return false end
+    local hit = self:hitTest(x, y)
+    self.hovered = hit
+    if not hit then return false end
 
-    local bag = self.inventory
-    if button == 2 then
-        self.held = self.held and bag:putOne(index, self.held) or bag:takeHalf(index)
-    elseif button == 1 then
-        self.held = self.held and bag:put(index, self.held) or bag:take(index)
+    if hit.kind == "bag" then
+        local bag = self.inventory
+        if button == 2 then
+            if self.held then self.held = bag:putOne(hit.index, self.held)
+            else self.held = bag:takeHalf(hit.index) end
+        elseif button == 1 then
+            if self.held then self.held = bag:put(hit.index, self.held)
+            else self.held = bag:take(hit.index) end
+        end
+    elseif hit.kind == "equip" and button == 1 then
+        self.held = self:swapEquip(hit.name, self.held)
     end
     return true
 end
@@ -166,7 +274,8 @@ local function drawStack(stack, x, y, radius, corner, font)
     Theme.popFont()
 end
 
---- scrim, panel, title, the slot grid, and last the stack on the cursor
+--- scrim, panel, title, the equip column, the slot grid, and last the stack
+-- on the cursor
 function Panel:draw()
     local colors = Theme.colors
     local bounds = self.bounds
@@ -183,14 +292,27 @@ function Panel:draw()
         font = Theme.font("button"),
     }
 
+    for index, name in ipairs(EQUIP_SLOTS) do
+        local x, y = self:equipSlotOrigin(index)
+        local lit = self.hovered and self.hovered.kind == "equip" and self.hovered.name == name
+        drawSlotBox(x, y, size, lit)
+
+        local equippedId = self.equipped[name]
+        if equippedId then
+            drawStack({ id = equippedId, count = 1 }, x + size / 2, y + size / 2, size * ICON_RATIO, size / 2, font)
+        end
+
+        Label.draw{
+            text = I18n.t("game.inventory.slot." .. name),
+            x = x, y = y + size + Theme.px(EQUIP_LABEL_GAP), width = size,
+            align = "center", font = font, color = colors.textDim,
+        }
+    end
+
     for index = 1, self:slots() do
         local x, y = self:slotOrigin(index)
-        local lit = self.hovered == index
-
-        Theme.setColor(lit and colors.accentDark or colors.panelRaised)
-        love.graphics.rectangle("fill", x, y, size, size, Theme.metrics.radius)
-        Theme.setColor(lit and colors.accent or colors.panelBorder)
-        love.graphics.rectangle("line", x, y, size, size, Theme.metrics.radius)
+        local lit = self.hovered and self.hovered.kind == "bag" and self.hovered.index == index
+        drawSlotBox(x, y, size, lit)
 
         local stack = self.inventory:get(index)
         if stack then
