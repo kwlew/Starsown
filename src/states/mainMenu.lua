@@ -105,8 +105,8 @@ function MainMenu:enter(previousName)
     self.onlineCount = Stats.online
     self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
     self.links = self.links or {
-        UI.IconLink.new{ mark = "github", url = GITHUB_URL },
-        UI.IconLink.new{ mark = "discord", url = DISCORD_URL },
+        UI.IconLink.new{ mark = "github", url = GITHUB_URL, label = "GitHub" },
+        UI.IconLink.new{ mark = "discord", url = DISCORD_URL, label = "Discord" },
     }
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Globals.menu.Particles.starfield
@@ -123,7 +123,7 @@ function MainMenu:enter(previousName)
 
     if not self.menu then -- stateless between visits, so build it just once
         self.menu = Menu.new({
-            { label = function() return I18n.t("menu.play") end, onSelect = function()
+            { label = function() return I18n.t("menu.play") end, primary = true, onSelect = function()
                 UI.Sfx.select()
                 -- StateManager.fadeTo("play")
             end },
@@ -144,7 +144,17 @@ function MainMenu:enter(previousName)
                 love.event.quit()
             end },
         })
-        self.menu:onFocusChanged(UI.Sfx.focus)
+
+        -- One combined group so Tab reaches the corner links too, after the
+        -- five buttons -- Menu keeps its own internal group (still what
+        -- draws/positions the buttons), but real input now goes through
+        -- this one, the only thing that still calls `setFocus` on any of them.
+        self.group = UI.FocusGroup.new()
+        self.group.onFocusChanged = UI.Sfx.focus
+        local widgets = {}
+        for _, button in ipairs(self.menu:buttons()) do widgets[#widgets + 1] = button end
+        for _, link in ipairs(self.links) do widgets[#widgets + 1] = link end
+        self.group:setWidgets(widgets)
     end
 
     if previousName == "loading" then
@@ -202,7 +212,8 @@ function MainMenu:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)
     self.splash:update(dt)
-    self.menu:update(dt)
+    self.menu:update(dt) -- also drives the intro fade-in; must not be duplicated via self.group
+    for _, link in ipairs(self.links) do link:update(dt) end
     if self.statsConsentDialog:isOpen() then
         self.statsConsentDialog:update(dt)
     end
@@ -231,16 +242,7 @@ function MainMenu:keypressed(key)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:keypressed(key)
     end
-    self.menu:keypressed(key)
-end
-
---- true if the pointer is over any corner icon link -- used to color the cursor
----@return boolean
-function MainMenu:anyLinkHover()
-    for _, link in ipairs(self.links) do
-        if link.hover then return true end
-    end
-    return false
+    self.group:keypressed(key)
 end
 
 ---@param x number
@@ -251,13 +253,12 @@ function MainMenu:mousemoved(x, y)
         self.mouseX, self.mouseY = x, y
         return
     end
-    self.menu:mousemoved(x, y)
-    for _, link in ipairs(self.links) do link:mousemoved(x, y) end
+    self.group:mousemoved(x, y)
     self.mouseX, self.mouseY = x, y
 end
 
---- routed in order: dialog, menu, corner links, then the sky -- so a click only
--- pops a star when it landed on nothing else
+--- routed in order: dialog, menu/links (one combined group), then the sky --
+-- so a click only pops a star when it landed on nothing else
 ---@param x number
 ---@param y number
 ---@param button integer
@@ -265,10 +266,7 @@ function MainMenu:mousepressed(x, y, button)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:mousepressed(x, y, button)
     end
-    if self.menu:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
-    for _, link in ipairs(self.links) do
-        if link:mousepressed(x, y, button) then return end
-    end
+    if self.group:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
 
     local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
     if not hit then return end -- a click on empty sky is not a pop
@@ -282,8 +280,7 @@ function MainMenu:mousereleased(x, y, button)
     if self.statsConsentDialog:isOpen() then
         return self.statsConsentDialog:mousereleased(x, y, button)
     end
-    self.menu:mousereleased(x, y, button)
-    for _, link in ipairs(self.links) do link:mousereleased(x, y, button) end
+    self.group:mousereleased(x, y, button)
 end
 
 --- back to front: nebula, stars, shooting stars, corner chrome, title, splash,
@@ -317,8 +314,8 @@ function MainMenu:draw()
         return
     end
 
-    local overMenu, dangerous = self.menu:hovering(self.mouseX or -1, self.mouseY or -1)
-    UI.Cursor.setHover(self.mouseX ~= nil and (self:anyLinkHover() or overMenu), dangerous)
+    local overWidget, dangerous = self.group:hovering(self.mouseX or -1, self.mouseY or -1)
+    UI.Cursor.setHover(self.mouseX ~= nil and overWidget, dangerous)
 end
 
 return MainMenu

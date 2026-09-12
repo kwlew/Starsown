@@ -40,6 +40,7 @@ function Dialog.new(config)
     local self = setmetatable({
         title = config.title,
         message = config.message,
+        fontRole = config.fontRole or "body",
         onCancel = config.onCancel,
         timeout = config.timeout,
         onTimeout = config.onTimeout,
@@ -109,12 +110,14 @@ function Dialog:layout()
     local innerW = panelW - pad * 2
 
     local titleFont = Theme.font("button")
-    local bodyFont = Theme.font("body")
+    local bodyFont = Theme.font(self.fontRole)
     local _, lines = bodyFont:getWrap(self:messageText(), innerW)
     local messageH = math.max(1, #lines) * bodyFont:getHeight()
 
+    local _, titleLines = titleFont:getWrap(self:titleText(), innerW)
+    self.titleH = math.max(1, #titleLines) * titleFont:getHeight()
     local panelH = pad * 2
-        + titleFont:getHeight() + Theme.px(TITLE_GAP)
+        + self.titleH + Theme.px(TITLE_GAP)
         + messageH + Theme.px(BUTTON_GAP_Y)
         + m.rowHeight
 
@@ -228,12 +231,12 @@ function Dialog:draw()
     love.graphics.printf(self:titleText(), panel.x + pad, panel.y + pad, self.innerW, "center")
     Theme.popFont()
 
-    local bodyFont = Theme.font("body")
+    local bodyFont = Theme.font(self.fontRole)
     Theme.pushFont(bodyFont)
     love.graphics.setColor(c.textMuted)
     love.graphics.printf(self:messageText(),
         panel.x + pad,
-        panel.y + pad + titleFont:getHeight() + Theme.px(TITLE_GAP),
+        panel.y + pad + self.titleH + Theme.px(TITLE_GAP),
         self.innerW, "center")
     Theme.popFont()
 

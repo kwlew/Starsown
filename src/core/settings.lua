@@ -1,7 +1,17 @@
 local Audio = require "core.audio"
+local DisplayLimits = require "core.displayLimits"
 local LuaSerialize = require "utils.luaSerialize"
 
 local Settings = {}
+local previews = setmetatable({}, { __mode = "k" })
+local applyingGraphics = false
+local GRAPHICS_KEYS = { "res_x", "res_y", "display", "windowMode", "vsync", "msaa" }
+
+function Settings.graphicsSnapshot(settings)
+    local snapshot = {}
+    for _, key in ipairs(GRAPHICS_KEYS) do snapshot[key] = settings[key] end
+    return snapshot
+end
 
 Settings.FILENAME = "settings.lua"
 
@@ -97,7 +107,7 @@ function Settings.load()
                 -- resolution the monitor lost falls back in options.lua.
                 -- Safe to call before a window exists.
                 if type(settings.display) ~= "number" or settings.display < 1
-                    or settings.display > love.window.getDisplayCount() then
+                    or (love.window and settings.display > love.window.getDisplayCount()) then
                     settings.display = Settings.defaults.display
                 end
 
@@ -119,7 +129,48 @@ end
 ---@return boolean success
 ---@return string? err
 function Settings.save(settings)
-    return love.filesystem.write(Settings.FILENAME, serialize(settings))
+    local safe = settings
+    if previews[settings] then
+        safe = {}
+        for key, value in pairs(settings) do safe[key] = value end
+        for key, value in pairs(previews[settings]) do safe[key] = value end
+    end
+    return love.filesystem.write(Settings.FILENAME, serialize(safe))
+end
+
+-- All save paths (including resize callbacks) retain the last confirmed graphics
+-- until Keep. Immediate audio/interface changes can still be persisted safely.
+function Settings.beginGraphicsPreview(settings)
+    if previews[settings] then return true end
+    local ok, err = Settings.save(settings)
+    if not ok then return false, err end
+    previews[settings] = Settings.graphicsSnapshot(settings)
+    return true
+end
+
+function Settings.endGraphicsPreview(settings, keep)
+    local baseline = previews[settings]
+    previews[settings] = nil
+    if keep then
+        local ok, err = Settings.save(settings)
+        if not ok then previews[settings] = baseline; return false, err end
+    elseif baseline then
+        for _, key in ipairs(GRAPHICS_KEYS) do
+            if baseline[key] ~= settings[key] then previews[settings] = baseline; break end
+        end
+    end
+    return true
+end
+
+function Settings.readGraphics(settings)
+    local actualW, actualH, actual = love.window.getMode()
+    settings.res_x, settings.res_y = actualW, actualH
+    settings.display = actual.display or settings.display
+    settings.msaa = actual.msaa or 0
+    settings.vsync = actual.vsync or 0
+    settings.windowMode = not actual.fullscreen and "windowed"
+        or (actual.fullscreentype == "exclusive" and "exclusive" or "borderless")
+    return actualW, actualH
 end
 
 --- applies resolution/mode/vsync/MSAA/display, and no-ops when nothing
@@ -133,38 +184,46 @@ end
 -- what rescues the player, same as it does for a bad resolution.
 ---@param settings table
 function Settings.applyGraphics(settings)
-    local w, h, flags = love.window.getMode()
-
-    local fullscreen = settings.windowMode ~= "windowed"
-    local fullscreenType = (settings.windowMode == "exclusive") and "exclusive" or "desktop"
-
-    local changed = flags.fullscreen ~= fullscreen
-        or (fullscreen and flags.fullscreentype ~= fullscreenType)
-        or flags.vsync ~= settings.vsync
-        or flags.msaa ~= settings.msaa
-        or flags.display ~= settings.display
-        or (settings.windowMode ~= "borderless" and (w ~= settings.res_x or h ~= settings.res_y))
-    if not changed then return end
-
-    flags.fullscreen = fullscreen
-    flags.fullscreentype = fullscreenType
-    flags.vsync = settings.vsync
-    flags.msaa = settings.msaa
-    flags.display = settings.display
-
-    if not fullscreen then
-        flags.x, flags.y = nil, nil
+    if settings.display < 1 or settings.display > love.window.getDisplayCount() then
+        return false, "Display is no longer available"
     end
+    local requested = Settings.graphicsSnapshot(settings)
+    local w, h, current = love.window.getMode()
+    local flags = {}
+    for key, value in pairs(current) do flags[key] = value end
+    local minW, minH = DisplayLimits.minimum(settings.display)
+    local desiredW, desiredH = settings.res_x, settings.res_y
+    if settings.windowMode == "windowed" then
+        desiredW, desiredH = DisplayLimits.windowSize(desiredW, desiredH, settings.display)
+    end
+    local fullscreen = settings.windowMode ~= "windowed"
+    local fullscreenType = settings.windowMode == "exclusive" and "exclusive" or "desktop"
+    local changed = flags.minwidth ~= minW or flags.minheight ~= minH
+        or flags.fullscreen ~= fullscreen
+        or (fullscreen and flags.fullscreentype ~= fullscreenType)
+        or flags.vsync ~= settings.vsync or flags.msaa ~= settings.msaa
+        or flags.display ~= settings.display
+        or (settings.windowMode ~= "borderless" and (w ~= desiredW or h ~= desiredH))
+    flags.fullscreen, flags.fullscreentype = fullscreen, fullscreenType
+    flags.vsync, flags.msaa, flags.display = settings.vsync, settings.msaa, settings.display
+    flags.minwidth, flags.minheight = minW, minH
+    if not fullscreen then flags.x, flags.y = nil, nil end
 
-    love.window.setMode(settings.res_x, settings.res_y, flags)
-
-    ---@diagnostic disable-next-line: redefined-local
-    local w, h, granted = love.window.getMode()
-    settings.msaa = granted.msaa or settings.msaa
-
-    if love.resize then love.resize(w, h) end
-
+    if changed then
+        applyingGraphics = true
+        local called, ok, err = pcall(love.window.setMode, desiredW, desiredH, flags)
+        applyingGraphics = false
+        if not called or not ok then return false, called and err or ok end
+    end
+    local actualW, actualH = Settings.readGraphics(settings)
+    local adjusted = false
+    for _, key in ipairs(GRAPHICS_KEYS) do
+        if not (requested.windowMode == "borderless" and (key == "res_x" or key == "res_y"))
+            and requested[key] ~= settings[key] then adjusted = true end
+    end
+    if changed and love.resize then love.resize(actualW, actualH) end
     love.mouse.setVisible(not settings.customCursor)
+    return true, nil, adjusted
 end
 
 --- called from main.lua's love.resize on every resize, not just a drag: a
@@ -182,6 +241,7 @@ end
 ---@param w number
 ---@param h number
 function Settings.trackWindowResize(settings, w, h)
+    if applyingGraphics then return end
     if settings.windowMode ~= "windowed" then return end
     if settings.res_x == w and settings.res_y == h then return end
     settings.res_x, settings.res_y = w, h

@@ -37,9 +37,21 @@ end
 --- replaces the whole list (a tab switch); any in-flight drag is dropped, its owner may not be on screen anymore
 ---@param widgets table[] # each must answer contains/update/draw/enabled
 function FocusGroup:setWidgets(widgets)
+    self:releaseCapture()
     self.widgets = widgets
-    self.capture = nil
     self:focusFirst(true) -- silent: this is the screen reconfiguring itself, not the player navigating
+end
+
+--- Finish a live drag before its owner disappears or a modal takes input.
+function FocusGroup:releaseCapture()
+    local target = self.capture
+    self.capture = nil
+    if target and target.mousereleased then target:mousereleased(0, 0, 1) end
+end
+
+--- Optional screen-owned clipping rule; unrelated screens accept every pointer.
+function FocusGroup:allowsPointer(widget, x, y)
+    return not self.pointerFilter or self.pointerFilter(widget, x, y)
 end
 
 ---@return table|nil
@@ -104,7 +116,10 @@ end
 ---@param key string
 ---@return boolean consumed
 function FocusGroup:keypressed(key)
-    if key == "up" or key == "w" then
+    if key == "tab" then
+        self:moveFocus(love.keyboard.isDown("lshift", "rshift") and -1 or 1)
+        return true
+    elseif key == "up" or key == "w" then
         self:moveFocus(-1)
         return true
     elseif key == "down" or key == "s" then
@@ -137,11 +152,14 @@ function FocusGroup:mousemoved(x, y)
     end
 
     for _, widget in ipairs(self.widgets) do -- hover feedback (selector chevrons, tab segments)
-        if widget.mousemoved then widget:mousemoved(x, y) end
+        if widget.mousemoved then
+            if self:allowsPointer(widget, x, y) then widget:mousemoved(x, y)
+            else widget:mousemoved(-math.huge, -math.huge) end
+        end
     end
 
     for i, widget in ipairs(self.widgets) do
-        if widget:isInteractive() and widget:contains(x, y) then
+        if widget:isInteractive() and self:allowsPointer(widget, x, y) and widget:contains(x, y) then
             self:setFocus(i)
             return true
         end
@@ -156,7 +174,7 @@ end
 ---@return boolean consumed
 function FocusGroup:mousepressed(x, y, button)
     for i, widget in ipairs(self.widgets) do
-        if widget:contains(x, y) then
+        if self:allowsPointer(widget, x, y) and widget:contains(x, y) then
             if widget:isInteractive() then
                 self:setFocus(i)
                 if widget:mousepressed(x, y, button) then
@@ -176,7 +194,7 @@ end
 ---@return boolean consumed
 function FocusGroup:mousereleased(x, y, button)
     local target = self.capture
-    if not target then return false end
+    if not target or button ~= 1 then return false end
 
     self.capture = nil
     if target.mousereleased then target:mousereleased(x, y, button) end
@@ -191,7 +209,7 @@ end
 ---@return boolean? danger
 function FocusGroup:hovering(x, y)
     for _, widget in ipairs(self.widgets) do
-        if widget:isInteractive() and widget:contains(x, y) then
+        if widget:isInteractive() and self:allowsPointer(widget, x, y) and widget:contains(x, y) then
             return true, widget.danger
         end
     end

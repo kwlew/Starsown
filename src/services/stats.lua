@@ -95,7 +95,7 @@ local function loadPending()
     end
     stars, golden, rainbow = tonumber(stars), tonumber(golden), tonumber(rainbow)
 
-    if not stars or not golden or golden + rainbow > stars then return end
+    if not stars or not golden or not rainbow or golden + rainbow > stars then return end
 
     pending.stars = math.min(stars, MAX_PENDING)
     pending.golden = math.min(golden, pending.stars)

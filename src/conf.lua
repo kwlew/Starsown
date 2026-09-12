@@ -42,6 +42,12 @@ function love.conf(t)
         end
     end
 
+    local limits = require "core.displayLimits"
+    t.window.minwidth, t.window.minheight = limits.minimum(t.window.display or 1)
+    if not t.window.fullscreen then
+        t.window.width, t.window.height = limits.windowSize(t.window.width, t.window.height, t.window.display or 1)
+    end
+
     t.modules.joystick = false
     t.modules.physics = false
 end

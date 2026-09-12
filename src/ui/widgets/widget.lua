@@ -38,13 +38,14 @@ end
 
 --- the fields every widget shares; a subclass constructor adds only its own
 ---@param class table
----@param config table # { label?: string|fun(self: table): string, enabled?: boolean, danger?: boolean, font?: love.Font|string, x?: number, y?: number, w?: number, h?: number }
+---@param config table # { label?: string|fun(self: table): string, enabled?: boolean, danger?: boolean, primary?: boolean, font?: love.Font|string, x?: number, y?: number, w?: number, h?: number }
 ---@return table
 function Widget.new(class, config)
     return setmetatable({
         label   = config.label or "",      -- string, or function(self) -> string
         enabled = config.enabled ~= false, -- disabled = greyed out and inert
         danger = config.danger or false,   -- lights up red instead of accent (Quit, Discard)
+        primary = config.primary or false, -- always shows the lit look, not just while focused (Play)
         font = config.font,                -- stored unresolved (nil, a role name, or a Font); see Widget:getFont
         x = config.x or 0,
         y = config.y or 0,
@@ -75,7 +76,7 @@ end
 
 ---@return boolean # whether input and the lit look apply at all
 function Widget:isInteractive()
-    return self.enabled
+    return self.enabled and not self.readOnly
 end
 
 ---@return string # the label, resolved if it's a function
@@ -100,6 +101,11 @@ function Widget:isLit()
     return self.focused
 end
 
+--- `primary` (Play) is tinted at rest, not lit -- the bloom/full-brightness
+-- look stays reserved for actual focus/hover, so lighting up on focus still
+-- reads as a change instead of "a bit more of the same thing it always shows"
+Widget.PRIMARY_BASE_GLOW = 0.5
+
 --- default: a left-click inside the row activates it; returns false, only a
 -- widget with a drag (Slider) captures the mouse
 ---@param px number
@@ -117,16 +123,50 @@ end
 ---@param alpha? number # defaults to the widget's own
 function Widget:drawRow(alpha)
     Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
-        alpha or self:alpha(), self.danger and "danger" or "accent")
+        alpha or self:alpha(), self.danger and "danger" or "accent",
+        self.primary and Widget.PRIMARY_BASE_GLOW or nil)
 end
 
---- caller owns the font stack, since most rows reuse the pushed font for a value column afterwards
----@param font any # a love.Font; already pushed by the caller
----@param alpha number
+--- Opt-in measured label/control layout, used by scrolling settings rows.
+-- Relative rectangles survive scrolling without requiring another measure pass.
+function Widget:measureRow(width)
+    local m, font = Theme.metrics, self:getFont()
+    local inner = math.max(1, width - m.padding * 2)
+    local controlW, controlH = self:preferredControlSize(inner)
+    controlW = math.min(inner, controlW)
+    local stacked = font:getWidth(self:labelText()) + m.padding + controlW > inner
+    local labelW = stacked and inner or math.max(1, inner - controlW - m.padding)
+    local _, lines = font:getWrap(self:labelText(), labelW)
+    local labelH = math.max(1, #lines) * font:getHeight()
+    local vpad, gap = Theme.px(8), Theme.px(6)
+    local height = math.max(m.rowHeight,
+        (stacked and labelH + gap + controlH or math.max(labelH, controlH)) + vpad * 2)
+    self.rowLayout = {
+        labelX = m.padding, labelY = stacked and vpad or (height - labelH) / 2,
+        labelW = labelW, labelH = labelH,
+        x = width - m.padding - controlW,
+        y = stacked and vpad + labelH + gap or (height - controlH) / 2,
+        w = controlW, h = controlH, stacked = stacked,
+    }
+    return height
+end
+
+function Widget:controlRect()
+    local r = self.rowLayout
+    return self.x + r.x, self.y + r.y, r.w, r.h
+end
+
+--- caller owns the font stack
 function Widget:drawLabel(font, alpha)
     Theme.setColor(Theme.colors.text, alpha)
-    love.graphics.print(self:labelText(), self.x + Theme.metrics.padding,
-        Theme.centerY(self.y, self.h, font))
+    local r = self.rowLayout
+    if r then
+        love.graphics.printf(self:labelText(), self.x + r.labelX,
+            self.y + r.labelY, r.labelW, "left")
+    else
+        love.graphics.print(self:labelText(), self.x + Theme.metrics.padding,
+            Theme.centerY(self.y, self.h, font))
+    end
 end
 
 --- eases the focus glow; subclasses call this before their own easing

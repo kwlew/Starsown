@@ -388,7 +388,11 @@ elseif isLinux or isMac then
                 local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
                 if fd >= 0 then
                     local addr = ffi.new("struct sockaddr_un")
+                    -- sockaddr_un's fields come from the ffi.cdef string above, invisible
+                    -- to static analysis, hence the two disables below.
+                    ---@diagnostic disable-next-line: inject-field
                     addr.sun_family = AF_UNIX
+                    ---@diagnostic disable-next-line: undefined-field
                     ffi.copy(addr.sun_path, path)
                     if C.connect(fd, addr, ffi.sizeof(addr)) == 0 then
                         local flags = C.fcntl(fd, F_GETFL, 0)

@@ -50,6 +50,10 @@ function Toggle:update(dt)
     self.knob = Theme.approach(self.knob, self.value and 1 or 0, dt)
 end
 
+function Toggle:preferredControlSize()
+    return Theme.px(PILL_W), Theme.px(PILL_H)
+end
+
 --- label left, pill right, the knob eased between its two ends
 function Toggle:draw()
     local c, m = Theme.colors, Theme.metrics
@@ -63,6 +67,10 @@ function Toggle:draw()
     local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
     local pillX = self.x + self.w - m.padding - pillW
     local pillY = self.y + (self.h - pillH) / 2
+    if self.rowLayout then
+        local x, y, w, h = self:controlRect()
+        pillX, pillY = x + w - pillW, y + (h - pillH) / 2
+    end
     local tr, tg, tb = Theme.lerp(c.track, c.accentDim, self.knob)
     love.graphics.setColor(tr, tg, tb, alpha)
     love.graphics.rectangle("fill", pillX, pillY, pillW, pillH, pillH / 2, pillH / 2, 64)

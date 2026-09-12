@@ -367,6 +367,7 @@ local fontRoles = {
     heading = { file = "Oxanium-Bold.ttf",      size = 40, fallback = "Play-Bold.ttf" },
     button  = { file = "Oxanium-SemiBold.ttf",  size = 26, fallback = "Play-Bold.ttf" },
     body    = { file = "Oxanium-Medium.ttf",    size = 26, fallback = "Play-Regular.ttf" },
+    help    = { file = "Oxanium-Regular.ttf", size = 18, fallback = "Play-Regular.ttf" },
     small   = { file = "Oxanium-Regular.ttf",   size = 15, fallback = "Play-Regular.ttf" },
     debug   = { file = "Oxanium-Medium.ttf",    size = 14, fallback = "Play-Regular.ttf" },
 }
@@ -696,18 +697,23 @@ local TONES = {
 ---@param time number # seconds, drives the glow's pulse
 ---@param alpha? number # border alpha, defaults to 1
 ---@param tone? "accent"|"danger" # defaults to accent
-function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone)
+---@param baseGlow? number # 0..1 floor under the fill/border blend only -- lets
+-- a row read as tinted/important at rest without the bloom halo also showing;
+-- that stays reserved for real focus, so focus doesn't just look like "a bit
+-- more of the same" a primary row already has (see Widget.PRIMARY_BASE_GLOW)
+function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone, baseGlow)
     alpha = alpha or 1
     local c, m = Theme.colors, Theme.metrics
     local set = TONES[tone] or TONES.accent
     local lit = c[set.lit]
+    local fillGlow = math.max(glow, baseGlow or 0)
 
     if glow > 0.01 then
         Theme.glowRect(x, y, w, h, m.radius, glow * Theme.pulse(time), c[set.glow], true)
     end
-    love.graphics.setColor(Theme.lerp(c.panel, c[set.fill], glow))
+    love.graphics.setColor(Theme.lerp(c.panel, c[set.fill], fillGlow))
     love.graphics.rectangle("fill", x, y, w, h, m.radius, m.radius, 10)
-    local br, bg, bb = Theme.lerp(c[set.rest], lit, glow)
+    local br, bg, bb = Theme.lerp(c[set.rest], lit, fillGlow)
     love.graphics.setColor(br, bg, bb, alpha)
     love.graphics.rectangle("line", x, y, w, h, m.radius, m.radius, 10)
 end

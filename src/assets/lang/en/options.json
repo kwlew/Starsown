@@ -19,7 +19,7 @@
     "displayMode": "Display Mode",
     "vsync": "VSync",
     "uncapFps": "Uncapped FPS",
-    "showNebula": "Show Nebula",
+    "showNebula": "Menu Nebula",
     "shareStats": "Share Play Stats",
     "tab": {
       "audio": "Audio",
@@ -50,8 +50,7 @@
       "orbitron": "Orbitron"
     },
     "hint": {
-      "general": "Arrows: adjust    Enter or Click: change    Esc: back",
-      "graphics": "Graphics changes take effect when you press Apply    Esc: back"
+      "navigation": "Tab / Arrows: navigate    Left / Right: adjust    Enter: select    Esc: back"
     },
     "desc": {
       "volume": "Overall loudness. Scales music and sound effects together.",
@@ -63,16 +62,45 @@
       "customCursor": "Replaces your system pointer with the game's own cursor. Applies immediately.",
       "reducedMotion": "Calms the background animation: shooting stars, drifting nebula, twinkling sky, and the title's color cycling. Applies immediately.",
       "display": "Which monitor the game window opens on.",
-      "resolution": "Size of the game window.",
-      "resolutionBorderless": "Unavailable in Borderless. The game matches your desktop resolution.",
+      "resolution": "Window size, or the output resolution in exclusive fullscreen.",
       "msaa": "Smooths jagged edges. Higher settings cost more performance.",
       "displayMode": "Windowed, borderless fullscreen, or exclusive fullscreen.",
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
       "uncapFps": "Removes the engine's internal frame rate cap. VSync above still limits frames unless it's off too. Applies immediately.",
-      "showNebula": "Toggles the drifting gas-cloud backdrop behind the menu. Applies immediately.",
+      "showNebula": "Shows the drifting nebula on the main menu.",
       "shareStats": "Shares star-pop counts and a random installation ID for aggregate statistics and the online player count. Only these values are sent.",
-      "apply": "Applies the graphics changes above. You'll be asked to confirm.",
+      "apply": "Applies all pending graphics changes, including changes made on another tab.",
       "back": "Returns to the previous screen."
+    },
+    "applyGraphics": "Apply Graphics",
+    "pendingGraphics": "Graphics changes waiting to be applied",
+    "section": {
+      "display": "Display",
+      "quality": "Quality",
+      "performance": "Performance",
+      "appearance": "Appearance",
+      "accessibility": "Accessibility",
+      "privacy": "Privacy"
+    },
+    "note": {
+      "borderless": "Uses desktop resolution.",
+      "monitor": "Only one monitor is available.",
+      "adjusted": "Resolution adjusted to an available size.",
+      "vsyncOn": "VSync is currently limiting the frame rate.",
+      "vsyncOff": "VSync is currently off.",
+      "vsyncPending": "VSync also has an unapplied change."
+    },
+    "error": {
+      "failed": "Could not apply graphics settings. The previous settings have been restored.",
+      "recovery": "The previous display mode was unavailable. A windowed mode is active; your last confirmed settings are still saved.",
+      "restoreFailed": "The display could not be restored. Your last confirmed settings are still saved. Close and restart the game to retry.",
+      "saveFailed": "Could not save the graphics settings. The previous settings will be restored."
+    },
+    "errorTitle": "Graphics settings",
+    "adjustedGraphics": "The display adjusted the requested settings. Review the active values below before keeping them.",
+    "state": {
+      "on": "On",
+      "off": "Off"
     }
   }
 }

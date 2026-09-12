@@ -19,7 +19,7 @@
     "displayMode": "Modo de Tela",
     "vsync": "VSync",
     "uncapFps": "FPS sem limite",
-    "showNebula": "Mostrar Nebulosa",
+    "showNebula": "Nebulosa do menu",
     "shareStats": "Compartilhar estatísticas",
     "tab": {
       "audio": "Áudio",
@@ -50,8 +50,7 @@
       "orbitron": "Orbitron"
     },
     "hint": {
-      "general": "Setas: ajustar    Enter ou Clique: alterar    Esc: voltar",
-      "graphics": "As alterações gráficas são aplicadas ao pressionar Aplicar    Esc: voltar"
+      "navigation": "Tab / Setas: navegar    Esq. / Dir.: ajustar    Enter: escolher    Esc: voltar"
     },
     "desc": {
       "volume": "Volume geral. Ajusta música e efeitos ao mesmo tempo.",
@@ -63,16 +62,45 @@
       "customCursor": "Substitui o ponteiro do seu sistema pelo cursor próprio do jogo. Aplica imediatamente.",
       "reducedMotion": "Acalma a animação de fundo: estrelas cadentes, nebulosa à deriva, céu cintilante e o ciclo de cores do título. Aplica imediatamente.",
       "display": "Em qual monitor a janela do jogo abre.",
-      "resolution": "Tamanho da janela do jogo.",
-      "resolutionBorderless": "Indisponível em Borderless. O jogo usa a resolução da sua área de trabalho.",
+      "resolution": "Tamanho da janela ou resolução de saída em tela cheia exclusiva.",
       "msaa": "Suaviza as bordas serrilhadas. Valores altos custam mais desempenho.",
       "displayMode": "Windowed, Borderless ou Fullscreen exclusivo.",
       "vsync": "Sincroniza a taxa de quadros com o monitor para evitar tearing.",
       "uncapFps": "Remove o limite interno de quadros do motor. O VSync (acima) ainda limita os quadros a menos que também esteja desativado. Aplica imediatamente.",
-      "showNebula": "Ativa ou desativa a nuvem de gás à deriva atrás do menu. Aplica imediatamente.",
+      "showNebula": "Mostra a nebulosa animada no menu principal.",
       "shareStats": "Compartilha contagens de estrelas estouradas e um identificador aleatório da instalação para estatísticas agregadas e a contagem de jogadores online. Apenas esses valores são enviados.",
-      "apply": "Aplica as alterações gráficas acima. Será pedida uma confirmação.",
+      "apply": "Aplica todas as alterações gráficas pendentes, incluindo as de outras abas.",
       "back": "Volta para a tela anterior."
+    },
+    "applyGraphics": "Aplicar gráficos",
+    "pendingGraphics": "Alterações gráficas aguardando aplicação",
+    "section": {
+      "display": "Tela",
+      "quality": "Qualidade",
+      "performance": "Desempenho",
+      "appearance": "Aparência",
+      "accessibility": "Acessibilidade",
+      "privacy": "Privacidade"
+    },
+    "note": {
+      "borderless": "Usa a resolução da área de trabalho.",
+      "monitor": "Apenas um monitor está disponível.",
+      "adjusted": "Resolução ajustada para um tamanho disponível.",
+      "vsyncOn": "O VSync está limitando a taxa de quadros.",
+      "vsyncOff": "O VSync está desativado.",
+      "vsyncPending": "O VSync também tem uma alteração pendente."
+    },
+    "error": {
+      "failed": "Não foi possível aplicar as configurações gráficas. As anteriores foram restauradas.",
+      "recovery": "O modo anterior não estava disponível. O modo janela está ativo; as últimas configurações confirmadas continuam salvas.",
+      "restoreFailed": "Não foi possível restaurar a tela. As últimas configurações confirmadas continuam salvas. Feche e reinicie o jogo para tentar novamente.",
+      "saveFailed": "Não foi possível salvar as configurações gráficas. As anteriores serão restauradas."
+    },
+    "errorTitle": "Configurações gráficas",
+    "adjustedGraphics": "A tela ajustou as configurações solicitadas. Confira os valores ativos antes de mantê-los.",
+    "state": {
+      "on": "Ativado",
+      "off": "Desativado"
     }
   }
 }
