@@ -17,9 +17,10 @@ local SWATCH = 22 -- design-space px, scaled through Theme.px
 local SWATCH_GAP = 8
 local SAMPLE_SIZE = 30 -- design-space title-font point size for the inline sample
 local SWATCH_ROLES = { "accent", "accentBright", "panel", "text", "danger" }
+local UI_FONT_SAMPLE_TEXT = "AaBbCc 0123" -- shows weight/letterforms better than the game name would
 
 ---@param config table # Widget.new's fields
----@param kind "theme"|"title"
+---@param kind "theme"|"title"|"uiFont"
 ---@return table
 local function new(config, kind)
     local self = Widget.new(Preview, config)
@@ -38,15 +39,22 @@ function Preview.newTitleFont(config)
     return new(config or {}, "title")
 end
 
+---@return table
+function Preview.newUiFont(config)
+    return new(config or {}, "uiFont")
+end
+
 --- Rebuilt only when the selected face actually changes -- Theme.fontSized
 -- rasterizes a new Font each call, so caching this is what keeps a draw call
 -- cheap. `Theme.rescale` also changes the design-to-screen scale, so a
 -- resize needs to invalidate this the same as a font switch does.
 ---@return any # a love.Font, sized for an inline sample rather than the full title
 function Preview:sampleFont()
-    if self.fontId ~= GameTitle.current or self.fontScale ~= Theme.scale then
-        self.fontId, self.fontScale = GameTitle.current, Theme.scale
-        self.font = Theme.fontSized(GameTitle.currentRole(), SAMPLE_SIZE)
+    local id = self.kind == "title" and GameTitle.current or Theme.currentUiFontFamily()
+    if self.fontId ~= id or self.fontScale ~= Theme.scale then
+        self.fontId, self.fontScale = id, Theme.scale
+        local role = self.kind == "title" and GameTitle.currentRole() or "button"
+        self.font = Theme.fontSized(role, SAMPLE_SIZE)
     end
     return self.font
 end
@@ -83,9 +91,10 @@ end
 
 function Preview:drawSample()
     local font = self:sampleFont()
+    local text = self.kind == "title" and GameTitle.TEXT or UI_FONT_SAMPLE_TEXT
     Theme.pushFont(font)
     Theme.setColor(Theme.colors.accentBright, self.introAlpha)
-    love.graphics.print(GameTitle.TEXT, self.x + Theme.metrics.padding, self.y + (self.h - font:getHeight()) / 2)
+    love.graphics.print(text, self.x + Theme.metrics.padding, self.y + (self.h - font:getHeight()) / 2)
     Theme.popFont()
     love.graphics.setColor(1, 1, 1, 1)
 end

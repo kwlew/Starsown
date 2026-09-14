@@ -8,7 +8,7 @@
 )
 
 
-- **Twelve color themes**, switchable any time from Options.
+- **Fourteen color themes**, switchable any time from Options.
 - **English, Spanish, Portuguese, and Russian** localization.
 - Discord Rich Presence.
 

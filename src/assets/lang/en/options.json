@@ -9,6 +9,7 @@
     "language": "Language",
     "theme": "Theme",
     "titleFont": "Title Font",
+    "uiFont": "Interface Font",
     "customCursor": "Custom Cursor",
     "reducedMotion": "Reduce Motion",
     "display": "Monitor",
@@ -43,11 +44,18 @@
       "ruby": "Ruby",
       "diamond": "Diamond",
       "lapis": "Lapis",
-      "rose": "Rose"
+      "rose": "Rose",
+      "peridot": "Peridot",
+      "indigo": "Indigo"
     },
     "titleFontName": {
       "acme": "Acme",
-      "orbitron": "Orbitron"
+      "orbitron": "Orbitron",
+      "jetmono": "JetBrains Mono"
+    },
+    "uiFontName": {
+      "oxanium": "Oxanium",
+      "jetmono": "JetBrains Mono"
     },
     "hint": {
       "navigation": "Tab / Arrows: navigate    Left / Right: adjust    Enter: select    Esc: back"
@@ -59,6 +67,7 @@
       "language": "Interface language. Applies immediately.",
       "theme": "Color scheme for the interface and the night sky. Applies immediately.",
       "titleFont": "Font used for the game's title. Applies immediately.",
+      "uiFont": "Font used everywhere else: menus, buttons, and settings text. Applies immediately.",
       "customCursor": "Replaces your system pointer with the game's own cursor. Applies immediately.",
       "reducedMotion": "Calms the background animation: shooting stars, drifting nebula, twinkling sky, and the title's color cycling. Applies immediately.",
       "display": "Which monitor the game window opens on.",

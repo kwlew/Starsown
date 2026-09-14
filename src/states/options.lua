@@ -32,7 +32,19 @@ local PANEL_MAX_W = 720
 local REVERT_SECONDS = 10
 
 local WINDOWED_FLOOR = { 1280, 720 } -- the one size always on offer if a desktop-size query ever fails
-local DESKTOP_FRACTIONS = { 1, 0.75, 0.5 } -- of the selected display's desktop size, for windowed sizing
+
+--- common display resolutions offered for windowed mode, rather than
+-- fractions of the desktop -- these are sizes players actually expect to
+-- pick from. windowedResolutions filters this to what fits the selected
+-- display and adds that display's own native size, so a panel whose size
+-- isn't one of these standard ones can still be selected (e.g. maximized).
+local WINDOWED_RESOLUTIONS = {
+    { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 720 }, { 1280, 800 },
+    { 1280, 960 }, { 1280, 1024 }, { 1360, 768 }, { 1366, 768 }, { 1440, 900 },
+    { 1536, 864 }, { 1600, 900 }, { 1600, 1200 }, { 1680, 1050 }, { 1920, 1080 },
+    { 1920, 1200 }, { 2560, 1080 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 },
+    { 3840, 2160 },
+}
 
 local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates against the same list at boot
 
@@ -48,7 +60,8 @@ local function displayOptions()
 end
 
 --- exclusive fullscreen offers exactly the modes the display reports
--- (de-duplicated by size, largest first) -- getFullscreenModes is
+-- (de-duplicated by size, smallest first -- so Right steps up in size, same
+-- as every other numeric selector, e.g. MSAA) -- getFullscreenModes is
 -- specifically about fullscreen capability, so it's never used for the
 -- windowed case below, which asks a different question entirely.
 ---@param display integer
@@ -56,8 +69,8 @@ end
 local function exclusiveResolutions(display)
     local modes = love.window.getFullscreenModes(display)
     table.sort(modes, function(a, b)
-        if a.width ~= b.width then return a.width > b.width end
-        return a.height > b.height
+        if a.width ~= b.width then return a.width < b.width end
+        return a.height < b.height
     end)
 
     local minW, minH = DisplayLimits.minimum(display)
@@ -72,28 +85,35 @@ local function exclusiveResolutions(display)
     return list
 end
 
---- windowed sizing is capped to the display's own desktop size rather than
--- offering anything getFullscreenModes reports -- a windowed size larger
--- than the desktop makes no more sense than a fullscreen mode the display
--- doesn't support. A monitor smaller than 1280x720 gets fractions of its own
--- (smaller) desktop instead of that floor -- see resolutionsFor, which only
--- falls back to WINDOWED_FLOOR if this returns nothing at all.
+--- windowed sizing offers WINDOWED_RESOLUTIONS filtered to what fits the
+-- display's own desktop size -- a windowed size larger than the desktop
+-- makes no more sense than a fullscreen mode the display doesn't support --
+-- plus that desktop size itself, so a panel whose native size isn't one of
+-- the standard entries can still be picked (maximized). A monitor smaller
+-- than every standard entry falls through to just its own desktop size
+-- here, or WINDOWED_FLOOR via resolutionsFor if even that query fails.
 ---@param display integer
----@return table[] # { {w, h}, ... }, largest first
+---@return table[] # { {w, h}, ... }, smallest first -- so Right steps up in size
 local function windowedResolutions(display)
     local deskW, deskH = love.window.getDesktopDimensions(display)
     if type(deskW) ~= "number" or deskW <= 0 or deskH <= 0 then return {} end
 
     local minW, minH = DisplayLimits.minimum(display)
     local seen, list = {}, {}
-    for _, fraction in ipairs(DESKTOP_FRACTIONS) do
-        local w, h = math.max(minW, math.floor(deskW * fraction)), math.max(minH, math.floor(deskH * fraction))
+    local function add(w, h)
         local key = w .. "x" .. h
-        if not seen[key] and w > 0 and h > 0 then
+        if not seen[key] and w >= minW and h >= minH and w <= deskW and h <= deskH then
             seen[key] = true
             list[#list + 1] = { w, h }
         end
     end
+    for _, res in ipairs(WINDOWED_RESOLUTIONS) do add(res[1], res[2]) end
+    add(deskW, deskH)
+
+    table.sort(list, function(a, b)
+        if a[1] ~= b[1] then return a[1] < b[1] end
+        return a[2] < b[2]
+    end)
     return list
 end
 
@@ -136,6 +156,12 @@ local function titleFontIndexFor(id)
     return indexWhere(GameTitle.available(), function(e) return e.id == id end)
 end
 
+---@param id string
+---@return integer
+local function uiFontIndexFor(id)
+    return indexWhere(UI.Theme.uiFontFamilies(), function(e) return e.id == id end)
+end
+
 ---@param display integer
 ---@return integer
 local function displayIndexFor(display)
@@ -152,6 +178,21 @@ end
 ---@return integer
 local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
+end
+
+--- inserts w,h keeping `options` sorted the same way windowedResolutions/
+-- exclusiveResolutions do (smallest first), and returns where it landed
+---@param options table[]
+---@param w number
+---@param h number
+---@return integer
+local function insertSorted(options, w, h)
+    local index = #options + 1
+    for i, option in ipairs(options) do
+        if w < option[1] or (w == option[1] and h < option[2]) then index = i; break end
+    end
+    table.insert(options, index, { w, h })
+    return index
 end
 
 --- Only windowed modes may preserve custom sizes. A monitor/mode change
@@ -172,18 +213,17 @@ function Options:rebuildResolutions(targetW, targetH)
         local isLive = display == self.settings.display and mode == self.settings.windowMode
             and targetW == self.settings.res_x and targetH == self.settings.res_y
         if (w == targetW and h == targetH) or isLive then
-            table.insert(options, 1, { targetW, targetH })
-            index = 1
+            index = insertSorted(options, targetW, targetH)
         end
     end
     if not index and mode == "exclusive" and display == self.settings.display
         and mode == self.settings.windowMode and targetW == self.settings.res_x and targetH == self.settings.res_y then
-        table.insert(options, 1, { targetW, targetH }) -- the currently active mode is known to work
-        index = 1
+        index = insertSorted(options, targetW, targetH) -- the currently active mode is known to work
     end
     self.resolutionAdjusted = mode ~= "borderless" and not index and targetW and targetW > 0 or false
     self.resolutionSelector.options = options
-    self.pending.resIndex = index or 1
+    -- no match at all: default to the largest (last, now that Right steps up in size) available size
+    self.pending.resIndex = index or #options
     self.resolutionSelector.index = self.pending.resIndex
 end
 
@@ -704,6 +744,21 @@ function Options:enter(previousName, opts)
         self.titleFontSelector.descKey = 'options.desc.titleFont'
         self.titleFontPreview = UI.Preview.newTitleFont{}
 
+        self.uiFontSelector = UI.Selector.new{
+            label = function() return I18n.t("options.uiFont") end,
+            options = UI.Theme.uiFontFamilies(),
+            format = function(entry) return I18n.t("options.uiFontName." .. entry.id) end,
+            onChange = function(entry)
+                UI.Sfx.select()
+                self.settings.uiFont = entry.id
+                UI.Theme.setUiFontFamily(entry.id)
+                self:layout() -- a metrics-affecting font swap changes row heights, same as a language switch
+                persist()
+            end,
+        }
+        self.uiFontSelector.descKey = 'options.desc.uiFont'
+        self.uiFontPreview = UI.Preview.newUiFont{}
+
         self.customCursorToggle = self:buildSettingToggle("customCursor", UI.Cursor.setEnabled)
 
         self.reducedMotionToggle = self:buildSettingToggle("reducedMotion", UI.Motion.setReduced)
@@ -776,6 +831,7 @@ function Options:enter(previousName, opts)
                                                self.sfxVolumeSlider, } },
             { name = "interface", widgets = { self.languageSelector, self.themeSelector, self.themePreview,
                                                self.titleFontSelector, self.titleFontPreview,
+                                               self.uiFontSelector, self.uiFontPreview,
                                                self.customCursorToggle, self.reducedMotionToggle,
                                                self.shareStatsToggle, } },
             { name = "graphics", widgets = { self.displaySelector, self.windowModeSelector, self.resolutionSelector,
@@ -831,6 +887,7 @@ function Options:enter(previousName, opts)
     self.languageSelector.index = languageIndexFor(self.settings.language)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
     self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
+    self.uiFontSelector.index = uiFontIndexFor(UI.Theme.currentUiFontFamily())
     self.customCursorToggle.value = self.settings.customCursor
     self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats

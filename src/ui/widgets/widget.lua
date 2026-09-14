@@ -104,7 +104,7 @@ end
 --- `primary` (Play) is tinted at rest, not lit -- the bloom/full-brightness
 -- look stays reserved for actual focus/hover, so lighting up on focus still
 -- reads as a change instead of "a bit more of the same thing it always shows"
-Widget.PRIMARY_BASE_GLOW = 0.5
+Widget.PRIMARY_BASE_GLOW = 0.3
 
 --- default: a left-click inside the row activates it; returns false, only a
 -- widget with a drag (Slider) captures the mouse

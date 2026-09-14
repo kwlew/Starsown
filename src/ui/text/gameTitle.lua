@@ -18,6 +18,7 @@ GameTitle.MENU_Y_RATIO = 0.16 -- vertical position on the menu, as a fraction of
 GameTitle.FONTS = {
     { id = "acme",     role = "title2" },
     { id = "orbitron", role = "title" },
+    { id = "jetmono",  role = "title3" },
 }
 GameTitle.current = "acme"
 

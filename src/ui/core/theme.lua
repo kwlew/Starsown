@@ -6,6 +6,7 @@ local FONT_FAMILIES = {
     acme = "assets/fonts/Acme/",
     oxanium  = "assets/fonts/Oxanium/",
     orbitron = "assets/fonts/Orbitron/static/",
+    jetmono  = "assets/fonts/JetMono/",
     play     = "assets/fonts/Play/", -- Cyrillic fallback only, see fontRoles' `fallback` field
 }
 local DEFAULT_FAMILY = "oxanium"
@@ -227,6 +228,7 @@ local PALETTES = {
         accent    = { 0.95, 0.80, 0.32 },
         accentAlt = { 0.96, 0.52, 0.30 },
         tint      = { default = 0.70, text = 0.25, textMuted = 0.30, textDim = 0.40 },
+        warning   = { 0.98, 0.45, 0.08 }, -- topaz's own accent is gold; a pale warning would vanish into it
         danger    = { 0.95, 0.10, 0.14 },
         title     = { { 1.00, 0.90, 0.30 }, { 1.00, 0.95, 0.82 }, { 1.00, 0.50, 0.30 } },
     },
@@ -270,6 +272,19 @@ local PALETTES = {
         accent    = { 0.76, 0.22, 0.44 },
         accentAlt = { 0.62, 0.30, 0.80 },
         tint      = 0.45,
+        danger    = { 0.98, 0.28, 0.26 }, -- rose's own accent already reads close to red; danger needs its own hue
+    },
+    {
+        id        = "peridot",
+        accent    = { 0.55, 0.81, 0.35 },
+        accentAlt = { 0.95, 0.85, 0.35 },
+        tint      = 0.55,
+    },
+    {
+        id        = "indigo",
+        accent    = { 0.35, 0.27, 0.83 },
+        accentAlt = { 0.93, 0.37, 0.93 },
+        tint      = 0.55,
     },
 }
 
@@ -357,20 +372,85 @@ local baseMetrics = {
 
 local constantMetrics = {
     glowLayers = 3,
-    glowAlpha  = 0.16,
+    glowAlpha  = 0.26,
     focusSpeed = 10,
 }
 
+--- title/title2/title3 are picked between wholesale (see GameTitle) rather
+-- than swappable, so they carry their own file/family here. The rest name
+-- only a size -- their file/family come from UI_FONT_FAMILIES below, per the
+-- interface font a player picked (see resolveRole), so switching that one
+-- setting re-fonts every button/heading/body/help/small/debug role at once.
 local fontRoles = {
     title = { file = "Orbitron-ExtraBold.ttf", family = "orbitron", size = 80 }, -- game title
-    title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 52  }, -- game title, alternate
-    heading = { file = "Oxanium-Bold.ttf",      size = 40, fallback = "Play-Bold.ttf" },
-    button  = { file = "Oxanium-SemiBold.ttf",  size = 26, fallback = "Play-Bold.ttf" },
-    body    = { file = "Oxanium-Medium.ttf",    size = 26, fallback = "Play-Regular.ttf" },
-    help    = { file = "Oxanium-Regular.ttf", size = 18, fallback = "Play-Regular.ttf" },
-    small   = { file = "Oxanium-Regular.ttf",   size = 15, fallback = "Play-Regular.ttf" },
-    debug   = { file = "Oxanium-Medium.ttf",    size = 14, fallback = "Play-Regular.ttf" },
+    title2 = { file = "Acme9_TITLE.ttf", family = "acme", size = 52 }, -- game title, alternate
+    title3 = { file = "JetBrainsMono-ExtraBold.ttf", family = "jetmono", size = 60 }, -- game title, alternate
+    heading = { size = 40 },
+    button  = { size = 26 },
+    body    = { size = 26 },
+    help    = { size = 18 },
+    small   = { size = 15 },
+    debug   = { size = 14 },
 }
+
+--- interface font families a player can switch between for every role above
+-- except the title (title/title2/title3 are switched as whole faces
+-- instead, via GameTitle). JetBrains Mono uses its Regular weight for every
+-- role here, not a weight mirroring Oxanium's own Bold/SemiBold/Medium mix --
+-- a monospace face's thicker, evenly-spaced strokes already read as
+-- noticeably heavier than Oxanium's at a matched size, so pairing it with
+-- Oxanium's bolder weights compounded into looking oversized everywhere.
+--
+-- JetBrains Mono also gets its own, smaller `size` per role: at matching
+-- point sizes it renders noticeably bigger than Oxanium -- same nominal
+-- size, but a taller ascent and wider advance per glyph -- so reusing
+-- fontRoles' size verbatim made every JetBrains Mono row overflow next to
+-- an Oxanium one. These were picked by comparing rendered Font:getAscent()
+-- between the two faces at each role until they matched, not guessed --
+-- weight doesn't move that metric (Bold/Regular share identical advance and
+-- ascent in this face), so the sizes hold regardless of the weight above.
+local UI_FONT_FAMILIES = {
+    {
+        id      = "oxanium",
+        heading = { file = "Oxanium-Bold.ttf",     fallback = "Play-Bold.ttf" },
+        button  = { file = "Oxanium-SemiBold.ttf", fallback = "Play-Bold.ttf" },
+        body    = { file = "Oxanium-Medium.ttf",   fallback = "Play-Regular.ttf" },
+        help    = { file = "Oxanium-Regular.ttf",  fallback = "Play-Regular.ttf" },
+        small   = { file = "Oxanium-Regular.ttf",  fallback = "Play-Regular.ttf" },
+        debug   = { file = "Oxanium-Medium.ttf",   fallback = "Play-Regular.ttf" },
+    },
+    {
+        id      = "jetmono",
+        heading = { file = "JetBrainsMono-Regular.ttf", size = 31 },
+        button  = { file = "JetBrainsMono-Regular.ttf", size = 20 },
+        body    = { file = "JetBrainsMono-Regular.ttf", size = 20 },
+        help    = { file = "JetBrainsMono-Regular.ttf", size = 14 },
+        small   = { file = "JetBrainsMono-Regular.ttf", size = 12 },
+        debug   = { file = "JetBrainsMono-Regular.ttf", size = 11 },
+    },
+}
+
+local uiFontFamilies = {}
+for _, spec in ipairs(UI_FONT_FAMILIES) do uiFontFamilies[spec.id] = spec end
+
+Theme.DEFAULT_UI_FONT = UI_FONT_FAMILIES[1].id
+local uiFont = Theme.DEFAULT_UI_FONT
+
+--- fontRoles entries with no `file` of their own take theirs (and, often,
+-- their own size -- see UI_FONT_FAMILIES) from the current interface font
+-- family instead; title/title2/title3 pass through untouched, since they're
+-- not part of that family switch.
+---@param name string
+---@return table # a buildFont-ready { file, family, fallback?, size }
+local function resolveRole(name)
+    local base = fontRoles[name]
+    local override = uiFontFamilies[uiFont][name]
+    if not override then return base end
+    return {
+        size = override.size or base.size,
+        family = uiFont, file = override.file, fallback = override.fallback,
+    }
+end
 
 Theme.metrics = {}
 Theme.scale = 0 
@@ -444,14 +524,14 @@ local function buildFont(name, role, size)
 end
 
 --- the cached font for a role, at the current UI scale
----@param name "title"|"title2"|"heading"|"button"|"body"|"small"|"debug"|string
+---@param name "title"|"title2"|"title3"|"heading"|"button"|"body"|"small"|"debug"|string
 ---@return any # a love.Font
 function Theme.font(name)
-    local role = fontRoles[name]
-    assert(role, "Theme.font: unknown font '" .. tostring(name) .. "'")
+    local base = fontRoles[name]
+    assert(base, "Theme.font: unknown font '" .. tostring(name) .. "'")
     if not fontCache[name] then
-        local size = math.max(1, Math.round(role.size * Theme.scale))
-        fontCache[name] = buildFont(name, role, size)
+        local size = math.max(1, Math.round(base.size * Theme.scale))
+        fontCache[name] = buildFont(name, resolveRole(name), size)
     end
     return fontCache[name]
 end
@@ -459,15 +539,20 @@ end
 --- like Theme.font, but rasterized at an explicit design-space size instead
 -- of the role's own, and not cached -- for a one-off larger/smaller render
 -- of an existing typeface (e.g. loading screen's big version label, same
--- face as "small") that a caller will itself scale down toward, never up
+-- face as "small") that a caller will itself scale down toward, never up.
+-- `designSize` is scaled by the same ratio the active family's role size
+-- carries relative to fontRoles' own (see UI_FONT_FAMILIES) -- otherwise a
+-- caller's hand-picked size, tuned by eye against the base family, would
+-- come out oversized on a family calibrated to a smaller nominal size.
 ---@param name string # a font role
----@param designSize number # design-space point size
+---@param designSize number # design-space point size, at the base family's scale
 ---@return any # a love.Font; uncached
 function Theme.fontSized(name, designSize)
-    local role = fontRoles[name]
-    assert(role, "Theme.fontSized: unknown font '" .. tostring(name) .. "'")
-    local size = math.max(1, Math.round(designSize * Theme.scale))
-    return buildFont(name, role, size)
+    local base = fontRoles[name]
+    assert(base, "Theme.fontSized: unknown font '" .. tostring(name) .. "'")
+    local resolved = resolveRole(name)
+    local size = math.max(1, Math.round(designSize * (resolved.size / base.size) * Theme.scale))
+    return buildFont(name, resolved, size)
 end
 
 ---@return string[] # every role name, sorted
@@ -476,6 +561,30 @@ function Theme.fontRoles()
     for name in pairs(fontRoles) do names[#names + 1] = name end
     table.sort(names)
     return names
+end
+
+---@return table[] # { id: string }[]; every interface font family, in authored order
+function Theme.uiFontFamilies()
+    local list = {}
+    for _, spec in ipairs(UI_FONT_FAMILIES) do list[#list + 1] = { id = spec.id } end
+    return list
+end
+
+---@return string
+function Theme.currentUiFontFamily()
+    return uiFont
+end
+
+--- switches every non-title role (heading/button/body/help/small/debug) to
+-- another family at once; unknown ids are ignored, same fall-back-to-current
+-- shape as GameTitle.setFont
+---@param id string
+---@return boolean # changed; false if that family was already active or unknown
+function Theme.setUiFontFamily(id)
+    if id == uiFont or not uiFontFamilies[id] then return false end
+    uiFont = id
+    fontCache = {}
+    return true
 end
 
 --- lets a widget option be a Font, a role name, or nil
@@ -528,9 +637,9 @@ function Theme.approach(current, target, dt, speed)
 end
 
 ---@param time number seconds
----@return number # 0.5..1, the shared breathing multiplier for glows
+---@return number # 0.2..1, the shared breathing multiplier for glows
 function Theme.pulse(time)
-    return 0.75 + 0.25 * math.sin(time * 3)
+    return 0.6 + 0.4 * math.sin(time * 3)
 end
 
 ---@param y number # row top

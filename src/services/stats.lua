@@ -19,6 +19,10 @@ Stats.golden = nil
 Stats.rainbow = nil
 Stats.enabled = true
 
+Stats.startedAt = nil -- love.timer.getTime() of the last Stats.start(); nil until one is attempted --
+-- lets a screen tell "just asked, still waiting on the first reply" from "been trying a while"
+Stats.lastUpdated = nil -- love.timer.getTime() of the last successful reply; nil until one arrives
+
 local thread, jobChannel, resultChannel
 local timer = INTERVAL
 local loadedPending = false
@@ -168,6 +172,7 @@ local function readResults()
         if result.code == 200 then
             local ok, data = pcall(Json.decode, result.body or "")
             if ok and type(data) == "table" then
+                Stats.lastUpdated = love.timer.getTime()
                 if type(data.online) == "number" then Stats.online = math.floor(data.online) end
                 if type(data.stars) == "number" then Stats.stars = math.floor(data.stars) end
                 if type(data.golden) == "number" then Stats.golden = math.floor(data.golden) end
@@ -187,6 +192,7 @@ end
 function Stats.start()
     if thread or not Stats.enabled then return end
 
+    Stats.startedAt = love.timer.getTime()
     loadPending()
 
     generation = generation + 1
@@ -253,6 +259,7 @@ end
 -- machine holds about stats sharing
 local function clearLocalData()
     Stats.online, Stats.stars, Stats.golden, Stats.rainbow = nil, nil, nil, nil
+    Stats.startedAt, Stats.lastUpdated = nil, nil
     pending.stars, pending.golden, pending.rainbow = 0, 0, 0
     love.filesystem.remove(PENDING_FILE)
     love.filesystem.remove(ID_FILE)

@@ -544,7 +544,7 @@ function love.load()
         I18n.load()
         for key in pairs(UI.Sfx) do if type(UI.Sfx[key]) == "function" then UI.Sfx[key] = function() end end end
         fresh()
-        check(#Options.settingInventory == 16, "Settings missing from inventory")
+        check(#Options.settingInventory == 17, "Settings missing from inventory")
         layoutChecks()
         inputChecks()
         smoothScrollChecks()

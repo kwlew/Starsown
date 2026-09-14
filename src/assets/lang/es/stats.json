@@ -6,8 +6,11 @@
     "golden": "Estrellas Doradas",
     "rainbow": "Estrellas Arcoíris",
     "unavailable": "-- / --",
-    "sharingOff": "El envío de estadísticas está desactivado. Actívalo en Opciones > Interfaz para ver los totales mundiales.",
-    "waiting": "No se pudo conectar con el servidor. ¿Hay conexión a internet?",
+    "sharingOff": "El envío de estadísticas está desactivado, así que los totales mundiales no se muestran aquí.",
+    "enableSharing": "Activar Envío",
+    "loading": "Cargando estadísticas mundiales...",
+    "waiting": "Aún intentando conectar. Comprueba tu conexión a internet.",
+    "updated": "Actualizado hace {t}",
     "back": "Volver",
     "hint": "Esc: volver"
   }

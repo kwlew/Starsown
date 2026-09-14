@@ -29,6 +29,7 @@ Settings.defaults = {
     language = "en",
     theme = "default",
     titleFont = "acme",
+    uiFont = "oxanium",
     customCursor = true,
     reducedMotion = false,
     showNebula = true,

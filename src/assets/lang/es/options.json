@@ -9,6 +9,7 @@
     "language": "Idioma",
     "theme": "Tema",
     "titleFont": "Fuente del Título",
+    "uiFont": "Fuente de la Interfaz",
     "customCursor": "Cursor Personalizado",
     "reducedMotion": "Reducir Movimiento",
     "display": "Monitor",
@@ -43,11 +44,18 @@
       "ruby": "Rubí",
       "diamond": "Diamante",
       "lapis": "Lapis",
-      "rose": "Rosa"
+      "rose": "Rosa",
+      "peridot": "Peridoto",
+      "indigo": "Índigo"
     },
     "titleFontName": {
       "acme": "Acme",
-      "orbitron": "Orbitron"
+      "orbitron": "Orbitron",
+      "jetmono": "JetBrains Mono"
+    },
+    "uiFontName": {
+      "oxanium": "Oxanium",
+      "jetmono": "JetBrains Mono"
     },
     "hint": {
       "navigation": "Tab / Flechas: navegar    Izq. / Der.: ajustar    Intro: elegir    Esc: volver"
@@ -59,6 +67,7 @@
       "language": "Idioma de la interfaz. Se aplica de inmediato.",
       "theme": "Esquema de color de la interfaz y del cielo nocturno. Se aplica de inmediato.",
       "titleFont": "Fuente usada en el título del juego. Se aplica de inmediato.",
+      "uiFont": "Fuente usada en todo lo demás: menús, botones y textos de ajustes. Se aplica de inmediato.",
       "customCursor": "Reemplaza el puntero de tu sistema con el cursor propio del juego. Se aplica de inmediato.",
       "reducedMotion": "Calma la animación de fondo: estrellas fugaces, nebulosa a la deriva, cielo titilante y el ciclo de color del título. Se aplica de inmediato.",
       "display": "En qué monitor se abre la ventana del juego.",
