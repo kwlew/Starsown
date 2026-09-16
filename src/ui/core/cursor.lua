@@ -1,23 +1,26 @@
 local Theme = require "ui.core.theme"
 local Motion = require "ui.core.motion"
-local Globals = require "globals";
 
 local Cursor = {}
 
-local RADIUS = Globals.cursor.size
+local DEFAULT_SIZE = 3
+local DEFAULT_OUTLINE_WIDTH = 0.5
+local DEFAULT_HOVER_OUTLINE_WIDTH = 1
+local DEFAULT_CLICK_GROWTH = 3
 
-local OUTLINE_WIDTH = 0.5
-local HOVER_OUTLINE_WIDTH = 1
-
-local CLICK_GROWTH = 3
 local CLICK_LIFE = 0.25
+
+local size = DEFAULT_SIZE
+local restOutlineWidth = DEFAULT_OUTLINE_WIDTH
+local hoverOutlineWidth = DEFAULT_HOVER_OUTLINE_WIDTH
+local clickGrowth = DEFAULT_CLICK_GROWTH
 
 local hovering = false
 local danger = false
 local current = { 1, 1, 1 }
 local currentOutline = { Theme.colors.shadow[1], Theme.colors.shadow[2], Theme.colors.shadow[3] }
 local enabled = true
-local outlineWidth = OUTLINE_WIDTH
+local outlineWidth = restOutlineWidth
 local wasDown = false
 local click = nil
 local pinnedX, pinnedY = nil, nil
@@ -33,6 +36,32 @@ end
 function Cursor.setEnabled(isEnabled)
     enabled = isEnabled
     love.mouse.setVisible(not enabled)
+end
+
+--- design-space radius (see Theme.px); the options.customCursorSize setting
+---@param value number
+function Cursor.setSize(value)
+    size = value
+end
+
+--- design-space line width at rest; the options.customCursorOutlineWidth setting
+---@param value number
+function Cursor.setOutlineWidth(value)
+    restOutlineWidth = value
+end
+
+--- design-space line width while hovering something interactive; the
+-- options.customCursorHoverOutlineWidth setting
+---@param value number
+function Cursor.setHoverOutlineWidth(value)
+    hoverOutlineWidth = value
+end
+
+--- how far past the radius the click ring expands, design-space; the
+-- options.customCursorClickGrowth setting
+---@param value number
+function Cursor.setClickGrowth(value)
+    clickGrowth = value
 end
 
 --- recoloured per frame by whatever the pointer is over; nothing calls this to
@@ -71,7 +100,7 @@ function Cursor.update(dt)
     currentOutline[2] = Theme.approach(currentOutline[2], outlineTarget[2], dt)
     currentOutline[3] = Theme.approach(currentOutline[3], outlineTarget[3], dt)
 
-    outlineWidth = Theme.approach(outlineWidth, hovering and HOVER_OUTLINE_WIDTH or OUTLINE_WIDTH, dt)
+    outlineWidth = Theme.approach(outlineWidth, hovering and hoverOutlineWidth or restOutlineWidth, dt)
 
     local isDown = enabled and love.mouse.isDown(1)
     if isDown and not wasDown and not Motion.reduced then click = 0 end
@@ -89,13 +118,13 @@ function Cursor.draw()
     if not enabled then return end
     if not x then x, y = love.mouse.getPosition() end
 
-    local radius = Theme.px(RADIUS)
+    local radius = Theme.px(size)
 
     if click then
         local t = click / CLICK_LIFE
         Theme.setColor(current, 1 - t)
-        love.graphics.setLineWidth(math.max(1, Theme.px(OUTLINE_WIDTH)))
-        love.graphics.circle("line", x, y, radius + Theme.px(CLICK_GROWTH) * t, 16)
+        love.graphics.setLineWidth(math.max(1, Theme.px(restOutlineWidth)))
+        love.graphics.circle("line", x, y, radius + Theme.px(clickGrowth) * t, 16)
     end
 
     love.graphics.setColor(current[1], current[2], current[3], 1)

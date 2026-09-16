@@ -40,12 +40,6 @@ Globals.menu = {
     }
 }
 
--- Cursor geometry.
--- TODO: This in the feature will have options for custom shapes, like square, circle, crosshair, etc.
-Globals.cursor = {
-    size = 3,
-}
-
 --- stamps the session start and seeds the RNG from it; call once at boot
 function Globals.init()
     Globals.game.startedAt = os.time()

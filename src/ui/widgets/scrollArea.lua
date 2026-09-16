@@ -4,6 +4,7 @@ local Motion = require "ui.core.motion"
 
 local SCROLL_SPEED = 18 -- about 170ms to cover 95% of the distance
 local SETTLE_DISTANCE = 0.2
+local BOTTOM_PAD = 16 -- breathing room below the last row once scrolled all the way down
 
 -- Owns content geometry and the scrollbar; the screen still owns focus/input.
 local ScrollArea = {}
@@ -38,7 +39,7 @@ function ScrollArea:layout(widgets, x, y, w, h, scrollY)
             self.offsets[widget] = { y = top, h = height, headingH = headingH }
             top = top + height + Theme.metrics.rowGap
         end
-        return math.max(0, top - Theme.metrics.rowGap)
+        return math.max(0, top - Theme.metrics.rowGap) + Theme.px(BOTTOM_PAD)
     end
     self.rowWidth = w
     self.contentHeight = measure(w)

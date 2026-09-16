@@ -50,6 +50,19 @@ local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates again
 
 local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
 
+-- design-space pixel values (see Theme.px) offered for the custom cursor's tuning knobs
+local CURSOR_SIZES = { 2, 3, 4, 5, 6, 7, 8 }
+local CURSOR_OUTLINE_WIDTHS = { 0, 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_HOVER_OUTLINE_WIDTHS = { 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_CLICK_GROWTHS = { 1, 2, 3, 4, 5, 6, 8 }
+
+---@param value number
+---@return string
+local function pxFormat(value)
+    if value == math.floor(value) then return string.format("%dpx", value) end
+    return string.format("%.1fpx", value)
+end
+
 local Options = {}
 
 ---@return integer[] # 1..love.window.getDisplayCount(); LÖVE exposes no monitor names to label these with
@@ -448,6 +461,31 @@ function Options:buildSettingToggle(key, sideEffect)
     return toggle
 end
 
+--- Live/immediate selectors: same contract as buildSettingToggle above, for
+-- a setting picked from a discrete list rather than toggled. `key` names the
+-- i18n string, the description key and the settings field by construction;
+-- `sideEffect(value)`, if given, is whatever beyond the settings write needs
+-- to happen (e.g. UI.Cursor.setSize).
+---@param key string # names the i18n string, the description key and the settings field
+---@param options number[]
+---@param sideEffect? fun(value: number)
+---@return table
+function Options:buildSettingSelector(key, options, sideEffect)
+    local selector = UI.Selector.new{
+        label = function() return I18n.t("options." .. key) end,
+        options = options,
+        format = pxFormat,
+        onChange = function(value)
+            UI.Sfx.select()
+            self.settings[key] = value
+            if sideEffect then sideEffect(value) end
+            Settings.save(self.settings)
+        end,
+    }
+    selector.descKey = "options.desc." .. key
+    return selector
+end
+
 --- Graphics-tab selectors: write into `pending` only and sync derived
 -- enabled-states; Apply is what commits (see Options:applyPending). `key`
 -- names both the i18n string and the widget itself; `pendingKey` is the
@@ -759,7 +797,21 @@ function Options:enter(previousName, opts)
         self.uiFontSelector.descKey = 'options.desc.uiFont'
         self.uiFontPreview = UI.Preview.newUiFont{}
 
-        self.customCursorToggle = self:buildSettingToggle("customCursor", UI.Cursor.setEnabled)
+        self.cursorSizeSelector = self:buildSettingSelector("customCursorSize", CURSOR_SIZES, UI.Cursor.setSize)
+        self.cursorOutlineWidthSelector = self:buildSettingSelector("customCursorOutlineWidth",
+            CURSOR_OUTLINE_WIDTHS, UI.Cursor.setOutlineWidth)
+        self.cursorHoverOutlineWidthSelector = self:buildSettingSelector("customCursorHoverOutlineWidth",
+            CURSOR_HOVER_OUTLINE_WIDTHS, UI.Cursor.setHoverOutlineWidth)
+        self.cursorClickGrowthSelector = self:buildSettingSelector("customCursorClickGrowth",
+            CURSOR_CLICK_GROWTHS, UI.Cursor.setClickGrowth)
+        self.cursorTuningWidgets = { self.cursorSizeSelector, self.cursorOutlineWidthSelector,
+            self.cursorHoverOutlineWidthSelector, self.cursorClickGrowthSelector }
+
+        self.customCursorToggle = self:buildSettingToggle("customCursor", function(value)
+            UI.Cursor.setEnabled(value)
+            for _, widget in ipairs(self.cursorTuningWidgets) do widget.enabled = value end
+            self.group:refresh()
+        end)
 
         self.reducedMotionToggle = self:buildSettingToggle("reducedMotion", UI.Motion.setReduced)
 
@@ -832,14 +884,18 @@ function Options:enter(previousName, opts)
             { name = "interface", widgets = { self.languageSelector, self.themeSelector, self.themePreview,
                                                self.titleFontSelector, self.titleFontPreview,
                                                self.uiFontSelector, self.uiFontPreview,
-                                               self.customCursorToggle, self.reducedMotionToggle,
+                                               self.customCursorToggle, self.cursorSizeSelector,
+                                               self.cursorOutlineWidthSelector, self.cursorHoverOutlineWidthSelector,
+                                               self.cursorClickGrowthSelector,
+                                               self.reducedMotionToggle,
                                                self.shareStatsToggle, } },
             { name = "graphics", widgets = { self.displaySelector, self.windowModeSelector, self.resolutionSelector,
                                                self.msaaSelector, self.showNebulaToggle, self.vsyncToggle, self.uncapFpsToggle } },
         }
 
         self.languageSelector.section = function() return I18n.t("options.section.appearance") end
-        self.customCursorToggle.section = function() return I18n.t("options.section.accessibility") end
+        self.customCursorToggle.section = function() return I18n.t("options.section.cursor") end
+        self.reducedMotionToggle.section = function() return I18n.t("options.section.accessibility") end
         self.shareStatsToggle.section = function() return I18n.t("options.section.privacy") end
         self.displaySelector.section = function() return I18n.t("options.section.display") end
         self.msaaSelector.section = function() return I18n.t("options.section.quality") end
@@ -889,6 +945,15 @@ function Options:enter(previousName, opts)
     self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
     self.uiFontSelector.index = uiFontIndexFor(UI.Theme.currentUiFontFamily())
     self.customCursorToggle.value = self.settings.customCursor
+    self.cursorSizeSelector.index = indexWhere(CURSOR_SIZES,
+        function(v) return v == self.settings.customCursorSize end)
+    self.cursorOutlineWidthSelector.index = indexWhere(CURSOR_OUTLINE_WIDTHS,
+        function(v) return v == self.settings.customCursorOutlineWidth end)
+    self.cursorHoverOutlineWidthSelector.index = indexWhere(CURSOR_HOVER_OUTLINE_WIDTHS,
+        function(v) return v == self.settings.customCursorHoverOutlineWidth end)
+    self.cursorClickGrowthSelector.index = indexWhere(CURSOR_CLICK_GROWTHS,
+        function(v) return v == self.settings.customCursorClickGrowth end)
+    for _, widget in ipairs(self.cursorTuningWidgets) do widget.enabled = self.settings.customCursor end
     self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats
     self.uncapFpsToggle.value = self.settings.uncapFps
