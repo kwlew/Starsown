@@ -1,10 +1,11 @@
 local Json = require "vendor.json"
+local Settings = require "core.settings"
 
 local Stats = {}
 
 local ENDPOINT = "https://tdidle-presence.kwlew.workers.dev/stats"
 
-local INTERVAL = 60
+local INTERVAL = 5
 local ID_FILE = "client_id"
 local PENDING_FILE = "stats_pending"
 local WORKER = "services/threads/stats.lua" -- love.filesystem-relative (root is src/)
@@ -12,6 +13,13 @@ local WORKER = "services/threads/stats.lua" -- love.filesystem-relative (root is
 local MAX_REPORT = 400
 
 local MAX_PENDING = 5000
+
+-- how long an `inflight` request may sit unanswered before the watchdog
+-- below gives up on it and abandons the worker -- lua-https has no working
+-- request-timeout option of its own, so this is the only place a genuinely
+-- stalled (not just slow-to-error) connection ever gets noticed
+local STATS_TIMEOUT = 10
+local EXTENDED_INTERVAL_CAP = 180 -- backoff ceiling for a host that stays unresponsive
 
 Stats.online = nil
 Stats.stars = nil
@@ -29,6 +37,8 @@ local loadedPending = false
 
 local pending = { stars = 0, golden = 0, rainbow = 0 }
 local inflight = nil
+local inflightSince = nil -- love.timer.getTime() `inflight` was set; nil whenever inflight is
+local consecutiveTimeouts = 0 -- watchdog hits in a row since the last real reply; drives the backoff below
 
 local generation = 0
 
@@ -122,6 +132,26 @@ local function newWorkerThread()
     return love.thread.newThread(WORKER)
 end
 
+--- abandons whatever worker is currently wired up -- a hung one can't be
+-- cancelled, only dropped, since LÖVE has no thread-kill primitive -- and
+-- wires up a fresh one under a new channel generation. The generation bump
+-- matters even though the old worker is discarded either way: it's blocked
+-- inside https.request, not waiting at demand(), so if it ever does unblock
+-- its late reply must land on a channel nothing reads anymore rather than
+-- being mistaken for a reply to whatever request comes next.
+local function spinUpWorker()
+    generation = generation + 1
+    local jobName    = "stats.job." .. generation
+    local resultName = "stats.result." .. generation
+
+    thread = newWorkerThread()
+    if not thread then return end -- nothing to fall back to; the menu just never shows a figure
+
+    jobChannel    = love.thread.getChannel(jobName)
+    resultChannel = love.thread.getChannel(resultName)
+    thread:start(ENDPOINT, clientId(), jobName, resultName)
+end
+
 --- sends up to MAX_REPORT pops, moving them out of the backlog and into
 -- `inflight` -- so a failed request can put exactly those back
 local function dispatch()
@@ -133,6 +163,7 @@ local function dispatch()
     pending.golden = pending.golden - golden
     pending.rainbow = pending.rainbow - rainbow
     inflight = { stars = stars, golden = golden, rainbow = rainbow }
+    inflightSince = love.timer.getTime()
 
     jobChannel:push{
         body = ('{"stars":%d,"golden":%d,"rainbow":%d}'):format(stars, golden, rainbow),
@@ -143,14 +174,20 @@ local function dispatch()
 end
 
 --- puts an undelivered report back into the backlog, capped so an endpoint
--- that's been down for a long time can't grow it without bound
----@param stars integer
----@param golden integer
----@param rainbow integer
-local function requeue(stars, golden, rainbow)
-    pending.stars = math.min(pending.stars + stars, MAX_PENDING)
-    pending.golden = math.min(pending.golden + golden, pending.stars)
-    pending.rainbow = math.min(pending.rainbow + rainbow, pending.stars - pending.golden)
+-- that's been down for a long time can't grow it without bound. Takes the
+-- same {stars, golden, rainbow} shape `inflight` and a worker result both
+-- already carry, so callers never unpack just to repack.
+---@param counts { stars: integer, golden: integer, rainbow: integer }
+local function requeue(counts)
+    pending.stars = math.min(pending.stars + counts.stars, MAX_PENDING)
+    pending.golden = math.min(pending.golden + counts.golden, pending.stars)
+    pending.rainbow = math.min(pending.rainbow + counts.rainbow, pending.stars - pending.golden)
+end
+
+--- clears the inflight bookkeeping -- the two fields always move together,
+-- so this is the one place that has to remember that
+local function clearInflight()
+    inflight, inflightSince = nil, nil
 end
 
 ---@param code integer|nil # nil means the request never completed
@@ -167,7 +204,8 @@ local function readResults()
 
     local result = resultChannel:pop() -- drain, not pop-once: a stalled frame can queue more than one response
     while result do
-        inflight = nil -- answered either way; whether it goes back into the backlog is separate
+        clearInflight() -- answered either way; whether it goes back into the backlog is separate
+        consecutiveTimeouts = 0 -- a reply of any kind proves the worker+network path still works
 
         if result.code == 200 then
             local ok, data = pcall(Json.decode, result.body or "")
@@ -179,11 +217,36 @@ local function readResults()
                 if type(data.rainbow) == "number" then Stats.rainbow = math.floor(data.rainbow) end
             end
         elseif retryable(result.code) then
-            requeue(result.stars, result.golden, result.rainbow)
+            requeue(result)
         end
 
         result = resultChannel:pop()
     end
+end
+
+--- an `inflight` request that's sat unanswered past STATS_TIMEOUT is treated
+-- as failed: its counts go back into the backlog and the stuck worker --
+-- blocked inside https.request, not listening on a channel -- is abandoned
+-- in favor of a fresh one, so a stalled connection doesn't wedge reporting
+-- for the rest of the session.
+local function checkWatchdog()
+    if not inflight or not inflightSince then return end
+    if love.timer.getTime() - inflightSince < STATS_TIMEOUT then return end
+
+    requeue(inflight)
+    clearInflight()
+    consecutiveTimeouts = consecutiveTimeouts + 1
+
+    if jobChannel then jobChannel:push("stop") end -- in case the stuck worker ever does unblock
+    spinUpWorker()
+end
+
+--- backs off the retry cadence after repeated timeouts, so a host that stays
+-- unresponsive doesn't spin up (and orphan) a fresh worker thread every
+-- INTERVAL for the rest of a long session
+---@return number
+local function effectiveInterval()
+    return math.min(INTERVAL * 2 ^ consecutiveTimeouts, EXTENDED_INTERVAL_CAP)
 end
 
 --- starts the reporting thread, replaying any backlog from last session. A
@@ -195,19 +258,11 @@ function Stats.start()
     Stats.startedAt = love.timer.getTime()
     loadPending()
 
-    generation = generation + 1
-    local jobName    = "stats.job." .. generation
-    local resultName = "stats.result." .. generation
-
-    thread = newWorkerThread()
-    if not thread then return end -- nothing to fall back to; the menu just never shows a figure
-
-    jobChannel    = love.thread.getChannel(jobName)
-    resultChannel = love.thread.getChannel(resultName)
     timer = INTERVAL
-    inflight = nil
+    clearInflight()
+    consecutiveTimeouts = 0
 
-    thread:start(ENDPOINT, clientId(), jobName, resultName)
+    spinUpWorker()
 end
 
 --- reads replies every frame, and sends at most one request per interval
@@ -216,9 +271,10 @@ function Stats.update(dt)
     if not thread then return end
 
     readResults()
+    checkWatchdog()
 
     timer = timer + (dt or 0)
-    if timer < INTERVAL then return end
+    if timer < effectiveInterval() then return end
     if inflight then return end -- one request at a time, or a landed first request gets double-reported
 
     timer = 0
@@ -244,8 +300,8 @@ end
 function Stats.shutdown()
     readResults() -- read whatever came back first, or a just-succeeded report gets counted again next launch
     if inflight then
-        requeue(inflight.stars, inflight.golden, inflight.rainbow)
-        inflight = nil
+        requeue(inflight)
+        clearInflight()
     end
     savePending() -- before the early return: no https module means no thread, but the backlog still needs saving
 
@@ -282,6 +338,20 @@ function Stats.setEnabled(enabled)
 
     Stats.shutdown()
     clearLocalData()
+end
+
+--- records the player's consent (accept or decline), persists it, and
+-- applies it -- the one place "the player answered the consent question"
+-- happens, so the first-run dialog and any later re-ask (e.g. the Stats
+-- screen's own enable-sharing shortcut) can't drift out of step with each
+-- other on what answering actually does
+---@param settings table
+---@param enabled boolean
+function Stats.setConsent(settings, enabled)
+    settings.shareStats = enabled
+    settings.statsConsentAsked = true
+    Settings.save(settings)
+    Stats.setEnabled(enabled)
 end
 
 return Stats

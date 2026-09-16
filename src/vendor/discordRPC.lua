@@ -497,7 +497,6 @@ end
 -- Public API
 
 local RPC = {
-    connected = false,
     lastError = nil,
 }
 
@@ -505,7 +504,12 @@ local clientId = nil
 local conn = nil
 local state = "disconnected" -- disconnected -> handshaking -> connected
 local retryTimer = 0
+local handshakeTimer = 0 -- time spent in "handshaking"; past HANDSHAKE_TIMEOUT, treated as stuck
 local nonceCounter = 0
+
+local HANDSHAKE_TIMEOUT = 8 -- local IPC: a healthy Discord answers in well under a second
+local HANDSHAKE_RETRY_DELAY = 2 -- shorter than the cold-start backoff below -- a stuck handshake
+-- means Discord IS reachable, so a prompt retry is more likely to land
 
 ---@return string # unique per message, which is how a reply is matched to its command
 local function nextNonce()
@@ -519,6 +523,7 @@ function RPC.initialize(discordApplicationId)
     clientId = discordApplicationId
     state = "disconnected"
     retryTimer = 0
+    handshakeTimer = 0
 end
 
 --- one attempt at the local IPC socket, sending the handshake if it opens. A
@@ -529,6 +534,7 @@ local function tryConnect()
         conn = Connection.new(pipe)
         conn:sendFrame(0, json.encode({ v = 1, client_id = clientId }))
         state = "handshaking"
+        handshakeTimer = 0
     end
 end
 
@@ -540,13 +546,11 @@ local function handleFrame(opcode, payload)
         if msg then
             if msg.evt == "READY" then
                 state = "connected"
-                RPC.connected = true
             elseif msg.evt == "ERROR" then
                 RPC.lastError = msg.data and msg.data.message or "unknown error"
             end
         end
     elseif opcode == 2 then -- Discord closed the connection
-        RPC.connected = false
         state = "disconnected"
         if conn then conn:close() end
         conn = nil
@@ -570,6 +574,19 @@ function RPC.update(dt)
         return
     end
 
+    -- the pipe opened but Discord never answered READY (or CLOSE) -- treat
+    -- it the same as a failed connect rather than waiting forever
+    if state == "handshaking" then
+        handshakeTimer = handshakeTimer + dt
+        if handshakeTimer >= HANDSHAKE_TIMEOUT then
+            if conn then conn:close() end
+            conn = nil
+            state = "disconnected"
+            retryTimer = HANDSHAKE_RETRY_DELAY
+            return
+        end
+    end
+
     if not conn then return end
 
     local ok, err = pcall(function()
@@ -583,7 +600,6 @@ function RPC.update(dt)
 
     if not ok then
         RPC.lastError = err
-        RPC.connected = false
         state = "disconnected"
         conn = nil
     end
@@ -634,7 +650,6 @@ function RPC.shutdown()
         conn = nil
     end
     state = "disconnected"
-    RPC.connected = false
 end
 
 return RPC

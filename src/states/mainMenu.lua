@@ -67,11 +67,7 @@ end
 --- records the answer so the prompt is never asked twice, and applies it now
 ---@param enabled boolean
 function MainMenu:saveStatsConsent(enabled)
-    local settings = Settings.load()
-    settings.shareStats = enabled
-    settings.statsConsentAsked = true
-    Settings.save(settings)
-    Stats.setEnabled(enabled)
+    Stats.setConsent(Settings.load(), enabled)
     self.statsConsentDialog:close()
 end
 
@@ -270,7 +266,7 @@ function MainMenu:mousepressed(x, y, button)
 
     local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
     if not hit then return end -- a click on empty sky is not a pop
-    Stats.pop(rainbow and "rainbow" or golden and "golden" or "normal")
+    Stats.pop(rainbow and "rainbow" or golden and "golden")
 end
 
 ---@param x number

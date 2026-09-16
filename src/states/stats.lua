@@ -23,7 +23,7 @@ local STATUS_MAX_W = 460
 -- past it, as "stats.waiting" (something's actually stuck)
 local STATUS_GRACE_SECONDS = 8
 
-local INTRO_DURATION = 0.35
+local INTRO_DURATION = 1.00
 local INTRO_STAGGER = 0.05
 
 local Stats = {}
@@ -37,8 +37,8 @@ local ROWS = {
       tone = "rainbow" },
 }
 
-local CHROMA_SPAN = 90
-local CHROMA_SPEED = 0.8
+local CHROMA_SPAN = 160
+local CHROMA_SPEED = 0.5
 
 local CHROMA_ROW
 for i, row in ipairs(ROWS) do
@@ -108,9 +108,7 @@ function Stats:enter(previousName, opts)
             label = function() return I18n.t("stats.enableSharing") end,
             onSelect = function()
                 UI.Sfx.select()
-                self.settings.shareStats = true
-                StatsService.setEnabled(true)
-                Settings.save(self.settings)
+                StatsService.setConsent(self.settings, true)
                 self:syncFocusWidgets()
                 self:layout()
             end,
