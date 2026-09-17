@@ -1,0 +1,12 @@
+{
+  "cycle": {
+    "clock": "{time} · {phase}",
+    "dawn": "Amanecer",
+    "day": "Día",
+    "dusk": "Atardecer",
+    "night": "Noche",
+    "safe": "Refugio protegido",
+    "active": "Aparecen enemigos",
+    "quiet": "Sin nuevas apariciones"
+  }
+}

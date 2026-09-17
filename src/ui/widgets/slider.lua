@@ -39,6 +39,10 @@ function Slider:isLit()
     return self.focused or self.dragging
 end
 
+function Slider:preferredControlSize(available)
+    return math.min(available, Theme.px(260)), math.max(Theme.px(28), self:getFont():getHeight())
+end
+
 --- right-aligned, leaving room for the label on the left and readout (plus knob clearance) on the right
 ---@return number x
 ---@return number y
@@ -48,6 +52,11 @@ function Slider:trackRect()
     local m = Theme.metrics
     local trackH = Theme.px(TRACK_H)
     local gap = trackH * KNOB_RATIO + Theme.px(KNOB_CLEARANCE)
+    if self.rowLayout then
+        local x, y, w, h = self:controlRect()
+        return x, y + (h - trackH) / 2,
+            math.max(1, w - Theme.px(PERCENT_W) - gap), trackH
+    end
     local trackW = math.floor(self.w * 0.42)
     local trackX = self.x + self.w - m.padding - Theme.px(PERCENT_W) - gap - trackW
     local trackY = self.y + (self.h - trackH) / 2
@@ -159,9 +168,12 @@ function Slider:draw()
     local percentW = Theme.px(PERCENT_W)
     Theme.pushFont(smallFont)
     Theme.setColor(c.textDim, alpha)
+    local valueY = self.y
+    local valueH = self.h
+    if self.rowLayout then valueY, valueH = self.y + self.rowLayout.y, self.rowLayout.h end
     love.graphics.printf(Math.round(self.value * 100) .. "%",
         self.x + self.w - m.padding - percentW,
-        Theme.centerY(self.y, self.h, smallFont), percentW, "right")
+        Theme.centerY(valueY, valueH, smallFont), percentW, "right")
     Theme.popFont()
 
     Theme.popFont()

@@ -1,0 +1,12 @@
+{
+  "hub": {
+    "workshop": "Taller",
+    "expeditions": "Expediciones",
+    "hearth": "Provisiones",
+    "combat": "Entrenamiento",
+    "dungeons": "Mazmorras",
+    "building": "Construcción",
+    "planned": "En proyecto",
+    "refuge": "REFUGIO ESTELAR"
+  }
+}

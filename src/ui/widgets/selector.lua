@@ -55,6 +55,23 @@ function Selector:displayText()
     return self.format(option)
 end
 
+--- Measure all values so changing selection never changes the row height.
+function Selector:preferredControlSize(available)
+    local font = self:getFont()
+    local width = Theme.px(self.valueWidth)
+    for _, option in ipairs(self.options) do
+        width = math.max(width, font:getWidth(self.format(option)) + Theme.px(VALUE_PAD))
+    end
+    local controlW = math.min(available, width + Theme.px(ARROW_W) * 2)
+    local valueW = math.max(1, controlW - Theme.px(ARROW_W) * 2)
+    local lines = 1
+    for _, option in ipairs(self.options) do
+        local _, wrapped = font:getWrap(self.format(option), valueW)
+        lines = math.max(lines, #wrapped)
+    end
+    return controlW, math.max(Theme.px(28), lines * font:getHeight())
+end
+
 --- valueWidth as a floor, grown to fit the widest formatted option, capped so
 -- the label always keeps LABEL_MIN_W. Sizing to content is what keeps a
 -- long translation ("Pantalla Completa") the same size as a short one; the
@@ -79,6 +96,12 @@ end
 function Selector:controlRects()
     local m = Theme.metrics
     local arrowW = Theme.px(ARROW_W)
+    if self.rowLayout then
+        local x, y, w, h = self:controlRect()
+        return { x = x, y = y, w = arrowW, h = h },
+            { x = x + arrowW, y = y, w = w - arrowW * 2, h = h },
+            { x = x + w - arrowW, y = y, w = arrowW, h = h }
+    end
     local valueW = self:valueColumnWidth(self:getFont())
     local rightArrowX = self.x + self.w - m.padding - arrowW
     local valueX = rightArrowX - valueW
@@ -97,7 +120,7 @@ end
 ---@return number h
 function Selector:controlBounds()
     local left, _, right = self:controlRects()
-    return left.x, self.y, (right.x + right.w) - left.x, self.h
+    return left.x, left.y, (right.x + right.w) - left.x, left.h
 end
 
 --- wraps or clamps per `wrap`; onChange fires only on a real change, so a
@@ -181,15 +204,23 @@ function Selector:draw()
 
     local left, value, right = self:controlRects()
     local live = self:isInteractive()
-    drawChevron(left, -1, live and (self.hoverLeft or self.focused), alpha)
-    drawChevron(right, 1, live and (self.hoverRight or self.focused), alpha)
+    if not self.readOnly then
+        drawChevron(left, -1, live and (self.hoverLeft or self.focused), alpha)
+        drawChevron(right, 1, live and (self.hoverRight or self.focused), alpha)
+    end
     Theme.setColor(Theme.colors.text, alpha)
     local vtext = self:displayText()
-    local vw = font:getWidth(vtext)
-    local scale = vw > 0 and math.min(1, value.w / vw) or 1
-    local vx = value.x + (value.w - vw * scale) / 2
-    local vy = self.y + (self.h - font:getHeight() * scale) / 2
-    love.graphics.print(vtext, vx, vy, 0, scale, scale)
+    if self.rowLayout then
+        local _, lines = font:getWrap(vtext, value.w)
+        local vy = value.y + (value.h - #lines * font:getHeight()) / 2
+        love.graphics.printf(vtext, value.x, vy, value.w, "center")
+    else
+        local vw = font:getWidth(vtext)
+        local scale = vw > 0 and math.min(1, value.w / vw) or 1
+        local vx = value.x + (value.w - vw * scale) / 2
+        local vy = value.y + (value.h - font:getHeight() * scale) / 2
+        love.graphics.print(vtext, vx, vy, 0, scale, scale)
+    end
 
     Theme.popFont()
     love.graphics.setColor(1, 1, 1, 1)

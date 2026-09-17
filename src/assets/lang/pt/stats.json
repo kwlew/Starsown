@@ -6,8 +6,11 @@
     "golden": "Estrelas Douradas",
     "rainbow": "Estrelas Arco-íris",
     "unavailable": "-- / --",
-    "sharingOff": "O compartilhamento de estatísticas está desativado. Ative em Opções > Interface para ver os totais mundiais.",
-    "waiting": "Não foi possível conectar ao servidor. A internet está disponível?",
+    "sharingOff": "O compartilhamento de estatísticas está desativado, então os totais mundiais não aparecem aqui.",
+    "enableSharing": "Ativar Compartilhamento",
+    "loading": "Carregando estatísticas mundiais...",
+    "waiting": "Ainda tentando conectar. Verifique sua conexão com a internet.",
+    "updated": "Atualizado há {t}",
     "back": "Voltar",
     "hint": "Esc: voltar"
   }

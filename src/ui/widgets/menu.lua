@@ -13,7 +13,7 @@ local INTRO_STAGGER = 0.01
 
 --- a vertical column of Buttons over a FocusGroup -- the layout every screen
 -- with a list of choices uses
----@param items table[] # { label: string|fun(self: table): string, onSelect?: fun(self: table), enabled?: boolean, danger?: boolean }[]
+---@param items table[] # { label: string|fun(self: table): string, onSelect?: fun(self: table), enabled?: boolean, danger?: boolean, primary?: boolean }[]
 ---@param font? any # a love.Font or a role name; defaults to the "button" role
 ---@return table
 function Menu.new(items, font)
@@ -30,6 +30,7 @@ function Menu.new(items, font)
             onSelect = item.onSelect,
             enabled = item.enabled ~= false,
             danger = item.danger,
+            primary = item.primary,
             font = self.font,
         }
     end

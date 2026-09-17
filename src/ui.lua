@@ -16,6 +16,7 @@ return {
     Slider      = require "ui.widgets.slider",
     Selector    = require "ui.widgets.selector",
     TabBar      = require "ui.widgets.tabBar",
+    Preview     = require "ui.widgets.preview",
     IconLink    = require "ui.widgets.iconLink",
     ProgressBar = require "ui.widgets.progressBar",
     Label       = require "ui.text.label",

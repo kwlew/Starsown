@@ -50,7 +50,7 @@ function Button:draw()
     end
 
     Theme.setColor(Theme.colors.text, alpha)
-    love.graphics.draw(self.textObject, self.x, Theme.centerY(self.y, self.h, font))
+    love.graphics.draw(self.textObject, self.x, self.y + (self.h - self.textObject:getHeight()) / 2)
 
     love.graphics.setColor(1, 1, 1, 1)
 end

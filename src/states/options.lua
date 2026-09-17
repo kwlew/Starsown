@@ -4,7 +4,7 @@
 --               apply live and persist immediately, same as Audio.
 --   Graphics  - resolution/display mode/vsync; changes accumulate in a
 --               `pending` table and only take effect (and persist) on Apply.
---               Leaving the screen discards pending.
+--               Leaving with pending edits asks whether to apply or discard.
 --
 -- Esc or "Back" returns to whichever state opened this one:
 --   StateManager.fadeTo("options", { returnTo = "pause" })
@@ -23,20 +23,45 @@ local Presence = require "services.presence"
 local Stats = require "services.stats"
 local Globals = require "globals"
 local GameTitle = require "ui.text.gameTitle"
+local ScrollArea = require "ui.widgets.scrollArea"
+local DisplayLimits = require "core.displayLimits"
 
-local HEADING_Y_RATIO = 0.12
-local PANEL_Y_RATIO   = 0.32 -- preferred start; pulled up if the stack wouldn't fit, see Options:layout
-local PANEL_PAD       = 20   -- design-space px, scaled through Theme.px
-local PANEL_MAX_W     = 560
+local PANEL_PAD = 10
+local PANEL_MAX_W = 720
 
 local REVERT_SECONDS = 10
 
 local WINDOWED_FLOOR = { 1280, 720 } -- the one size always on offer if a desktop-size query ever fails
-local DESKTOP_FRACTIONS = { 1, 0.75, 0.5 } -- of the selected display's desktop size, for windowed sizing
+
+--- common display resolutions offered for windowed mode, rather than
+-- fractions of the desktop -- these are sizes players actually expect to
+-- pick from. windowedResolutions filters this to what fits the selected
+-- display and adds that display's own native size, so a panel whose size
+-- isn't one of these standard ones can still be selected (e.g. maximized).
+local WINDOWED_RESOLUTIONS = {
+    { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 720 }, { 1280, 800 },
+    { 1280, 960 }, { 1280, 1024 }, { 1360, 768 }, { 1366, 768 }, { 1440, 900 },
+    { 1536, 864 }, { 1600, 900 }, { 1600, 1200 }, { 1680, 1050 }, { 1920, 1080 },
+    { 1920, 1200 }, { 2560, 1080 }, { 2560, 1440 }, { 2560, 1600 }, { 3440, 1440 },
+    { 3840, 2160 },
+}
 
 local MSAA = Settings.MSAA_LEVELS -- owned by Settings; conf.lua validates against the same list at boot
 
 local WINDOW_MODES = { "windowed", "borderless", "exclusive" }
+
+-- design-space pixel values (see Theme.px) offered for the custom cursor's tuning knobs
+local CURSOR_SIZES = { 2, 3, 4, 5, 6, 7, 8 }
+local CURSOR_OUTLINE_WIDTHS = { 0, 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_HOVER_OUTLINE_WIDTHS = { 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_CLICK_GROWTHS = { 1, 2, 3, 4, 5, 6, 8 }
+
+---@param value number
+---@return string
+local function pxFormat(value)
+    if value == math.floor(value) then return string.format("%dpx", value) end
+    return string.format("%.1fpx", value)
+end
 
 local Options = {}
 
@@ -48,7 +73,8 @@ local function displayOptions()
 end
 
 --- exclusive fullscreen offers exactly the modes the display reports
--- (de-duplicated by size, largest first) -- getFullscreenModes is
+-- (de-duplicated by size, smallest first -- so Right steps up in size, same
+-- as every other numeric selector, e.g. MSAA) -- getFullscreenModes is
 -- specifically about fullscreen capability, so it's never used for the
 -- windowed case below, which asks a different question entirely.
 ---@param display integer
@@ -56,14 +82,15 @@ end
 local function exclusiveResolutions(display)
     local modes = love.window.getFullscreenModes(display)
     table.sort(modes, function(a, b)
-        if a.width ~= b.width then return a.width > b.width end
-        return a.height > b.height
+        if a.width ~= b.width then return a.width < b.width end
+        return a.height < b.height
     end)
 
+    local minW, minH = DisplayLimits.minimum(display)
     local seen, list = {}, {}
     for _, mode in ipairs(modes) do
         local key = mode.width .. "x" .. mode.height
-        if not seen[key] then
+        if not seen[key] and mode.width >= minW and mode.height >= minH then
             seen[key] = true
             list[#list + 1] = { mode.width, mode.height }
         end
@@ -71,27 +98,35 @@ local function exclusiveResolutions(display)
     return list
 end
 
---- windowed sizing is capped to the display's own desktop size rather than
--- offering anything getFullscreenModes reports -- a windowed size larger
--- than the desktop makes no more sense than a fullscreen mode the display
--- doesn't support. A monitor smaller than 1280x720 gets fractions of its own
--- (smaller) desktop instead of that floor -- see resolutionsFor, which only
--- falls back to WINDOWED_FLOOR if this returns nothing at all.
+--- windowed sizing offers WINDOWED_RESOLUTIONS filtered to what fits the
+-- display's own desktop size -- a windowed size larger than the desktop
+-- makes no more sense than a fullscreen mode the display doesn't support --
+-- plus that desktop size itself, so a panel whose native size isn't one of
+-- the standard entries can still be picked (maximized). A monitor smaller
+-- than every standard entry falls through to just its own desktop size
+-- here, or WINDOWED_FLOOR via resolutionsFor if even that query fails.
 ---@param display integer
----@return table[] # { {w, h}, ... }, largest first
+---@return table[] # { {w, h}, ... }, smallest first -- so Right steps up in size
 local function windowedResolutions(display)
     local deskW, deskH = love.window.getDesktopDimensions(display)
     if type(deskW) ~= "number" or deskW <= 0 or deskH <= 0 then return {} end
 
+    local minW, minH = DisplayLimits.minimum(display)
     local seen, list = {}, {}
-    for _, fraction in ipairs(DESKTOP_FRACTIONS) do
-        local w, h = math.floor(deskW * fraction), math.floor(deskH * fraction)
+    local function add(w, h)
         local key = w .. "x" .. h
-        if not seen[key] and w > 0 and h > 0 then
+        if not seen[key] and w >= minW and h >= minH and w <= deskW and h <= deskH then
             seen[key] = true
             list[#list + 1] = { w, h }
         end
     end
+    for _, res in ipairs(WINDOWED_RESOLUTIONS) do add(res[1], res[2]) end
+    add(deskW, deskH)
+
+    table.sort(list, function(a, b)
+        if a[1] ~= b[1] then return a[1] < b[1] end
+        return a[2] < b[2]
+    end)
     return list
 end
 
@@ -134,6 +169,12 @@ local function titleFontIndexFor(id)
     return indexWhere(GameTitle.available(), function(e) return e.id == id end)
 end
 
+---@param id string
+---@return integer
+local function uiFontIndexFor(id)
+    return indexWhere(UI.Theme.uiFontFamilies(), function(e) return e.id == id end)
+end
+
 ---@param display integer
 ---@return integer
 local function displayIndexFor(display)
@@ -152,42 +193,51 @@ local function windowModeIndexFor(mode)
     return indexWhere(WINDOW_MODES, function(name) return name == mode end)
 end
 
---- recomputes the resolution list for the pending display+mode combo --
--- either can change which list applies -- and guarantees (targetW, targetH)
--- is actually one of the options, inserting it at the front if the "nice"
--- list (resolutionsFor's desktop fractions / reported fullscreen modes)
--- doesn't already include it. This isn't the usual "falls back to index 1
--- when no longer on offer" rule every other selector in this file uses:
--- resetPending() calls this with the live settings' own res_x/res_y to seed
--- pending from, and those don't necessarily land on one of the curated
--- sizes (the game's own 1280x720 default doesn't match any fraction of a
--- 1920x1080 desktop, say) -- silently swapping in the closest offered size
--- instead would read as an unrequested change and made Options misreport
--- edits pending the moment it was opened.
----@param targetW number
----@param targetH number
-function Options:rebuildResolutions(targetW, targetH)
-    local options = resolutionsFor(self.pending.display, self.pending.windowMode)
-
-    local index = nil
+--- inserts w,h keeping `options` sorted the same way windowedResolutions/
+-- exclusiveResolutions do (smallest first), and returns where it landed
+---@param options table[]
+---@param w number
+---@param h number
+---@return integer
+local function insertSorted(options, w, h)
+    local index = #options + 1
     for i, option in ipairs(options) do
-        if option[1] == targetW and option[2] == targetH then
-            index = i
-            break
-        end
+        if w < option[1] or (w == option[1] and h < option[2]) then index = i; break end
     end
-    if not index then
-        if targetW and targetH and targetW > 0 and targetH > 0 then
-            table.insert(options, 1, { targetW, targetH })
-            index = 1
-        else
-            index = 1 -- no real target to preserve (nothing selected yet); just land on the list's own first entry
-        end
-    end
+    table.insert(options, index, { w, h })
+    return index
+end
 
+--- Only windowed modes may preserve custom sizes. A monitor/mode change
+-- must not insert a resolution unsupported by the newly selected display.
+function Options:rebuildResolutions(targetW, targetH)
+    local mode, display = self.pending.windowMode, self.pending.display
+    local options
+    if mode == "borderless" then
+        local w, h = love.window.getDesktopDimensions(display)
+        options = { { w, h } }
+    else options = resolutionsFor(display, mode) end
+    local index
+    for i, option in ipairs(options) do
+        if option[1] == targetW and option[2] == targetH then index = i; break end
+    end
+    if not index and mode == "windowed" and targetW and targetH and targetW > 0 and targetH > 0 then
+        local w, h = DisplayLimits.windowSize(targetW, targetH, display)
+        local isLive = display == self.settings.display and mode == self.settings.windowMode
+            and targetW == self.settings.res_x and targetH == self.settings.res_y
+        if (w == targetW and h == targetH) or isLive then
+            index = insertSorted(options, targetW, targetH)
+        end
+    end
+    if not index and mode == "exclusive" and display == self.settings.display
+        and mode == self.settings.windowMode and targetW == self.settings.res_x and targetH == self.settings.res_y then
+        index = insertSorted(options, targetW, targetH) -- the currently active mode is known to work
+    end
+    self.resolutionAdjusted = mode ~= "borderless" and not index and targetW and targetW > 0 or false
     self.resolutionSelector.options = options
-    self.pending.resIndex = index
-    self.resolutionSelector.index = index
+    -- no match at all: default to the largest (last, now that Right steps up in size) available size
+    self.pending.resIndex = index or #options
+    self.resolutionSelector.index = self.pending.resIndex
 end
 
 --- keeps derived enabled-states in sync with pending; call after any mutation
@@ -197,18 +247,26 @@ end
 -- can change which one applies.
 function Options:syncEnabledStates()
     local current = self.resolutionSelector:selected()
+    if self.pending.windowMode == "borderless" and self.resolutionMode ~= "borderless" then
+        self.windowedResolution = current
+    elseif self.resolutionMode == "borderless" and self.pending.windowMode ~= "borderless" then
+        current = self.windowedResolution
+    end
     self:rebuildResolutions(current and current[1] or -1, current and current[2] or -1)
-
-    self.resolutionSelector.enabled = self.pending.windowMode ~= "borderless"
+    self.resolutionMode = self.pending.windowMode
+    self.resolutionSelector.readOnly = self.pending.windowMode == "borderless"
+    self.displaySelector.readOnly = #self.displaySelector.options == 1
     self.applyButton.enabled = self:isDirty()
     self.group:refresh() -- move focus off a row that just went inert
+    if self.activeTab then self:layout() end
 end
 
 ---@return boolean # whether Graphics has edits waiting on Apply
 function Options:isDirty()
     local selected = self.resolutionSelector.options[self.pending.resIndex]
     return not selected
-        or selected[1] ~= self.settings.res_x or selected[2] ~= self.settings.res_y
+        or (self.pending.windowMode ~= "borderless"
+            and (selected[1] ~= self.settings.res_x or selected[2] ~= self.settings.res_y))
         or self.pending.msaa ~= self.settings.msaa
         or self.pending.windowMode ~= self.settings.windowMode
         or self.pending.vsync ~= self.settings.vsync
@@ -218,6 +276,8 @@ end
 --- resets pending graphics changes to the live settings and syncs widget
 -- displays (setting fields directly never fires onChange)
 function Options:resetPending()
+    self.resolutionMode = nil
+    self.displaySelector.options = displayOptions()
     local msaaIndex = msaaIndexFor(self.settings)
     self.pending = {
         display = self.settings.display,
@@ -236,64 +296,73 @@ end
 
 ---@return table # what applyPending saves so revertGraphics can put it back
 function Options:graphicsSnapshot()
-    return {
-        res_x = self.settings.res_x,
-        res_y = self.settings.res_y,
-        msaa = self.settings.msaa,
-        windowMode = self.settings.windowMode,
-        vsync = self.settings.vsync,
-        display = self.settings.display,
-    }
+    return Settings.graphicsSnapshot(self.settings)
 end
 
---- commits pending: settings <- pending, apply, then ask the player to
--- confirm before persisting -- nothing hits disk until they do, since an
--- unusable mode must not survive a restart. A no-op when nothing changed.
+function Options:showGraphicsError(key)
+    self.graphicsError = key
+    self:openDialog(self.errorDialog)
+end
+
 function Options:applyPending()
     if not self:isDirty() then return end
-
+    local ready = Settings.beginGraphicsPreview(self.settings)
+    if not ready then return self:showGraphicsError("saveFailed") end
     self.revertTo = self:graphicsSnapshot()
-
     local res = self.resolutionSelector.options[self.pending.resIndex]
     self.settings.res_x, self.settings.res_y = res[1], res[2]
-    self.settings.msaa = self.pending.msaa
-    self.settings.windowMode = self.pending.windowMode
-    self.settings.vsync = self.pending.vsync
-    self.settings.display = self.pending.display
-
-    Settings.applyGraphics(self.settings)
-    self:resetPending()
-    self.revertDialog:openDialog()
-end
-
---- confirmed: the applied mode is persisted, and any exit queued behind the
--- prompt goes through now
-function Options:keepGraphics()
-    self.revertDialog:close()
-    self.revertTo = nil
-    Settings.save(self.settings)
-
-    if self.leaveAfterApply then
-        self.leaveAfterApply = false
-        self:leave()
+    self.settings.msaa, self.settings.windowMode = self.pending.msaa, self.pending.windowMode
+    self.settings.vsync, self.settings.display = self.pending.vsync, self.pending.display
+    local ok, _, adjusted = Settings.applyGraphics(self.settings)
+    if not ok then
+        local recovery = self:restoreGraphics()
+        return self:showGraphicsError(recovery or "failed")
     end
+    self.previewAdjusted = adjusted
+    self:resetPending()
+    self:openDialog(self.revertDialog)
 end
 
---- declined, or the countdown ran out (the case that matters: it's what a
--- player who can't see anything is relying on): puts the previous mode back
--- and re-applies it
+function Options:keepGraphics()
+    local ok = Settings.endGraphicsPreview(self.settings, true)
+    if not ok then
+        self.revertDialog:close()
+        local recovery = self:restoreGraphics()
+        return self:showGraphicsError(recovery or "saveFailed")
+    end
+    self.revertDialog:close()
+    self.revertTo, self.previewAdjusted = nil, nil
+    self:resetPending()
+    if self.leaveAfterApply then self.leaveAfterApply = false; self:leave() end
+end
+
+-- If the old monitor disappeared, try a conservative window on the primary
+-- display. Never replace the last confirmed file with an unconfirmed fallback.
+function Options:restoreGraphics()
+    self.leaveAfterApply = false
+    local baseline = self.revertTo
+    if not baseline then return end
+    for key, value in pairs(baseline) do self.settings[key] = value end
+    local ok = Settings.applyGraphics(self.settings)
+    local recovery
+    if not ok then
+        self.settings.display, self.settings.windowMode = 1, "windowed"
+        self.settings.res_x, self.settings.res_y = DisplayLimits.minimum(1)
+        self.settings.msaa, self.settings.vsync = 0, 1
+        ok = Settings.applyGraphics(self.settings)
+        recovery = ok and "recovery" or "restoreFailed"
+    end
+    if not ok then Settings.readGraphics(self.settings) end
+    Settings.endGraphicsPreview(self.settings, false)
+    self.revertTo, self.previewAdjusted = nil, nil
+    self:resetPending()
+    return recovery
+end
+
 function Options:revertGraphics()
     self.revertDialog:close()
-    self.leaveAfterApply = false -- the mode didn't stick, so any queued exit is dropped
-    if not self.revertTo then return end
-
-    for key, value in pairs(self.revertTo) do
-        self.settings[key] = value
-    end
-    self.revertTo = nil
-
-    Settings.applyGraphics(self.settings)
-    self:resetPending()
+    local recovery = self:restoreGraphics()
+    if recovery then self:showGraphicsError(recovery) end
 end
 
 --- switches the UI palette and rebuilds the one thing that can't just re-read
@@ -322,7 +391,7 @@ end
 -- visible-but-unfocusable or vice versa
 ---@return table[]
 function Options:footerButtons()
-    return { self.backButton }
+    return { self.backButton, self.applyButton }
 end
 
 --- Back/Esc: graphics edits only take effect on Apply, and the greyed-out
@@ -331,7 +400,7 @@ end
 function Options:goBack()
     UI.Sfx.select()
     if self:isDirty() then
-        self.unappliedDialog:openDialog()
+        self:openDialog(self.unappliedDialog)
         return
     end
     self:leave()
@@ -390,6 +459,31 @@ function Options:buildSettingToggle(key, sideEffect)
     }
     toggle.descKey = "options.desc." .. key
     return toggle
+end
+
+--- Live/immediate selectors: same contract as buildSettingToggle above, for
+-- a setting picked from a discrete list rather than toggled. `key` names the
+-- i18n string, the description key and the settings field by construction;
+-- `sideEffect(value)`, if given, is whatever beyond the settings write needs
+-- to happen (e.g. UI.Cursor.setSize).
+---@param key string # names the i18n string, the description key and the settings field
+---@param options number[]
+---@param sideEffect? fun(value: number)
+---@return table
+function Options:buildSettingSelector(key, options, sideEffect)
+    local selector = UI.Selector.new{
+        label = function() return I18n.t("options." .. key) end,
+        options = options,
+        format = pxFormat,
+        onChange = function(value)
+            UI.Sfx.select()
+            self.settings[key] = value
+            if sideEffect then sideEffect(value) end
+            Settings.save(self.settings)
+        end,
+    }
+    selector.descKey = "options.desc." .. key
+    return selector
 end
 
 --- Graphics-tab selectors: write into `pending` only and sync derived
@@ -452,9 +546,19 @@ function Options:buildDialogs()
 
     self.revertDialog = UI.Dialog.new{
         title = function() return I18n.t("dialog.revert.title") end,
+        fontRole = "help",
         message = function(dialog)
-            return I18n.t("dialog.revert.message",
-                { n = math.max(0, math.ceil(dialog.remaining or 0)) })
+            local text = I18n.t("dialog.revert.message", { n = math.max(0, math.ceil(dialog.remaining or 0)) })
+            if self.previewAdjusted then
+                local v = self.settings
+                text = text .. "\n\n" .. I18n.t("options.adjustedGraphics") .. "\n"
+                    .. I18n.t("options.displayOption", { n = v.display }) .. " · "
+                    .. I18n.t("options.windowMode." .. v.windowMode) .. " · " .. v.res_x .. "×" .. v.res_y
+                    .. "\n" .. I18n.t("options.msaa") .. ": "
+                    .. (v.msaa == 0 and I18n.t("options.msaaOff") or v.msaa .. "x")
+                    .. " · VSync: " .. I18n.t(v.vsync == 0 and "options.state.off" or "options.state.on")
+            end
+            return text
         end,
         timeout = REVERT_SECONDS,
         onTimeout = function() self:revertGraphics() end,
@@ -488,14 +592,23 @@ function Options:buildDialogs()
         },
     }
 
+    self.errorDialog = UI.Dialog.new{
+        title = function() return I18n.t("options.errorTitle") end,
+        message = function() return I18n.t("options.error." .. (self.graphicsError or "failed")) end,
+        fontRole = "help",
+        buttons = { { label = function() return I18n.t("dialog.close") end,
+            onSelect = function() self.errorDialog:close() end } },
+    }
+    self.errorDialog:setFocusSound(blip)
     self.revertDialog:setFocusSound(blip)
     self.unappliedDialog:setFocusSound(blip)
 end
 
 ---@return table|nil # the open dialog, if either is
 function Options:activeDialog()
-    if self.revertDialog and self.revertDialog:isOpen() then return self.revertDialog end
-    if self.unappliedDialog and self.unappliedDialog:isOpen() then return self.unappliedDialog end
+    for _, dialog in ipairs({ self.revertDialog, self.unappliedDialog, self.errorDialog }) do
+        if dialog:isOpen() then return dialog end
+    end
     return nil
 end
 
@@ -503,6 +616,11 @@ end
 -- widgets, then footer buttons -- drives both focus order and layout below
 ---@param index integer
 function Options:selectTab(index)
+    if self.scroll and self.activeTab then
+        self.tabs[self.activeTab].scrollY = self.scroll.targetY
+        self.scroll.dragOffset = nil
+    end
+    self.group:releaseCapture()
     self.activeTab = index
     self.tabBar.index = index -- direct field set never fires onChange, so no recursion
 
@@ -515,141 +633,78 @@ function Options:selectTab(index)
     end
     self.group:setWidgets(widgets)
 
-    self:layout() -- a different tab has a different row count
+    self:layout(self.tabs[index].scrollY or 0)
 end
 
-local DESC_MAX_LINES = 3 -- caps one runaway string from squeezing the rows it describes; draw clips past this
-
---- how many lines to reserve for the description row: the tallest any widget
--- on this tab needs, capped, so the reserved space doesn't jump as focus moves
----@param width number # wrap width
----@return integer # 1..DESC_MAX_LINES
-function Options:descriptionLines(width)
-    local font = UI.Theme.font("small")
-    local most = 1
-
-    for _, widget in ipairs(self.tabs[self.activeTab].widgets) do
-        if widget.descKey then
-            local _, wrapped = font:getWrap(I18n.t(widget.descKey), width)
-            most = math.max(most, #wrapped)
-        end
-    end
-    if self.tabs[self.activeTab].name == "graphics" then
-        local _, wrapped = font:getWrap(I18n.t("options.desc.resolutionBorderless"), width)
-        most = math.max(most, #wrapped)
-    end
-
-    return math.min(most, DESC_MAX_LINES)
-end
-
---- Computes every rect this screen draws. Called on enter/resize/tab switch,
--- never from draw -- hit-testing reads these bounds, and laying out during
--- draw meant input for a frame was answered against the previous geometry.
---
--- Laid out to FIT rather than a fixed pose: every row scales with window
--- height via Theme.metrics, so a taller window just draws bigger rows, not
--- more of them -- the stack ran off the bottom at every resolution once
--- General reached seven rows (worse on big screens: 1920x1080 overshot by
--- 71px vs 39px at 1024x768). So: measure the space between heading and hint
--- line and shrink to fit, whitespace first and row height only if that's not
--- enough (a full-height row with less air still reads as a control; a
--- squashed one stops looking clickable).
-function Options:layout()
+--- Fixed regions are measured first; only the setting rows consume overflow.
+function Options:layout(scrollY)
+    if not self.activeTab then return end
     local w, h = love.graphics.getDimensions()
-    local m = UI.Theme.metrics
-
-    local rows = #self.tabs[self.activeTab].widgets
-    local footer = self:footerButtons()
-    local panelW = math.min(UI.Theme.px(PANEL_MAX_W), w * 0.72)
+    local theme, m = UI.Theme, UI.Theme.metrics
+    local margin, gap, pad = theme.px(24), theme.px(10), theme.px(PANEL_PAD)
+    local panelW = math.min(theme.px(PANEL_MAX_W), w - margin * 2)
     local panelX = (w - panelW) / 2
-
-    local descH = UI.Theme.font("small"):getHeight()
-        * self:descriptionLines(panelW - UI.Theme.px(PANEL_PAD) * 2)
-
-    local rowCount = 1 + rows + #footer
-    local gapCount = rows + #footer + 1
-    ---@param rowH number
-    ---@param gap number
-    ---@param pad number
-    ---@return number
-    local function stackHeight(rowH, gap, pad)
-        return rowCount * rowH + gapCount * gap + pad * 2 + descH
+    local small, buttonFont = theme.font("small"), theme.font("button")
+    local function textHeight(font, text, width)
+        local _, lines = font:getWrap(text, width)
+        return math.max(1, #lines) * font:getHeight()
     end
 
-    local headingBottom = h * HEADING_Y_RATIO + UI.Theme.font("heading"):getHeight()
-    local stackTop = headingBottom + m.rowGap
-    local budget = UI.Label.hintY() - m.rowGap - stackTop
+    self.headingY = margin
 
-    local minRow = UI.Theme.font("body"):getHeight() + UI.Theme.px(8)
-    local minGap = UI.Theme.px(4)
-    local minPad = UI.Theme.px(6)
-
-    local rowH, gap, pad = m.rowHeight, m.rowGap, UI.Theme.px(PANEL_PAD)
-
-    if stackHeight(rowH, gap, pad) > budget then
-        local slack = gapCount * (gap - minGap) + 2 * (pad - minPad)
-        local need = stackHeight(rowH, gap, pad) - budget
-        if slack > 0 then
-            local keep = 1 - math.min(need, slack) / slack
-            gap = minGap + math.floor((gap - minGap) * keep)
-            pad = minPad + math.floor((pad - minPad) * keep)
-        end
-
-        if stackHeight(rowH, gap, pad) > budget then
-            local forRows = budget - gapCount * gap - pad * 2 - descH
-            rowH = math.max(minRow, math.floor(forRows / rowCount))
-        end
+    local tabH = m.rowHeight
+    local segmentW = (panelW - theme.px(6) * 2) / 3
+    for _, name in ipairs(self.tabBar.tabs) do
+        tabH = math.max(tabH, textHeight(buttonFont, theme.resolveLabel(name, self.tabBar), segmentW) + theme.px(12))
     end
+    local tabY = self.headingY + theme.font("heading"):getHeight() + gap
+    self.tabBar:setBounds(panelX, tabY, panelW, tabH)
 
-    local panelH = pad * 2 + rows * rowH + (rows - 1) * gap
-    local stackH = stackHeight(rowH, gap, pad)
+    local hintH = textHeight(small, I18n.t("options.hint.navigation"), panelW)
+    self.hintRect = { x = panelX, y = h - theme.px(16) - hintH, w = panelW, h = hintH }
+    local buttonW = (panelW - m.rowGap) / 2
+    local footerH = m.rowHeight
+    for _, button in ipairs(self:footerButtons()) do
+        footerH = math.max(footerH, textHeight(buttonFont, button:labelText(), buttonW) + theme.px(12))
+    end
+    local footerY = self.hintRect.y - gap - footerH
+    for i, button in ipairs(self:footerButtons()) do
+        button:setBounds(panelX + (i - 1) * (buttonW + m.rowGap), footerY, buttonW, footerH)
+    end
+    local statusH = textHeight(small, I18n.t("options.pendingGraphics"), panelW)
+    self.statusRect = { x = panelX, y = footerY - gap - statusH, w = panelW, h = statusH }
 
-    local aboveH = rowH + gap -- tab bar and its gap
-    local top = math.max(stackTop,
-        math.min(h * PANEL_Y_RATIO - aboveH, stackTop + budget - stackH))
-    local panelY = top + aboveH
-
+    local panelY = tabY + tabH + gap
+    local panelH = math.max(1, self.statusRect.y - gap - panelY)
+    local scrollW = panelW - pad * 2
+    local widgets = self.tabs[self.activeTab].widgets
+    self.scroll:layout(widgets, panelX + pad, panelY + pad, scrollW, math.max(1, panelH - pad * 2), scrollY)
     self.panel = { x = panelX, y = panelY, w = panelW, h = panelH }
-
-    self.tabBar:setBounds(panelX, panelY - rowH - gap, panelW, rowH)
-
-    for i, widget in ipairs(self.tabs[self.activeTab].widgets) do
-        widget:setBounds(
-            panelX + pad,
-            panelY + pad + (i - 1) * (rowH + gap),
-            panelW - pad * 2,
-            rowH)
-    end
-
-    for i, button in ipairs(footer) do
-        button:setBounds(
-            panelX,
-            panelY + panelH + gap + (i - 1) * (rowH + gap),
-            panelW,
-            rowH)
-    end
-
-    local footerBottom = panelY + panelH + gap + #footer * (rowH + gap)
-    self.descRect = { x = panelX, y = footerBottom, w = panelW, h = descH }
-
+    self.layoutLanguage = I18n.current
+    self.baselineWidth, self.baselineHeight = self.settings.res_x, self.settings.res_y
     if self.revertDialog then self.revertDialog:layout() end
     if self.unappliedDialog then self.unappliedDialog:layout() end
+    if self.errorDialog then self.errorDialog:layout() end
 end
 
---- re-lays out for the new window size
 function Options:resize()
+    -- A user window drag updates live settings before this callback. Preserve
+    -- explicit pending resolution edits, but let an untouched resolution follow
+    -- the new window size without creating a false Apply state.
+    if self.pending and self.settings.windowMode == "windowed" and not self.revertTo then
+        local selected = self.resolutionSelector:selected()
+        if selected and selected[1] == self.baselineWidth and selected[2] == self.baselineHeight then
+            self:rebuildResolutions(self.settings.res_x, self.settings.res_y)
+            self.applyButton.enabled = self:isDirty()
+            self.group:refresh()
+        end
+    end
     self:layout()
+    if self.keyboardInput then self:revealFocus() end
 end
 
---- resolution row gets a different line when inert, since "greyed out with no reason" is the confusion to avoid
----@return string|nil # an i18n key, or nil when the focused row has nothing to say
-function Options:focusedDescription()
-    local widget = self.group:focused()
-    if not widget or not widget.descKey then return nil end
-    if widget == self.resolutionSelector and not widget.enabled then
-        return "options.desc.resolutionBorderless"
-    end
-    return widget.descKey
+function Options:revealFocus(smooth)
+    self.scroll:reveal(self.group:focused(), smooth)
 end
 
 --- StateManager calls enter(previousName, ...); opts.returnTo wins, else
@@ -666,6 +721,10 @@ function Options:enter(previousName, opts)
     if not self.group then
         self.group = UI.FocusGroup.new()
         self.group.onFocusChanged = UI.Sfx.focus
+        self.scroll = ScrollArea.new()
+        self.group.pointerFilter = function(widget, x, y)
+            return self.scroll:allowsPointer(widget, x, y)
+        end
     end
 
     --- writes the live settings out; the immediate-apply rows call this directly
@@ -689,6 +748,7 @@ function Options:enter(previousName, opts)
                 UI.Sfx.select()
                 self.settings.language = entry.code
                 I18n.setLanguage(entry.code)
+                self:layout()
                 persist()
             end,
         }
@@ -706,6 +766,7 @@ function Options:enter(previousName, opts)
             end,
         }
         self.themeSelector.descKey = 'options.desc.theme'
+        self.themePreview = UI.Preview.newTheme{}
 
         self.titleFontSelector = UI.Selector.new{
             label = function() return I18n.t("options.titleFont") end,
@@ -719,20 +780,66 @@ function Options:enter(previousName, opts)
             end,
         }
         self.titleFontSelector.descKey = 'options.desc.titleFont'
+        self.titleFontPreview = UI.Preview.newTitleFont{}
 
-        self.customCursorToggle = self:buildSettingToggle("customCursor", UI.Cursor.setEnabled)
+        self.uiFontSelector = UI.Selector.new{
+            label = function() return I18n.t("options.uiFont") end,
+            options = UI.Theme.uiFontFamilies(),
+            format = function(entry) return I18n.t("options.uiFontName." .. entry.id) end,
+            onChange = function(entry)
+                UI.Sfx.select()
+                self.settings.uiFont = entry.id
+                UI.Theme.setUiFontFamily(entry.id)
+                self:layout() -- a metrics-affecting font swap changes row heights, same as a language switch
+                persist()
+            end,
+        }
+        self.uiFontSelector.descKey = 'options.desc.uiFont'
+        self.uiFontPreview = UI.Preview.newUiFont{}
+
+        self.cursorSizeSelector = self:buildSettingSelector("customCursorSize", CURSOR_SIZES, UI.Cursor.setSize)
+        self.cursorOutlineWidthSelector = self:buildSettingSelector("customCursorOutlineWidth",
+            CURSOR_OUTLINE_WIDTHS, UI.Cursor.setOutlineWidth)
+        self.cursorHoverOutlineWidthSelector = self:buildSettingSelector("customCursorHoverOutlineWidth",
+            CURSOR_HOVER_OUTLINE_WIDTHS, UI.Cursor.setHoverOutlineWidth)
+        self.cursorClickGrowthSelector = self:buildSettingSelector("customCursorClickGrowth",
+            CURSOR_CLICK_GROWTHS, UI.Cursor.setClickGrowth)
+        self.cursorTuningWidgets = { self.cursorSizeSelector, self.cursorOutlineWidthSelector,
+            self.cursorHoverOutlineWidthSelector, self.cursorClickGrowthSelector }
+
+        self.customCursorToggle = self:buildSettingToggle("customCursor", function(value)
+            UI.Cursor.setEnabled(value)
+            for _, widget in ipairs(self.cursorTuningWidgets) do widget.enabled = value end
+            self.group:refresh()
+        end)
 
         self.reducedMotionToggle = self:buildSettingToggle("reducedMotion", UI.Motion.setReduced)
 
         self.shareStatsToggle = self:buildSettingToggle("shareStats", Stats.setEnabled)
 
+        -- A read-only row's reason has to live in the value text itself, not
+        -- the shared description below: keyboard/mouse focus both skip
+        -- non-interactive widgets, so a row that can never be focused can
+        -- never surface an explanation that depends on being focused first.
         self.displaySelector = self:buildPendingSelector("display", displayOptions(),
-            function(n) return I18n.t("options.displayOption", { n = n }) end,
+            function(n)
+                local text = I18n.t("options.displayOption", { n = n })
+                if self.displaySelector and self.displaySelector.readOnly then
+                    text = text .. " · " .. I18n.t("options.note.monitor")
+                end
+                return text
+            end,
             "display")
 
         self.resolutionSelector = self:buildPendingSelector("resolution",
             resolutionsFor(self.settings.display, self.settings.windowMode),
-            function(o) return o[1] .. "x" .. o[2] end,
+            function(o)
+                local text = o[1] .. "x" .. o[2]
+                if self.resolutionSelector and self.resolutionSelector.readOnly then
+                    text = text .. " · " .. I18n.t("options.note.borderless")
+                end
+                return text
+            end,
             "resIndex", function(_, index) return index end)
 
         self.msaaSelector = self:buildPendingSelector("msaa", MSAA,
@@ -755,7 +862,7 @@ function Options:enter(previousName, opts)
             function(value) self:setNebulaVisible(value) end)
 
         self.applyButton = UI.Button.new{
-            label = function() return I18n.t("options.apply") end,
+            label = function() return I18n.t("options.applyGraphics") end,
             onSelect = function()
                 UI.Sfx.press()
                 self:applyPending()
@@ -774,13 +881,42 @@ function Options:enter(previousName, opts)
         self.tabs = {
             { name = "audio",     widgets = { self.volumeSlider, self.musicVolumeSlider,
                                                self.sfxVolumeSlider, } },
-            { name = "interface", widgets = { self.languageSelector, self.themeSelector,
-                                               self.titleFontSelector, self.customCursorToggle,
-                                               self.reducedMotionToggle, self.shareStatsToggle, } },
-            { name = "graphics",  widgets = { self.displaySelector, self.resolutionSelector, self.msaaSelector,
-                                               self.windowModeSelector, self.vsyncToggle, self.uncapFpsToggle,
-                                               self.showNebulaToggle, self.applyButton, } },
+            { name = "interface", widgets = { self.languageSelector, self.themeSelector, self.themePreview,
+                                               self.titleFontSelector, self.titleFontPreview,
+                                               self.uiFontSelector, self.uiFontPreview,
+                                               self.customCursorToggle, self.cursorSizeSelector,
+                                               self.cursorOutlineWidthSelector, self.cursorHoverOutlineWidthSelector,
+                                               self.cursorClickGrowthSelector,
+                                               self.reducedMotionToggle,
+                                               self.shareStatsToggle, } },
+            { name = "graphics", widgets = { self.displaySelector, self.windowModeSelector, self.resolutionSelector,
+                                               self.msaaSelector, self.showNebulaToggle, self.vsyncToggle, self.uncapFpsToggle } },
         }
+
+        self.languageSelector.section = function() return I18n.t("options.section.appearance") end
+        self.customCursorToggle.section = function() return I18n.t("options.section.cursor") end
+        self.reducedMotionToggle.section = function() return I18n.t("options.section.accessibility") end
+        self.shareStatsToggle.section = function() return I18n.t("options.section.privacy") end
+        self.displaySelector.section = function() return I18n.t("options.section.display") end
+        self.msaaSelector.section = function() return I18n.t("options.section.quality") end
+        self.vsyncToggle.section = function() return I18n.t("options.section.performance") end
+
+        -- Inventory retains stable localization IDs and existing save callbacks.
+        -- Decorative preview rows carry no descKey and aren't real settings.
+        local deferred = { display = true, resolution = true, msaa = true, displayMode = true, vsync = true }
+        self.settingInventory = {}
+        for _, tab in ipairs(self.tabs) do
+            for _, widget in ipairs(tab.widgets) do
+                if widget.descKey then
+                    local id = widget.descKey:match("options.desc.(.+)")
+                    self.settingInventory[#self.settingInventory + 1] = {
+                        id = id, category = tab.name, widget = widget, helpKey = widget.descKey,
+                        save = deferred[id] and "apply" or "immediate",
+                        dependency = id == "resolution" and "display/displayMode" or nil,
+                    }
+                end
+            end
+        end
 
         self.tabBar = UI.TabBar.new{
             tabs = {
@@ -797,6 +933,7 @@ function Options:enter(previousName, opts)
 
     self.revertDialog:close()
     self.unappliedDialog:close()
+    self.errorDialog:close()
     self.revertTo = nil
     self.leaveAfterApply = false
 
@@ -806,92 +943,156 @@ function Options:enter(previousName, opts)
     self.languageSelector.index = languageIndexFor(self.settings.language)
     self.themeSelector.index = themeIndexFor(UI.Theme.current)
     self.titleFontSelector.index = titleFontIndexFor(GameTitle.current)
+    self.uiFontSelector.index = uiFontIndexFor(UI.Theme.currentUiFontFamily())
     self.customCursorToggle.value = self.settings.customCursor
+    self.cursorSizeSelector.index = indexWhere(CURSOR_SIZES,
+        function(v) return v == self.settings.customCursorSize end)
+    self.cursorOutlineWidthSelector.index = indexWhere(CURSOR_OUTLINE_WIDTHS,
+        function(v) return v == self.settings.customCursorOutlineWidth end)
+    self.cursorHoverOutlineWidthSelector.index = indexWhere(CURSOR_HOVER_OUTLINE_WIDTHS,
+        function(v) return v == self.settings.customCursorHoverOutlineWidth end)
+    self.cursorClickGrowthSelector.index = indexWhere(CURSOR_CLICK_GROWTHS,
+        function(v) return v == self.settings.customCursorClickGrowth end)
+    for _, widget in ipairs(self.cursorTuningWidgets) do widget.enabled = self.settings.customCursor end
     self.reducedMotionToggle.value = self.settings.reducedMotion
     self.shareStatsToggle.value = self.settings.shareStats
     self.uncapFpsToggle.value = self.settings.uncapFps
     self.showNebulaToggle.value = self.settings.showNebula
+    self.keyboardInput = false
+    for _, tab in ipairs(self.tabs) do tab.scrollY = 0 end
+    self.scroll:setScroll(0)
     self:resetPending()
     self:selectTab(self.tabBar.index)
 end
 
---- a modal owns every input while open; the screen behind keeps drawing but
--- stops responding. Dialog exposes the same verbs FocusGroup does, so
--- routing is just a choice of receiver.
----@return table # the open dialog, or the screen's own focus group
-function Options:inputTarget()
-    return self:activeDialog() or self.group
+--- End any drag before a modal takes input. Closing restores visible focus.
+function Options:openDialog(dialog)
+    self.scroll:setScroll(self.scroll.scrollY) -- freeze the backdrop where it is
+    self.group:releaseCapture()
+    self.scroll.dragOffset = nil
+    dialog:openDialog()
 end
 
---- routed to whatever currently owns input
-function Options:update(dt)            self:inputTarget():update(dt)            end
-function Options:mousepressed(x, y, b) self:inputTarget():mousepressed(x, y, b) end
-function Options:mousereleased(x, y, b) self:inputTarget():mousereleased(x, y, b) end
-
----@param x number
----@param y number
-function Options:mousemoved(x, y)
-    self.mouseX, self.mouseY = x, y
-    self:inputTarget():mousemoved(x, y)
+function Options:afterDialog(dialog)
+    if dialog and not self:activeDialog() then
+        self.group:refresh()
+        self:revealFocus()
+    end
 end
 
---- written out, not routed: a modal's own Esc cancels the modal, only an unmodal screen leaves
-function Options:keypressed(key)
+function Options:update(dt)
+    if self.layoutLanguage ~= I18n.current then self:layout() end
     local dialog = self:activeDialog()
-    if dialog then return dialog:keypressed(key) end
-    if key == "escape" then return self:goBack() end
-    return self.group:keypressed(key)
+    if dialog then
+        dialog:update(dt)
+        self:afterDialog(dialog)
+    else
+        self.scroll:update(dt)
+        self.group:update(dt)
+    end
 end
 
---- heading, tab bar, the active tab's panel, footer buttons, the focused row's
--- description, and any open dialog over all of it
+function Options:mousepressed(x, y, button)
+    self.mouseX, self.mouseY, self.keyboardInput = x, y, false
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:mousepressed(x, y, button)
+        self:afterDialog(dialog)
+        return
+    end
+    if self.group.capture then return end
+    self.scroll:setScroll(self.scroll.scrollY) -- controls must stay put during a click/drag
+    if self.scroll:mousepressed(x, y, button) then return end
+    self.group:mousepressed(x, y, button)
+end
+
+function Options:mousereleased(x, y, button)
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:mousereleased(x, y, button)
+        self:afterDialog(dialog)
+        return
+    end
+    if button == 1 then self.scroll.dragOffset = nil end
+    self.group:mousereleased(x, y, button)
+end
+
+function Options:mousemoved(x, y)
+    self.mouseX, self.mouseY, self.keyboardInput = x, y, false
+    local dialog = self:activeDialog()
+    if dialog then return dialog:mousemoved(x, y) end
+    if self.scroll:mousemoved(x, y) then return end
+    self.group:mousemoved(x, y)
+end
+
+function Options:wheelmoved(x, y)
+    -- Dialogs have no scrollable content; consume wheel input while open.
+    if self:activeDialog() or self.group.capture or self.scroll.dragOffset then return end
+    if not self.scroll:contains(self.mouseX, self.mouseY) then return end
+    self.keyboardInput = false
+    self.scroll:setScroll(self.scroll.targetY - y * UI.Theme.px(48), true)
+end
+
+function Options:keypressed(key)
+    self.keyboardInput = true
+    local dialog = self:activeDialog()
+    if dialog then
+        dialog:keypressed(key)
+        self:afterDialog(dialog)
+        return
+    end
+    self.group:releaseCapture()
+    self.scroll.dragOffset = nil
+    if key == "escape" then return self:goBack() end
+    if key == "pageup" or key == "pagedown" then
+        local current = self.group:focused()
+        if not self.scroll.offsets[current] then return end
+        local direction = key == "pageup" and -1 or 1
+        self.scroll:setScroll(self.scroll.targetY + direction * self.scroll.h * 0.8, true)
+        local best, distance
+        local edge = direction < 0 and self.scroll.y or self.scroll.y + self.scroll.h
+        for i, widget in ipairs(self.group.widgets) do
+            local row = self.scroll.offsets[widget]
+            local y = row and self.scroll.y + row.y - self.scroll.targetY
+            if row and widget:isInteractive()
+                and y >= self.scroll.y and y + widget.h <= self.scroll.y + self.scroll.h then
+                local d = math.abs((direction < 0 and y or y + widget.h) - edge)
+                if not distance or d < distance then best, distance = i, d end
+            end
+        end
+        if best then self.group:setFocus(best) end
+        self:revealFocus(true)
+        return
+    end
+    local consumed = self.group:keypressed(key)
+    self:revealFocus(true)
+    return consumed
+end
+
 function Options:draw()
-    local h = love.graphics.getHeight()
     local panel = self.panel
-
-    UI.Label.draw{
-        text = I18n.t("options.title"),
-        y = h * HEADING_Y_RATIO,
-        font = UI.Theme.font("heading"),
-    }
-
+    UI.Label.draw{ text = I18n.t("options.title"), y = self.headingY, font = UI.Theme.font("heading") }
     self.tabBar:draw()
-
     UI.Theme.panel(panel.x, panel.y, panel.w, panel.h)
+    self.scroll:draw()
+    for _, button in ipairs(self:footerButtons()) do button:draw() end
 
-    for _, widget in ipairs(self.tabs[self.activeTab].widgets) do
-        widget:draw()
+    local function note(rect, text, color)
+        UI.Label.draw{ text = text, x = rect.x, y = rect.y, width = rect.w,
+            font = UI.Theme.font("small"), color = color or UI.Theme.colors.textMuted }
     end
-    for _, button in ipairs(self:footerButtons()) do
-        button:draw()
-    end
-
-    local desc = self.descRect
-    local descKey = self:focusedDescription()
-    if descKey then
-        love.graphics.setScissor(math.floor(desc.x), math.floor(desc.y),
-            math.ceil(desc.w), math.ceil(desc.h))
-        UI.Label.draw{
-            text = I18n.t(descKey),
-            x = desc.x,
-            y = desc.y,
-            width = desc.w,
-            font = UI.Theme.font("small"),
-            color = UI.Theme.colors.textMuted,
-        }
-        love.graphics.setScissor()
-    end
-
-    if desc.y + desc.h <= UI.Label.hintY() then
-        local onGraphics = self.tabs[self.activeTab].name == "graphics"
-        UI.Label.hint(I18n.t(onGraphics and "options.hint.graphics" or "options.hint.general"))
-    end
+    if self:isDirty() then note(self.statusRect, I18n.t("options.pendingGraphics"), UI.Theme.colors.warning) end
+    note(self.hintRect, I18n.t("options.hint.navigation"), UI.Theme.colors.textDim)
 
     local dialog = self:activeDialog()
     if dialog then dialog:draw() end
-
-    local overWidget, dangerous = self:inputTarget():hovering(self.mouseX or -1, self.mouseY or -1)
-    UI.Cursor.setHover(self.mouseX ~= nil and overWidget, dangerous)
+    local overWidget, dangerous
+    if dialog then overWidget, dangerous = dialog:hovering(self.mouseX, self.mouseY)
+    else
+        overWidget, dangerous = self.group:hovering(self.mouseX, self.mouseY)
+        overWidget = overWidget or self.scroll:overBar(self.mouseX, self.mouseY)
+    end
+    UI.Cursor.setHover(overWidget, dangerous)
 end
 
 return Options

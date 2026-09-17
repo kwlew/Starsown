@@ -6,8 +6,11 @@
     "golden": "Golden Stars",
     "rainbow": "Rainbow Stars",
     "unavailable": "-- / --",
-    "sharingOff": "Stats sharing is off. Turn it on under Options > Interface to see world totals.",
-    "waiting": "Couldn't connect to server. Is internet available?",
+    "sharingOff": "Stats sharing is off, so world totals aren't shown here.",
+    "enableSharing": "Enable Sharing",
+    "loading": "Loading world stats...",
+    "waiting": "Still trying to connect. Check your internet connection.",
+    "updated": "Updated {t} ago",
     "back": "Back",
     "hint": "Esc: back"
   }

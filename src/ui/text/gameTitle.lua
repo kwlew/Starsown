@@ -5,7 +5,8 @@
 -- switch on an identical frame instead of popping the title into existence.
 
 local TextFactory = require "ui.text.textFactory"
-local UI = require "ui"
+local Theme = require "ui.core.theme"
+local Motion = require "ui.core.motion"
 local Globals = require "globals"
 
 local GameTitle = {}
@@ -17,6 +18,7 @@ GameTitle.MENU_Y_RATIO = 0.16 -- vertical position on the menu, as a fraction of
 GameTitle.FONTS = {
     { id = "acme",     role = "title2" },
     { id = "orbitron", role = "title" },
+    { id = "jetmono",  role = "title3" },
 }
 GameTitle.current = "acme"
 
@@ -47,6 +49,10 @@ local function currentFontRole()
     return "title2"
 end
 
+--- exposed for anything that needs the face's typeface without a full
+-- TextFactory (e.g. an inline preview, not the full chroma wordmark)
+GameTitle.currentRole = currentFontRole
+
 --- rebuild on resize: wrap width is baked in at construction. A theme change
 -- needs no rebuild -- the gradient holds the theme's live color tables and
 -- the shader reads them fresh every draw. A font or reduced-motion change
@@ -58,9 +64,9 @@ function GameTitle.build()
         text = GameTitle.TEXT,
         y = love.graphics.getHeight() * GameTitle.MENU_Y_RATIO,
         align = "center",
-        font = UI.Theme.font(currentFontRole()),
-        gradient = UI.Theme.titleGradient(),
-        speed = UI.Motion.reduced and 0 or 1, -- reduced motion: color holds still instead of cycling
+        font = Theme.font(currentFontRole()),
+        gradient = Theme.titleGradient(),
+        speed = Motion.reduced and 0 or 1, -- reduced motion: color holds still instead of cycling
     }
 end
 

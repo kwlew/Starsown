@@ -134,11 +134,12 @@ function TabBar:draw()
 
     local font = self:getFont()
     Theme.pushFont(font)
-    local textY = Theme.centerY(self.y, self.h, font)
     for i, name in ipairs(self.tabs) do
         local sx, _, sw = self:segmentRect(i)
         Theme.setColor((i == self.index or i == self.hovered) and c.text or c.textDim, alpha)
-        love.graphics.printf(Theme.resolveLabel(name, self), sx, textY, sw, "center") -- tabs may be strings or functions
+        local text = Theme.resolveLabel(name, self)
+        local _, lines = font:getWrap(text, sw)
+        love.graphics.printf(text, sx, self.y + (self.h - #lines * font:getHeight()) / 2, sw, "center")
     end
     Theme.popFont()
 
