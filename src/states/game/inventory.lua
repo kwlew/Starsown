@@ -114,6 +114,14 @@ function Inventory:add(id, count, first, last)
     return count
 end
 
+--- exchanges two slots outright, even if both hold the same item - unlike
+-- put(), this never merges, so a hotkeyed move never eats a slot's identity
+---@param a integer
+---@param b integer
+function Inventory:swap(a, b)
+    self.slots[a], self.slots[b] = self.slots[b], self.slots[a]
+end
+
 --- shift-click: sends a slot's stack to the other side (hotbar to storage,
 -- storage to hotbar); whatever doesn't fit stays where it was
 ---@param index integer

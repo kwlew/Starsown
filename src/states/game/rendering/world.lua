@@ -25,6 +25,17 @@ function World:tileOrigin(col, row)
     return col * World.TILE, row * World.TILE
 end
 
+--- The middle of a tile, where anything placed on the grid stands. Static, so
+-- grid-placed things (trees and whatever follows) can snap without a world.
+---@param col integer
+---@param row integer
+---@return number x
+---@return number y
+function World.tileCenter(col, row)
+    local half = World.TILE / 2
+    return col * World.TILE + half, row * World.TILE + half
+end
+
 function World:drawFlat(c1, r1, c2, r2)
     local tile = World.TILE
     local left, top = self:tileOrigin(c1, r1)

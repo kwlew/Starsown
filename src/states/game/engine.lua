@@ -4,6 +4,8 @@
 -- TODO: Make a pause menu.
 local World = require "states.game.rendering.world"
 local Player = require "states.game.player"
+local Tree = require "states.game.tree"
+local Items = require "states.game.items"
 local Math = require "utils.math"
 local Inventory = require "states.game.inventory"
 local Hotbar = require "states.game.rendering.hotbar"
@@ -15,14 +17,19 @@ local Engine = {}
 Engine.__index = Engine
 
 local CAMERA_FOLLOW = 8
-local HOTBAR_SIZE = 6
+local HOTBAR_SIZE = 8
 local INVENTORY_SIZE = HOTBAR_SIZE * 4 -- the hotbar is the bottom row of four
-local STARTER_ITEMS = { wood = 20, stone = 70, herb = 5, gem = 3 } -- placeholders to try the UI with
+local STARTER_ITEMS = { wood = 20, stone = 70, herb = 5, gem = 3, axe = 1 } -- placeholders to try the UI with
+local TEST_TREES = { { 4, -2 }, { 6, -2 }, { 5, 1 } } -- tile coords, until there's world generation
 
 function Engine:load()
     Engine.WORLD = World.new()
     Engine.PLAYER = Player.new(0, 0)
     Engine.entities = { Engine.PLAYER }
+    Engine.trees = {}
+    for _, tile in ipairs(TEST_TREES) do
+        table.insert(Engine.trees, Tree.new(tile[1], tile[2]))
+    end
     Engine.INVENTORY = Inventory.new(INVENTORY_SIZE, HOTBAR_SIZE)
     InventoryPanel.open = false
     for id, count in pairs(STARTER_ITEMS) do Engine.INVENTORY:add(id, count) end
@@ -42,9 +49,19 @@ function Engine:draw()
     love.graphics.push()
     love.graphics.translate(-left, -top)
     Engine.WORLD:draw(left, top, left + w, top + h)
+    for _, tree in ipairs(Engine.trees) do
+        tree:drawGround()
+        tree:draw()
+        tree:drawParticles()
+    end
     Engine.PLAYER:drawGround()
     Engine.PLAYER:draw()
     Engine.PLAYER:drawHealth()
+    -- canopies (and any break progress) last, so they sit over the player
+    for _, tree in ipairs(Engine.trees) do
+        tree:drawCanopy(Engine.PLAYER.x, Engine.PLAYER.y)
+        if tree.hp < tree.maxHp then tree:drawHealth() end
+    end
     DebugGUI.drawWorld(Engine)
     love.graphics.pop()
 
@@ -62,9 +79,34 @@ function Engine:update(dt)
     for _, entity in ipairs(Engine.entities) do
         if entity ~= player then entity:update(dt) end
     end
+    for _, tree in ipairs(Engine.trees) do
+        tree:update(dt)
+        tree:collide(player)
+    end
+    Engine:breakAimedTile(dt)
 
     Engine.camX = Math.damp(Engine.camX, player.x, CAMERA_FOLLOW, dt)
     Engine.camY = Math.damp(Engine.camY, player.y, CAMERA_FOLLOW, dt)
+end
+
+--- Hold the left button to break whatever sits on the aimed tile. The aim
+-- point is already clamped to Player.RANGE, so reach needs no second check.
+---@param dt number
+function Engine:breakAimedTile(dt)
+    if Engine:isInventoryOpen() or not love.mouse.isDown(1) then return end
+
+    local player = Engine.PLAYER
+    local col, row = Engine.WORLD:toTile(player.aimX, player.aimY)
+    for index, tree in ipairs(Engine.trees) do
+        if tree.col == col and tree.row == row then
+            local held = Engine.INVENTORY:selectedStack()
+            local speed = Items.toolSpeed(held and held.id, tree:stageSpec().tool)
+            local drops, removed = tree:breakWith(dt, speed)
+            if drops then Engine.INVENTORY:add(drops.id, drops.count) end
+            if removed then table.remove(Engine.trees, index) end
+            return
+        end
+    end
 end
 
 function Engine:isInventoryOpen()
@@ -89,7 +131,16 @@ function Engine:keypressed(key)
     if key == "e" then InventoryPanel.toggle(Engine.INVENTORY) return end
 
     local slot = tonumber(key)
-    if slot and slot >= 1 and slot <= HOTBAR_SIZE then Engine.INVENTORY:select(slot) return end
+    if slot and slot >= 1 and slot <= HOTBAR_SIZE then
+        -- while the panel's open, number keys only move slots - never fall
+        -- through to changing the active hotbar slot behind it
+        if InventoryPanel.open then
+            InventoryPanel.moveToSlot(Engine.INVENTORY, slot)
+        else
+            Engine.INVENTORY:select(slot)
+        end
+        return
+    end
     Engine.PLAYER:keypressed(key)
 end
 

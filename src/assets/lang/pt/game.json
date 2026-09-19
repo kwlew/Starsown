@@ -11,6 +11,7 @@
         "wood": "Madeira",
         "stone": "Pedra",
         "herb": "Erva",
-        "gem": "Gema"
+        "gem": "Gema",
+        "axe": "Machado"
     }
 }

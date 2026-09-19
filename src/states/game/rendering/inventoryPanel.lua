@@ -92,14 +92,33 @@ function Panel.mousepressed(inventory, mx, my, button)
 
     if (button == 1 or button == 2) and love.keyboard.isDown("lshift", "rshift") then
         inventory:quickMove(index)
-        UI.Sfx.press()
+        UI.Sfx.select()
     elseif button == 1 then
         if held then held = inventory:put(index, held) else held = inventory:take(index) end
-        UI.Sfx.press()
+        UI.Sfx.select()
     elseif button == 2 then
         if held then held = inventory:putOne(index, held) else held = inventory:takeHalf(index) end
-        UI.Sfx.press()
+        UI.Sfx.select()
     end
+    return true
+end
+
+--- Minecraft-style hotbar swap: a number key pressed while hovering a slot
+-- exchanges it with the matching hotbar slot - even when the hovered slot is
+-- empty, which pulls that hotbar item out into it rather than requiring
+-- something to swap out first.
+---@param inventory table
+---@param target integer # 1..hotbarSize, the pressed number
+---@return boolean handled
+function Panel.moveToSlot(inventory, target)
+    if not Panel.open or held then return false end
+
+    local hovered = slotAt(layout(inventory), love.mouse.getPosition())
+    if not hovered or hovered == target then return false end
+    if not inventory:get(hovered) and not inventory:get(target) then return false end -- nothing to move
+
+    inventory:swap(hovered, target)
+    UI.Sfx.select()
     return true
 end
 

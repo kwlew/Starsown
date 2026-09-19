@@ -11,6 +11,7 @@
         "wood": "Madera",
         "stone": "Piedra",
         "herb": "Hierba",
-        "gem": "Gema"
+        "gem": "Gema",
+        "axe": "Hacha"
     }
 }

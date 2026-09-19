@@ -11,6 +11,7 @@
         "wood": "Wood",
         "stone": "Stone",
         "herb": "Herb",
-        "gem": "Gem"
+        "gem": "Gem",
+        "axe": "Axe"
     }
 }
