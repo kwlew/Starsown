@@ -1,0 +1,16 @@
+{
+    "hud": {
+        "hp": "HP",
+        "stamina": "Stamina",
+        "currency": "Coins"
+    },
+    "inventory": {
+        "title": "Inventory"
+    },
+    "items": {
+        "wood": "Wood",
+        "stone": "Stone",
+        "herb": "Herb",
+        "gem": "Gem"
+    }
+}

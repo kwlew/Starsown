@@ -18,7 +18,8 @@ local Math = require "utils.math"
 
 local Music = {}
 
-local TRACKS = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" } -- names loading.lua preloads these under
+local MENU_TRACKS = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" }
+local GAME_TRACKS = { "forest", "StarryNight", "Snowfall" }
 
 local CROSSFADE = 4
 
@@ -31,12 +32,18 @@ local introFade = 1  -- 0..1; only < 1 while the very first track eases in
 --- never `exclude` (the one playing) as long as there's another to pick, or
 -- "the next track" sometimes reads as the same one stuttering back to the start
 ---@param exclude string|nil # the track currently playing
+---@param type string|nil # the type of track to pick
 ---@return string name
-local function pickTrack(exclude)
-    if #TRACKS <= 1 then return TRACKS[1] end
+local function pickTrack(exclude, type)
+    if type == "menu" and #MENU_TRACKS <= 1 then return MENU_TRACKS[1] end
+    if type == "game" and #GAME_TRACKS <= 1 then return GAME_TRACKS[1] end
     local name
     repeat
-        name = TRACKS[Math.randInt(1, #TRACKS)]
+        if type == "menu" then
+            name = MENU_TRACKS[Math.randInt(1, #MENU_TRACKS)]
+        else
+            name = GAME_TRACKS[Math.randInt(1, #GAME_TRACKS)]
+        end
     until name ~= exclude
     return name
 end
@@ -55,10 +62,10 @@ end
 --- begins the menu music, or resumes it if a track finished while nothing
 -- polled update() (player was on another screen). No-op while something's
 -- already playing, so re-entering the menu doesn't restart from zero.
-function Music.start()
+function Music.start(type)
     if current and current.source:isPlaying() then return end
 
-    current = playTrack(pickTrack(current and current.name))
+    current = playTrack(pickTrack(current and current.name, type))
     if current then
         introFade = 0
         current.source:setVolume(0)

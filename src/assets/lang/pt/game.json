@@ -1,0 +1,16 @@
+{
+    "hud": {
+        "hp": "Vida",
+        "stamina": "Vigor",
+        "currency": "Moedas"
+    },
+    "inventory": {
+        "title": "Inventário"
+    },
+    "items": {
+        "wood": "Madeira",
+        "stone": "Pedra",
+        "herb": "Erva",
+        "gem": "Gema"
+    }
+}
