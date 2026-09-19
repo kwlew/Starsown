@@ -25,6 +25,8 @@ function Slot.drawIcon(stack, cx, cy, size)
     local spec = Items.get(stack.id)
     local radius = size * ICON_FRACTION
 
+    assert(spec, "No item spec for id: " .. tostring(stack.id))
+
     love.graphics.setColor(Palette.items[spec.color])
     Shape.draw("fill", cx, cy, radius, spec.sides, spec.rotation)
     Theme.setColor(Palette.entity.Default.outline, 0.7)
