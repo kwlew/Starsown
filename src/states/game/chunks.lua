@@ -111,13 +111,6 @@ local function chunkOf(self, col, row)
     return self.loaded[key(math.floor(col / size), math.floor(row / size))]
 end
 
---- The loaded tree standing on a tile.
----@return table? tree
-function Chunks:treeAt(col, row)
-    local chunk = chunkOf(self, col, row)
-    return chunk and chunk.byTile[key(col, row)]
-end
-
 --- Records that a tree became a stump, or (removed) is gone for good.
 ---@param tree table
 ---@param removed boolean

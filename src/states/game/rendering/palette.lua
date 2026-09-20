@@ -56,6 +56,8 @@ return {
 
     trees = {
         trunk = { 0.40, 0.28, 0.18 },
+        chip = { 0.66, 0.48, 0.28 }, -- fresh-cut inner wood: the particles a chop throws off
+        chipPale = { 0.80, 0.65, 0.42 },
         stump = { 0.35, 0.25, 0.17 },
         leaves = { 0.14, 0.32, 0.17 },
         leavesHighlight = { 0.21, 0.44, 0.23 },

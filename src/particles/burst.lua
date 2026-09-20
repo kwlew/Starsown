@@ -11,7 +11,7 @@ local Math = require "utils.math"
 local Burst = {}
 Burst.__index = Burst
 
----@param config? table # { countMin?: integer, countMax?: integer, speedMin?: number, speedMax?: number, lifeMin?: number, lifeMax?: number, sizeMin?: number, sizeMax?: number, drag?: number }
+---@param config? table # { countMin?: integer, countMax?: integer, speedMin?: number, speedMax?: number, lifeMin?: number, lifeMax?: number, sizeMin?: number, sizeMax?: number, drag?: number, gravity?: number, additive?: boolean, fade?: number }
 ---@return table
 function Burst.new(config)
     config = config or {}
@@ -27,7 +27,33 @@ function Burst.new(config)
         sizeMin = config.sizeMin or 1.5,
         sizeMax = config.sizeMax or 3.5,
         drag = config.drag or 3.5, -- exponential velocity decay
+        gravity = config.gravity or 0, -- +y accel; 0 keeps the weightless puff the menu wants
+        -- light (sparks, embers) adds; matter (wood chips, leaves) doesn't, since
+        -- a dozen overlapping additive particles saturate to a white blob
+        additive = config.additive ~= false,
+        -- the tail of the life spent fading out. 1 fades from the first frame
+        -- (right for light); matter wants to stay solid and go out near the end
+        fade = config.fade or 1,
     }, Burst)
+end
+
+---@param angle number # radians
+local function emit(self, x, y, angle, color, scale)
+    local speed = Math.randRange(self.speedMin, self.speedMax) * scale
+    local spent = self.spent
+
+    local p = spent[#spent]
+    if p then spent[#spent] = nil else p = {} end
+
+    p.x, p.y = x, y
+    p.vx = math.cos(angle) * speed
+    p.vy = math.sin(angle) * speed
+    p.life = 0
+    p.maxLife = Math.randRange(self.lifeMin, self.lifeMax)
+    p.size = Math.randRange(self.sizeMin, self.sizeMax) * scale
+    p.r, p.g, p.b = color[1], color[2], color[3]
+
+    self.particles[#self.particles + 1] = p
 end
 
 --- color is {r,g,b} (default white); scale multiplies speed and size
@@ -37,25 +63,19 @@ end
 ---@param scale? number # multiplies speed and size, defaults to 1
 function Burst:spawn(x, y, color, scale)
     color = color or { 1, 1, 1 }
-    scale = scale or 1
-    local spent = self.spent
-
     for _ = 1, Math.randInt(self.countMin, self.countMax) do
-        local angle = Math.randAngle()
-        local speed = Math.randRange(self.speedMin, self.speedMax) * scale
+        emit(self, x, y, Math.randAngle(), color, scale or 1)
+    end
+end
 
-        local p = spent[#spent]
-        if p then spent[#spent] = nil else p = {} end
-
-        p.x, p.y = x, y
-        p.vx = math.cos(angle) * speed
-        p.vy = math.sin(angle) * speed
-        p.life = 0
-        p.maxLife = Math.randRange(self.lifeMin, self.lifeMax)
-        p.size = Math.randRange(self.sizeMin, self.sizeMax) * scale
-        p.r, p.g, p.b = color[1], color[2], color[3]
-
-        self.particles[#self.particles + 1] = p
+--- the same burst thrown one way instead of all ways: chips off the struck
+-- face, sparks along a swing
+---@param angle number # radians, the middle of the spray
+---@param spread number # radians of total cone width
+function Burst:spawnCone(x, y, angle, spread, color, scale)
+    color = color or { 1, 1, 1 }
+    for _ = 1, Math.randInt(self.countMin, self.countMax) do
+        emit(self, x, y, angle + Math.randRange(-spread / 2, spread / 2), color, scale or 1)
     end
 end
 
@@ -74,7 +94,7 @@ function Burst:update(dt)
             self.spent[#self.spent + 1] = p
         else
             p.vx = p.vx * decay
-            p.vy = p.vy * decay
+            p.vy = p.vy * decay + self.gravity * dt
             p.x = p.x + p.vx * dt
             p.y = p.y + p.vy * dt
             kept = kept + 1
@@ -86,19 +106,21 @@ function Burst:update(dt)
     end
 end
 
---- additive, and a no-op while the pool is idle -- which is most frames
----@param additiveActive? boolean # the caller already owns additive blend state, so
--- this leaves the blend mode and colour alone
-function Burst:draw(additiveActive)
+--- a no-op while the pool is idle -- which is most frames
+---@param blendOwned? boolean # the caller has already set the blend mode this pool
+-- wants, so this leaves the blend mode and colour alone
+function Burst:draw(blendOwned)
     if #self.particles == 0 then return end -- most bursts idle most of the time
 
-    if not additiveActive then love.graphics.setBlendMode("add") end
+    if not blendOwned then love.graphics.setBlendMode(self.additive and "add" or "alpha") end
+    local solid = self.fade < 1
     for _, p in ipairs(self.particles) do
         local t = 1 - p.life / p.maxLife -- 1 = fresh, 0 = gone
-        love.graphics.setColor(p.r, p.g, p.b, t)
-        love.graphics.circle("fill", p.x, p.y, p.size * t, 8) -- low segment count, only a few px across
+        love.graphics.setColor(p.r, p.g, p.b, solid and math.min(1, t / self.fade) or t)
+        -- low segment count, only a few px across; matter keeps most of its size
+        love.graphics.circle("fill", p.x, p.y, p.size * (solid and 0.55 + 0.45 * t or t), 8)
     end
-    if not additiveActive then
+    if not blendOwned then
         love.graphics.setBlendMode("alpha")
         love.graphics.setColor(1, 1, 1, 1)
     end

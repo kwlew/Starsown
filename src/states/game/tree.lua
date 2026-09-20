@@ -6,12 +6,15 @@
 -- fully hiding them. Felling the standing stage turns it into a stump
 -- (smaller, no canopy, its own hp) rather than removing the tree outright;
 -- breaking the stump is what finally clears it.
+--
+-- What you can chop is the trunk you can't walk through, plus a little
+-- forgiveness - never the tile it stands on, which would let you swing at bare
+-- grass in the tile's corner and miss a trunk leaning over the tile's edge.
 
 local Entity = require "states.game.kernel.entity"
 local World = require "states.game.rendering.world"
 local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
-local Particles = require "particles"
 local Math = require "utils.math"
 local Units = require "states.game.units"
 
@@ -42,15 +45,19 @@ local LIT_OFFSET_X, LIT_OFFSET_Y = -0.09, -0.12 -- where the light comes from, i
 local LIT_SCALE = 0.70
 
 local REGEN = 1.2
-local HIT_INTERVAL = 0.4
+local HIT_INTERVAL = 0.22 -- seconds per bite; the bite scales with it, so this is feel, not speed
 
-local CHIP_BURST = { -- wood chips, kicked out on every bite
-    countMin = 3, countMax = 6,
-    speedMin = Units.px(40), speedMax = Units.px(130),
-    lifeMin = 0.18, lifeMax = 0.38,
-    sizeMin = Units.px(1.5), sizeMax = Units.px(3),
-    drag = 7,
-}
+local HIT_SLACK = 0.22 -- meters of forgiveness around the trunk when aiming at it
+
+-- shorter than a bite, so each one reads as its own hit instead of holding the
+-- trunk lit the whole time you chop
+local FLASH_TIME = 0.13
+local FLASH_STRENGTH = 0.45
+
+local SHAKE_TIME = 0.26
+local SHAKE_FREQ = 34 -- radians/sec: a couple of fast oscillations per bite
+local SHAKE_TRUNK = 0.055 -- meters of sway at the trunk...
+local SHAKE_CANOPY = 0.16 -- ...and at the crown, which leans further for the same hit
 
 -- `hp` is integrity in seconds of bare-handed breaking, since bare hands drain
 -- it at 1/sec (see Items.toolSpeed); `tool` is the kind that drains it faster.
@@ -144,13 +151,32 @@ function Tree.new(col, row, species)
         radius = spec.radius, sides = spec.sides,
         color = Palette.trees[spec.color],
         hp = spec.hp,
+        flashTime = FLASH_TIME, flashStrength = FLASH_STRENGTH,
     })
     self.col, self.row = col, row
     self.species = species
     self.stage = "standing"
     self.breaking = false
     self.breakTimer, self.breakAccum = 0, 0
+    self.shake, self.shakeAngle = 0, 0
     return self
+end
+
+--- The trunk's grab radius: the footprint that blocks movement, plus enough
+-- forgiveness that clipping its edge still lands the swing.
+---@return number meters
+function Tree:hitRadius()
+    return self:stageSpec().solid + HIT_SLACK
+end
+
+--- How far the tree is leaning off its trunk right now, from the last bite.
+---@param amplitude number # meters at full shake
+---@return number dx
+---@return number dy
+function Tree:shakeOffset(amplitude)
+    if self.shake <= 0 then return 0, 0 end
+    local swing = math.sin(self.shake * SHAKE_FREQ) * amplitude * (self.shake / SHAKE_TIME)
+    return math.cos(self.shakeAngle) * swing, math.sin(self.shakeAngle) * swing
 end
 
 ---@return table
@@ -174,25 +200,36 @@ function Tree:becomeStump()
 end
 
 ---@param dt number
----@param speed number # 1 bare-handed, more with the right tool
+---@param ctx table # { speed: number, effects: table, fromX: number, fromY: number }
 ---@return table? drops # only on the frame a stage finishes
 ---@return boolean removed # true once the stump is gone and the caller should drop this tree
-function Tree:breakWith(dt, speed)
+function Tree:breakWith(dt, ctx)
     self.breaking = true
     self.breakTimer = self.breakTimer + dt
-    self.breakAccum = self.breakAccum + dt * speed
+    self.breakAccum = self.breakAccum + dt * ctx.speed
     if self.breakTimer < HIT_INTERVAL then return nil, false end
     self.breakTimer = self.breakTimer - HIT_INTERVAL
 
     local bite = self.breakAccum
     self.breakAccum = 0
     self:damage(bite)
-    self.burst = self.burst or Particles.Burst.new(CHIP_BURST) -- only trees that get chopped need one
-    self.burst:spawn(self.x, self:drawY(), self.color, 0.8)
+
+    -- everything is thrown back the way the hit came from, off the struck face
+    local away = math.atan2(ctx.fromY - self.y, ctx.fromX - self.x)
+    self.shake, self.shakeAngle = SHAKE_TIME, away + math.pi
+    local faceX, faceY = Math.polar(self.x, self:drawY(), away, self.radius)
+    ctx.effects:chip(faceX, faceY, away, Palette.trees.chip)
 
     if not self.dead then return nil, false end
 
     local drops = rollDrops(self:stageSpec().drops)
+    ctx.effects:shatter(self.x, self:drawY(), self.radius, Palette.trees.chip, Palette.trees.chipPale)
+
+    local canopy = self:canopySpec()
+    if canopy then
+        ctx.effects:canopyBurst(self.x, self.y - Perspective.lift(canopy.height), canopy.radius * 0.7)
+    end
+
     if self.stage == "standing" then
         self:becomeStump()
         return drops, false
@@ -205,7 +242,7 @@ end
 ---@param dt number
 function Tree:update(dt)
     Entity.update(self, dt)
-    if self.burst then self.burst:update(dt) end
+    self.shake = math.max(0, self.shake - dt)
     if self.breaking then
         self.breaking = false
     elseif self.hp < self.maxHp then
@@ -213,11 +250,27 @@ function Tree:update(dt)
     end
 end
 
---- Wood chips kicked loose by breakWith. Meant to be called alongside
--- Tree:draw(), not inside it - additive, so it has to land after the trunk's
--- own fill/outline or it would wash them out.
-function Tree:drawParticles()
-    if self.burst then self.burst:draw() end
+--- The trunk, leaning off its base for a moment after each bite. The shadow
+-- (Entity:drawGround) is deliberately left where it is: the tree sways, its
+-- footprint doesn't.
+function Tree:draw()
+    local dx, dy = self:shakeOffset(SHAKE_TRUNK)
+    love.graphics.push()
+    love.graphics.translate(dx, dy)
+    Entity.draw(self)
+    love.graphics.pop()
+end
+
+--- The ring showing what a swing would actually hit. Drawn on the ground under
+-- the aimed tree, so the grab radius is something you can see rather than guess.
+---@param strength number # 0..1, brightest while actually chopping
+function Tree:drawHighlight(strength)
+    local radius = self:hitRadius()
+    love.graphics.setColor(Palette.range[1], Palette.range[2], Palette.range[3], 0.20 + 0.35 * strength)
+    love.graphics.setLineWidth(Units.px(1.5))
+    love.graphics.circle("line", self.x, self.y, radius, 40)
+    love.graphics.setLineWidth(Units.LINE)
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 --- How opaque the canopy should draw given the player's world position:
@@ -248,7 +301,8 @@ function Tree:drawCanopy(playerX, playerY)
     spec.canvas = spec.canvas or bakeCanopy(spec)
 
     local alpha = self:canopyAlpha(playerX, playerY)
-    local y = self.y - Perspective.lift(spec.height)
+    local dx, dy = self:shakeOffset(SHAKE_CANOPY)
+    local y = self.y - Perspective.lift(spec.height) + dy
 ---@diagnostic disable-next-line: undefined-field
     local half = spec.canvas:getWidth() / 2
 
@@ -256,7 +310,7 @@ function Tree:drawCanopy(playerX, playerY)
     -- ring the silhouette with dark edges as it fades
     love.graphics.setBlendMode("alpha", "premultiplied")
     love.graphics.setColor(alpha, alpha, alpha, alpha)
-    love.graphics.draw(spec.canvas, self.x, y, 0, Units.px(1), Units.px(1), half, half)
+    love.graphics.draw(spec.canvas, self.x + dx, y, 0, Units.px(1), Units.px(1), half, half)
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
 end

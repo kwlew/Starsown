@@ -5,6 +5,7 @@
 local World = require "states.game.rendering.world"
 local Player = require "states.game.player"
 local Chunks = require "states.game.chunks"
+local Effects = require "states.game.effects"
 local Spawn = require "states.game.spawn"
 local Items = require "states.game.items"
 local Math = require "utils.math"
@@ -32,7 +33,9 @@ local UPDATE_RANGE = 12 -- meters around the player whose trees are updated and 
 function Engine:load()
     Engine.WORLD = World.new()
     Engine.CHUNKS = Chunks.new(Engine.WORLD)
+    Engine.EFFECTS = Effects.new()
     Engine.nearTrees, Engine.visibleTrees = {}, {}
+    Engine.aimedTree, Engine.chopping = nil, false
 
     local col, row = Spawn.find(Engine.WORLD.seed, function(c, r) return Engine:isTileBlocked(c, r) end)
     Engine.spawn = { col = col, row = row }
@@ -95,8 +98,10 @@ function Engine:draw()
     local trees = Engine.CHUNKS:collect(Engine.visibleTrees, left - 3, top - 3, right + 3, bottom + 3)
     for _, tree in ipairs(trees) do
         tree:drawGround()
+    end
+    if Engine.aimedTree then Engine.aimedTree:drawHighlight(Engine.chopping and 1 or 0) end
+    for _, tree in ipairs(trees) do
         tree:draw()
-        tree:drawParticles()
     end
     Engine.PLAYER:drawGround()
     Engine.PLAYER:draw()
@@ -106,6 +111,7 @@ function Engine:draw()
         tree:drawCanopy(Engine.PLAYER.x, Engine.PLAYER.y)
         if tree.hp < tree.maxHp then tree:drawHealth() end
     end
+    Engine.EFFECTS:draw()
     DebugGUI.drawWorld(Engine)
     love.graphics.pop()
     love.graphics.setLineWidth(1)
@@ -131,7 +137,8 @@ function Engine:update(dt)
         tree:update(dt)
         tree:collide(player)
     end
-    Engine:breakAimedTile(dt)
+    Engine:chopAimedTree(dt)
+    Engine.EFFECTS:update(dt)
     InventoryPanel.update(Engine.INVENTORY)
 
     Engine.camX = Math.damp(Engine.camX, player.x, CAMERA_FOLLOW, dt)
@@ -139,23 +146,47 @@ function Engine:update(dt)
     Engine:streamChunks(CHUNKS_PER_FRAME)
 end
 
---- Hold the left button to break whatever sits on the aimed tile. The aim
--- point is already clamped to Player.RANGE, so reach needs no second check.
----@param dt number
-function Engine:breakAimedTile(dt)
-    if Engine:isInventoryOpen() or not love.mouse.isDown(1) then return end
-
+--- The tree a swing would land on: the one whose trunk the aim point sits in,
+-- nearest first when two overlap. The aim point is already clamped to
+-- Player.RANGE, so reach needs no second check.
+---@return table? tree
+function Engine:findAimedTree()
     local player = Engine.PLAYER
-    local col, row = Engine.WORLD:toTile(player.aimX, player.aimY)
-    local tree = Engine.CHUNKS:treeAt(col, row)
-    if not tree then return end
+    local best, bestDistance
+    for _, tree in ipairs(Engine.nearTrees) do
+        local radius = tree:hitRadius()
+        local dx, dy = player.aimX - tree.x, player.aimY - tree.y
+        local distance = dx * dx + dy * dy
+        if distance <= radius * radius and (not bestDistance or distance < bestDistance) then
+            best, bestDistance = tree, distance
+        end
+    end
+    return best
+end
+
+--- Hold the left button to chop the aimed tree.
+---@param dt number
+function Engine:chopAimedTree(dt)
+    if Engine:isInventoryOpen() then
+        Engine.aimedTree, Engine.chopping = nil, false
+        return
+    end
+
+    local tree = Engine:findAimedTree()
+    Engine.aimedTree, Engine.chopping = tree, false
+    if not tree or not love.mouse.isDown(1) then return end
+    Engine.chopping = true
 
     local held = Engine.INVENTORY:selectedStack()
-    local speed = Items.toolSpeed(held and held.id, tree:stageSpec().tool)
-    local drops, removed = tree:breakWith(dt, speed)
+    local drops, removed = tree:breakWith(dt, {
+        speed = Items.toolSpeed(held and held.id, tree:stageSpec().tool),
+        effects = Engine.EFFECTS,
+        fromX = Engine.PLAYER.x, fromY = Engine.PLAYER.y,
+    })
     if drops then
         Engine.INVENTORY:add(drops.id, drops.count)
         Engine.CHUNKS:changed(tree, removed)
+        if removed then Engine.aimedTree = nil end
     end
 end
 

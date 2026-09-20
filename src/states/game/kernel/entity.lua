@@ -54,6 +54,11 @@ function Entity.init(self, config)
     self.vz = 0
     self.kx, self.ky, self.kz = 0, 0, 0 -- knockback vel.
     self.flash = 0
+    -- how long and how far toward white a hit lights the body up. A body struck
+    -- faster than flashTime never falls back to its own color, so anything hit
+    -- in a rapid rhythm (a tree under an axe) wants a shorter, weaker flash.
+    self.flashTime = config.flashTime or HIT_FLASH_TIME
+    self.flashStrength = config.flashStrength or 1
     self.stagger = 0
     self.dead = false
     return self
@@ -76,7 +81,7 @@ function Entity:damage(amount, knockX, knockY, knockZ)
     if self.dead then return false end
 
     self.hp = self.hp - amount
-    self.flash = HIT_FLASH_TIME
+    self.flash = self.flashTime
     self.trailDelay = HP_TRAIL_DELAY
     self.stagger = STAGGER_TIME
     self.kx = self.kx + (knockX or 0)
@@ -167,7 +172,7 @@ end
 function Entity:bodyColor()
     local body = self.color
     if self.flash <= 0 then return body[1], body[2], body[3] end
-    return UI.Theme.lerp(body, Palette.entity.flash, self.flash / HIT_FLASH_TIME)
+    return UI.Theme.lerp(body, Palette.entity.flash, self.flash / self.flashTime * self.flashStrength)
 end
 
 --- Draw the entity.
