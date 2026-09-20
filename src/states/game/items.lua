@@ -10,12 +10,14 @@ local Items = {}
 
 local specs = {
     wood  = { stack = 64, sides = 4, color = "wood" },
-    planks = { stack = 64, sides = 4, color = "planks" },
+    stick = { stack = 64, sides = 3, color = "wood", texture = "assets/textures/items/stick.png" },
+    planks = { stack = 64, sides = 6, color = "planks" },
     stone = { stack = 64, sides = 6, color = "stone" },
     herb  = { stack = 16, sides = 3, color = "herb" },
     gem   = { stack = 8,  sides = 4, color = "gem", rotation = math.pi / 4 },
-    axe   = { stack = 1,  sides = 3, color = "axe", tool = { kind = "axe", speed = 2.0 } },
-    stone_sword = { stack = 1, sides = 3, color = "axe", texture = "assets/items/stone_sword.png" },
+    axe   = { stack = 1,  sides = 3, color = "axe", tool = { kind = "axe", speed = 2.0 }, texture = "assets/textures/items/stone_axe.png" },
+    stone_sword = { stack = 1, sides = 3, color = "axe", texture = "assets/textures/items/stone_sword.png" },
+    stone_pickaxe = { stack = 1, sides = 3, color = "axe", texture = "assets/textures/items/stone_pickaxe.png" },
 }
 
 for id, spec in pairs(specs) do spec.id = id end

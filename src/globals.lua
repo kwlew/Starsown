@@ -11,7 +11,7 @@ Globals.game = {
 --- Developer tools in the play screen: zoom out (- / = / 0) and a speed
 -- multiplier ([ / ]). Flip `enabled` here; nothing in the UI turns it on.
 Globals.dev = {
-    enabled = false,
+    enabled = true,
 }
 
 Globals.menu = {

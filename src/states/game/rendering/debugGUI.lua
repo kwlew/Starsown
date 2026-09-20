@@ -148,8 +148,10 @@ local function infoLines(engine)
         ("stamina %.0f / %.0f%s"):format(p.stamina, p.maxStamina,
             p.exhausted and "  EXHAUSTED" or p.sprinting and "  SPRINT" or ""),
         ("biome  %s  (seed %d)"):format(engine.WORLD:biomeAt(col, row), engine.WORLD.seed),
+        ("spawn  %d, %d"):format(engine.spawn.col, engine.spawn.row),
         ("camera %.1f, %.1f m"):format(engine.camX, engine.camY),
         ("entities %d"):format(#engine.entities),
+        ("chunks %d  trees %d"):format(engine.CHUNKS:stats()),
     }
     if Globals.dev.enabled then
         lines[#lines + 1] = ("dev    zoom x%.2f   speed x%d"):format(engine.zoom, engine.speedScale)

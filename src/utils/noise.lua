@@ -12,7 +12,8 @@ local function mul(a, b)
     return bit.tobit(a * low + bit.lshift(bit.band(a * high, 0xffff), 16))
 end
 
---- a lattice point's value, uniform in [0, 1)
+--- a lattice point's value, uniform in [0, 1); also exported as Noise.hash for
+-- anything wanting a stateless random number keyed on (x, y, seed)
 local function hash(x, y, seed)
     local h = bit.bxor(mul(x, 0x27d4eb2d), mul(y, 0x165667b1), mul(seed, 0x9e3779b1))
     h = mul(bit.bxor(h, bit.rshift(h, 15)), 0x85ebca6b)
@@ -20,6 +21,8 @@ local function hash(x, y, seed)
     h = bit.bxor(h, bit.rshift(h, 16))
     return (h % 4294967296) / 4294967296
 end
+
+Noise.hash = hash
 
 local function smooth(t)
     return t * t * (3 - 2 * t)

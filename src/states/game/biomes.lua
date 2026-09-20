@@ -1,7 +1,7 @@
 -- src/states/game/biomes.lua
 -- Which biome a tile (one square meter) belongs to. Biomes are data (`color` names a key in
--- palette.biomes; display names would come from biomes.* in game.json) and
--- nothing reads them yet - this only decides where each one is.
+-- palette.biomes; display names would come from biomes.* in game.json). This
+-- decides where each one is; treeGen.lua reads their tree density.
 --
 -- A single smooth "vegetation" value decides the biome, sorted by `below`:
 -- because it varies continuously, dense forest can only sit next to forest,
@@ -14,12 +14,12 @@ local Math = require "utils.math"
 
 local Biomes = {}
 
--- Ordered by `below`: a tile takes the first biome whose limit its vegetation is under.
+-- Ordered by `below`: a tile takes the first biome whose limit its vegetation is
+-- under. `trees` is the chance a tile is a tree candidate (see treeGen.lua).
 local specs = {
-    { id = "plains",            below = 0.47,       color = "plains" },
-    { id = "forest",            below = 0.60,       color = "forest" },
-    { id = "dappled_forest",    below = 0.75,       color = "dappledForest" },
-    { id = "dense_forest",      below = math.huge,  color = "denseForest" },
+    { id = "plains",            below = 0.47,       color = "plains",        trees = 0.005 },
+    { id = "forest",            below = 0.60,       color = "forest",        trees = 0.03 },
+    { id = "dense_forest",      below = math.huge,  color = "denseForest",   trees = 0.15 },
 }
 
 local BY_ID = {}

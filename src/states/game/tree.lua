@@ -150,7 +150,6 @@ function Tree.new(col, row, species)
     self.stage = "standing"
     self.breaking = false
     self.breakTimer, self.breakAccum = 0, 0
-    self.burst = Particles.Burst.new(CHIP_BURST)
     return self
 end
 
@@ -188,6 +187,7 @@ function Tree:breakWith(dt, speed)
     local bite = self.breakAccum
     self.breakAccum = 0
     self:damage(bite)
+    self.burst = self.burst or Particles.Burst.new(CHIP_BURST) -- only trees that get chopped need one
     self.burst:spawn(self.x, self:drawY(), self.color, 0.8)
 
     if not self.dead then return nil, false end
@@ -205,7 +205,7 @@ end
 ---@param dt number
 function Tree:update(dt)
     Entity.update(self, dt)
-    self.burst:update(dt)
+    if self.burst then self.burst:update(dt) end
     if self.breaking then
         self.breaking = false
     elseif self.hp < self.maxHp then
@@ -217,7 +217,7 @@ end
 -- Tree:draw(), not inside it - additive, so it has to land after the trunk's
 -- own fill/outline or it would wash them out.
 function Tree:drawParticles()
-    self.burst:draw()
+    if self.burst then self.burst:draw() end
 end
 
 --- How opaque the canopy should draw given the player's world position:

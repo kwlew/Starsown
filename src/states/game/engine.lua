@@ -4,7 +4,8 @@
 -- TODO: Make a pause menu.
 local World = require "states.game.rendering.world"
 local Player = require "states.game.player"
-local Tree = require "states.game.tree"
+local Chunks = require "states.game.chunks"
+local Spawn = require "states.game.spawn"
 local Items = require "states.game.items"
 local Math = require "utils.math"
 local Globals = require "globals"
@@ -24,21 +25,43 @@ local INVENTORY_SIZE = HOTBAR_SIZE * 4 -- the hotbar is the bottom row of four
 local STARTER_ITEMS = { wood = 20, stone = 70, herb = 5, gem = 3, axe = 1, stone_sword = 1 } -- placeholders to try the UI with
 local ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_RATE = 0.25, 1, 1.25, 10 -- dev only; below ~0.25 drawing every tile gets slow
 local SPEED_MIN, SPEED_MAX = 1, 32 -- dev only, doubles/halves per press
-local TEST_TREES = { { 4, -2 }, { 6, -2 }, { 5, 1 } } -- tile coords, until there's world generation
+local CHUNK_RADIUS_MIN, CHUNK_RADIUS_MAX = 2, 5 -- chunks of trees kept around the camera; zoomed far out, the view outgrows the max
+local CHUNKS_PER_FRAME = 2
+local UPDATE_RANGE = 12 -- meters around the player whose trees are updated and collided
 
 function Engine:load()
     Engine.WORLD = World.new()
-    Engine.PLAYER = Player.new(0, 0)
+    Engine.CHUNKS = Chunks.new(Engine.WORLD)
+    Engine.nearTrees, Engine.visibleTrees = {}, {}
+
+    local col, row = Spawn.find(Engine.WORLD.seed, function(c, r) return Engine:isTileBlocked(c, r) end)
+    Engine.spawn = { col = col, row = row }
+    local spawnX, spawnY = World.tileCenter(col, row)
+    Engine.PLAYER = Player.new(spawnX, spawnY)
     Engine.entities = { Engine.PLAYER }
-    Engine.trees = {}
-    for _, tile in ipairs(TEST_TREES) do
-        table.insert(Engine.trees, Tree.new(tile[1], tile[2]))
-    end
     Engine.INVENTORY = Inventory.new(INVENTORY_SIZE, HOTBAR_SIZE)
     InventoryPanel.reset()
     for id, count in pairs(STARTER_ITEMS) do Engine.INVENTORY:add(id, count) end
-    Engine.camX, Engine.camY = 0, 0
+    Engine.camX, Engine.camY = spawnX, spawnY
     Engine.zoom, Engine.zoomTarget, Engine.speedScale = 1, 1, 1
+    Engine:streamChunks(math.huge)
+end
+
+--- Keeps trees loaded around the camera, out to what the view shows (up to a cap).
+---@param budget number # new chunks allowed this call
+function Engine:streamChunks(budget)
+    local left, top, right, bottom = Engine:viewRect()
+    local reach = math.max(right - left, bottom - top) / 2 / Chunks.SIZE
+    local radius = math.max(CHUNK_RADIUS_MIN, math.min(CHUNK_RADIUS_MAX, math.ceil(reach) + 1))
+    Engine.CHUNKS:stream(Engine.camX, Engine.camY, radius, budget)
+end
+
+--- Whether something solid stands on a tile, so the player can't spawn there.
+---@param col integer
+---@param row integer
+---@return boolean
+function Engine:isTileBlocked(col, row)
+    return Engine.CHUNKS:isTreeAt(col, row)
 end
 
 --- The world-space rectangle the screen currently shows.
@@ -68,7 +91,9 @@ function Engine:draw()
     love.graphics.translate(-left, -top)
     love.graphics.setLineWidth(Units.LINE)
     Engine.WORLD:draw(left, top, right, bottom)
-    for _, tree in ipairs(Engine.trees) do
+    -- a margin past the screen so canopies and shadows don't pop at the edge
+    local trees = Engine.CHUNKS:collect(Engine.visibleTrees, left - 3, top - 3, right + 3, bottom + 3)
+    for _, tree in ipairs(trees) do
         tree:drawGround()
         tree:draw()
         tree:drawParticles()
@@ -77,7 +102,7 @@ function Engine:draw()
     Engine.PLAYER:draw()
     Engine.PLAYER:drawHealth()
     -- canopies (and any break progress) last, so they sit over the player
-    for _, tree in ipairs(Engine.trees) do
+    for _, tree in ipairs(trees) do
         tree:drawCanopy(Engine.PLAYER.x, Engine.PLAYER.y)
         if tree.hp < tree.maxHp then tree:drawHealth() end
     end
@@ -100,7 +125,9 @@ function Engine:update(dt)
     for _, entity in ipairs(Engine.entities) do
         if entity ~= player then entity:update(dt) end
     end
-    for _, tree in ipairs(Engine.trees) do
+    local near = Engine.CHUNKS:collect(Engine.nearTrees, player.x - UPDATE_RANGE, player.y - UPDATE_RANGE,
+        player.x + UPDATE_RANGE, player.y + UPDATE_RANGE)
+    for _, tree in ipairs(near) do
         tree:update(dt)
         tree:collide(player)
     end
@@ -109,6 +136,7 @@ function Engine:update(dt)
 
     Engine.camX = Math.damp(Engine.camX, player.x, CAMERA_FOLLOW, dt)
     Engine.camY = Math.damp(Engine.camY, player.y, CAMERA_FOLLOW, dt)
+    Engine:streamChunks(CHUNKS_PER_FRAME)
 end
 
 --- Hold the left button to break whatever sits on the aimed tile. The aim
@@ -119,15 +147,15 @@ function Engine:breakAimedTile(dt)
 
     local player = Engine.PLAYER
     local col, row = Engine.WORLD:toTile(player.aimX, player.aimY)
-    for index, tree in ipairs(Engine.trees) do
-        if tree.col == col and tree.row == row then
-            local held = Engine.INVENTORY:selectedStack()
-            local speed = Items.toolSpeed(held and held.id, tree:stageSpec().tool)
-            local drops, removed = tree:breakWith(dt, speed)
-            if drops then Engine.INVENTORY:add(drops.id, drops.count) end
-            if removed then table.remove(Engine.trees, index) end
-            return
-        end
+    local tree = Engine.CHUNKS:treeAt(col, row)
+    if not tree then return end
+
+    local held = Engine.INVENTORY:selectedStack()
+    local speed = Items.toolSpeed(held and held.id, tree:stageSpec().tool)
+    local drops, removed = tree:breakWith(dt, speed)
+    if drops then
+        Engine.INVENTORY:add(drops.id, drops.count)
+        Engine.CHUNKS:changed(tree, removed)
     end
 end
 
