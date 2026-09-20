@@ -4,9 +4,9 @@ Perspective.STAND = 0.5
 
 local LIFT = 1.0
 
-local SCALE = 0.0016
+local SCALE = 0.0512
 
-local SHRINK = 0.006
+local SHRINK = 0.192
 
 Perspective.SHADOW_SPREAD = 1.1
 Perspective.SHADOW_SQUASH = 0.42

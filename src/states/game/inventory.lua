@@ -1,7 +1,5 @@
 -- src/states/game/inventory.lua
--- A fixed run of slots, each nil or { id, count }. The first `hotbarSize`
--- slots are the hotbar. take/put are what the panel drags with, so the caller
--- holds at most one stack and nothing can be duplicated or lost.
+-- Inventory.
 
 local Items = require "states.game.items"
 
@@ -112,6 +110,38 @@ function Inventory:add(id, count, first, last)
         end
     end
     return count
+end
+
+--- Tops `stack` up to its max from matching stacks in the slots, partial stacks
+-- before full ones (Minecraft's double-click collect).
+---@param stack table
+function Inventory:gather(stack)
+    local max = Items.get(stack.id).stack
+    for pass = 1, 2 do
+        for i = 1, self.size do
+            local other = self.slots[i]
+            if stack.count >= max then return end
+            if other and other.id == stack.id and (other.count < max) == (pass == 1) then
+                local moved = math.min(max - stack.count, other.count)
+                stack.count = stack.count + moved
+                other.count = other.count - moved
+                if other.count == 0 then self.slots[i] = nil end
+            end
+        end
+    end
+end
+
+--- a copy of every slot, for restore() to roll a multi-step change back
+---@return table[] snapshot
+function Inventory:snapshot()
+    local copy = {}
+    for i, stack in pairs(self.slots) do copy[i] = { id = stack.id, count = stack.count } end
+    return copy
+end
+
+---@param snapshot table[]
+function Inventory:restore(snapshot)
+    self.slots = snapshot
 end
 
 --- exchanges two slots outright, even if both hold the same item - unlike

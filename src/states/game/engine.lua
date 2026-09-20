@@ -7,6 +7,8 @@ local Player = require "states.game.player"
 local Tree = require "states.game.tree"
 local Items = require "states.game.items"
 local Math = require "utils.math"
+local Globals = require "globals"
+local Units = require "states.game.units"
 local Inventory = require "states.game.inventory"
 local Hotbar = require "states.game.rendering.hotbar"
 local InventoryPanel = require "states.game.rendering.inventoryPanel"
@@ -19,7 +21,9 @@ Engine.__index = Engine
 local CAMERA_FOLLOW = 8
 local HOTBAR_SIZE = 8
 local INVENTORY_SIZE = HOTBAR_SIZE * 4 -- the hotbar is the bottom row of four
-local STARTER_ITEMS = { wood = 20, stone = 70, herb = 5, gem = 3, axe = 1 } -- placeholders to try the UI with
+local STARTER_ITEMS = { wood = 20, stone = 70, herb = 5, gem = 3, axe = 1, stone_sword = 1 } -- placeholders to try the UI with
+local ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_RATE = 0.25, 1, 1.25, 10 -- dev only; below ~0.25 drawing every tile gets slow
+local SPEED_MIN, SPEED_MAX = 1, 32 -- dev only, doubles/halves per press
 local TEST_TREES = { { 4, -2 }, { 6, -2 }, { 5, 1 } } -- tile coords, until there's world generation
 
 function Engine:load()
@@ -31,24 +35,39 @@ function Engine:load()
         table.insert(Engine.trees, Tree.new(tile[1], tile[2]))
     end
     Engine.INVENTORY = Inventory.new(INVENTORY_SIZE, HOTBAR_SIZE)
-    InventoryPanel.open = false
+    InventoryPanel.reset()
     for id, count in pairs(STARTER_ITEMS) do Engine.INVENTORY:add(id, count) end
     Engine.camX, Engine.camY = 0, 0
+    Engine.zoom, Engine.zoomTarget, Engine.speedScale = 1, 1, 1
+end
+
+--- The world-space rectangle the screen currently shows.
+---@return number left
+---@return number top
+---@return number right
+---@return number bottom
+function Engine:viewRect()
+    local w, h = love.graphics.getDimensions()
+    local scale = Engine.zoom * Units.PPM
+    local halfW, halfH = w / 2 / scale, h / 2 / scale
+    return Engine.camX - halfW, Engine.camY - halfH, Engine.camX + halfW, Engine.camY + halfH
 end
 
 --- Screen -> world, undoing the camera translate in draw().
 function Engine:toWorld(sx, sy)
-    return sx + Engine.camX - love.graphics.getWidth() / 2,
-           sy + Engine.camY - love.graphics.getHeight() / 2
+    local scale = Engine.zoom * Units.PPM
+    return Engine.camX + (sx - love.graphics.getWidth() / 2) / scale,
+           Engine.camY + (sy - love.graphics.getHeight() / 2) / scale
 end
 
 function Engine:draw()
-    local w, h = love.graphics.getDimensions()
-    local left, top = Engine.camX - w / 2, Engine.camY - h / 2
+    local left, top, right, bottom = Engine:viewRect()
 
     love.graphics.push()
+    love.graphics.scale(Engine.zoom * Units.PPM)
     love.graphics.translate(-left, -top)
-    Engine.WORLD:draw(left, top, left + w, top + h)
+    love.graphics.setLineWidth(Units.LINE)
+    Engine.WORLD:draw(left, top, right, bottom)
     for _, tree in ipairs(Engine.trees) do
         tree:drawGround()
         tree:draw()
@@ -64,6 +83,7 @@ function Engine:draw()
     end
     DebugGUI.drawWorld(Engine)
     love.graphics.pop()
+    love.graphics.setLineWidth(1)
 
     Hud.draw(Engine.PLAYER)
     Hotbar.draw(Engine.INVENTORY)
@@ -75,7 +95,8 @@ function Engine:update(dt)
     local player = Engine.PLAYER
     local pointerX, pointerY = self:toWorld(love.mouse.getPosition())
     Engine.WORLD:update(dt)
-    player:update(dt, { pointerX = pointerX, pointerY = pointerY })
+    player:update(dt, { pointerX = pointerX, pointerY = pointerY, speedScale = Engine.speedScale })
+    Engine.zoom = Math.damp(Engine.zoom, Engine.zoomTarget, ZOOM_RATE, dt)
     for _, entity in ipairs(Engine.entities) do
         if entity ~= player then entity:update(dt) end
     end
@@ -84,6 +105,7 @@ function Engine:update(dt)
         tree:collide(player)
     end
     Engine:breakAimedTile(dt)
+    InventoryPanel.update(Engine.INVENTORY)
 
     Engine.camX = Math.damp(Engine.camX, player.x, CAMERA_FOLLOW, dt)
     Engine.camY = Math.damp(Engine.camY, player.y, CAMERA_FOLLOW, dt)
@@ -126,9 +148,33 @@ function Engine:wheelmoved(_, dy)
     if dy ~= 0 then Engine.INVENTORY:select(Engine.INVENTORY.selected - (dy > 0 and 1 or -1)) end
 end
 
+--- Zoom and speed keys; a no-op unless Globals.dev.enabled.
+---@return boolean handled
+function Engine:devKeypressed(key)
+    if not Globals.dev.enabled then return false end
+
+    if key == "-" or key == "kp-" then
+        Engine.zoomTarget = Math.clamp(Engine.zoomTarget / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+    elseif key == "=" or key == "kp+" then
+        Engine.zoomTarget = Math.clamp(Engine.zoomTarget * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+    elseif key == "0" then
+        Engine.zoomTarget = 1
+    elseif key == "[" then
+        Engine.speedScale = Math.clamp(Engine.speedScale / 2, SPEED_MIN, SPEED_MAX)
+    elseif key == "]" then
+        Engine.speedScale = Math.clamp(Engine.speedScale * 2, SPEED_MIN, SPEED_MAX)
+    else
+        return false
+    end
+    return true
+end
+
 function Engine:keypressed(key)
+    if Engine:devKeypressed(key) then return end
     if key == "f4" then DebugGUI.toggle() return end
+    if key == "f5" then DebugGUI.toggleBiomes() return end
     if key == "e" then InventoryPanel.toggle(Engine.INVENTORY) return end
+    if key == "c" then InventoryPanel.toggleCrafting(Engine.INVENTORY) return end
 
     local slot = tonumber(key)
     if slot and slot >= 1 and slot <= HOTBAR_SIZE then

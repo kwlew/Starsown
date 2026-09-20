@@ -7,11 +7,15 @@
     "inventory": {
         "title": "Inventário"
     },
+    "crafting": {
+        "title": "Criação"
+    },
     "items": {
         "wood": "Madeira",
         "stone": "Pedra",
         "herb": "Erva",
         "gem": "Gema",
-        "axe": "Machado"
+        "axe": "Machado",
+        "stone_sword": "Espada de pedra"
     }
 }

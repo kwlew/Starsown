@@ -8,6 +8,12 @@ Globals.game = {
     startedAt   = 0,
 }
 
+--- Developer tools in the play screen: zoom out (- / = / 0) and a speed
+-- multiplier ([ / ]). Flip `enabled` here; nothing in the UI turns it on.
+Globals.dev = {
+    enabled = false,
+}
+
 Globals.menu = {
     Particles = {
         starfield = Particles.Starfield.new{

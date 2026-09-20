@@ -7,11 +7,15 @@
     "inventory": {
         "title": "Inventario"
     },
+    "crafting": {
+        "title": "Fabricación"
+    },
     "items": {
         "wood": "Madera",
         "stone": "Piedra",
         "herb": "Hierba",
         "gem": "Gema",
-        "axe": "Hacha"
+        "axe": "Hacha",
+        "stone_sword": "Espada de piedra"
     }
 }

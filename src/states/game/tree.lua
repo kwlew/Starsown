@@ -13,16 +13,17 @@ local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
 local Particles = require "particles"
 local Math = require "utils.math"
+local Units = require "states.game.units"
 
 local Tree = Entity.extend()
 
-local TRUNK_RADIUS = World.TILE * 0.42
+local TRUNK_RADIUS = 0.42 -- meters
 local STUMP_RADIUS = TRUNK_RADIUS * 1.15
-local CANOPY_RADIUS = World.TILE * 1.1
-local CANOPY_HEIGHT = 38 -- purely visual lift, via Perspective.lift; not a real Entity z
+local CANOPY_RADIUS = 1.1
+local CANOPY_HEIGHT = 1.2 -- purely visual lift, via Perspective.lift; not a real Entity z
 local CANOPY_ALPHA = 0.95
 local CANOPY_FADE_ALPHA = 0.18 -- alpha directly over the trunk, so the player is never fully hidden
-local CANOPY_RIM = 3
+local CANOPY_RIM = 3 -- pixels, in the bake
 local CANOPY_MSAA = 4
 
 -- Leaf clumps, as multiples of the canopy radius, so the silhouette is lumpy
@@ -45,9 +46,9 @@ local HIT_INTERVAL = 0.4
 
 local CHIP_BURST = { -- wood chips, kicked out on every bite
     countMin = 3, countMax = 6,
-    speedMin = 40, speedMax = 130,
+    speedMin = Units.px(40), speedMax = Units.px(130),
     lifeMin = 0.18, lifeMax = 0.38,
-    sizeMin = 1.5, sizeMax = 3,
+    sizeMin = Units.px(1.5), sizeMax = Units.px(3),
     drag = 7,
 }
 
@@ -77,11 +78,12 @@ local SPECS = {
 --- Bakes one species' canopy into a Canvas, the way particles/nebula.lua bakes
 -- its clouds: the clumps overlap, so drawing them live at a faded alpha would
 -- blend each overlap darker than the rest. One baked image fades evenly.
+-- Baked in pixels at zoom 1 and drawn back down to meters.
 ---@param spec table # a canopy spec
 ---@diagnostic disable-next-line: undefined-doc-name
 ---@return love.canvas canvas
 local function bakeCanopy(spec)
-    local radius = spec.radius
+    local radius = spec.radius * Units.PPM
     local extent = 0
     for _, clump in ipairs(CLUMPS) do
         extent = math.max(extent, (Math.length(clump.x, clump.y) + clump.r) * radius)
@@ -254,7 +256,7 @@ function Tree:drawCanopy(playerX, playerY)
     -- ring the silhouette with dark edges as it fades
     love.graphics.setBlendMode("alpha", "premultiplied")
     love.graphics.setColor(alpha, alpha, alpha, alpha)
-    love.graphics.draw(spec.canvas, self.x - half, y - half)
+    love.graphics.draw(spec.canvas, self.x, y, 0, Units.px(1), Units.px(1), half, half)
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
 end

@@ -7,23 +7,24 @@ local Math = require "utils.math"
 local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
 local Shape = require "states.game.rendering.shape"
+local Units = require "states.game.units"
 
 local Entity = {}
 Entity.__index = Entity
 
-local GRAVITY = 800
+local GRAVITY = 25 -- m/s^2
 local KNOCKBACK_DRAG = 9
 local HIT_FLASH_TIME = 0.3
 
 local STAGGER_TIME = 0.12
-local OUTLINE_WIDTH = 3
+local OUTLINE_WIDTH = Units.px(3)
 
-local HP_BAR_HEIGHT = 7
-local HP_BAR_GAP = 9
+local HP_BAR_HEIGHT = Units.px(7)
+local HP_BAR_GAP = Units.px(9)
 local HP_BAR_WIDTH = 2.5 -- in radii
 local HP_BAR_ALPHA = 0.85
-local HP_BAR_ROUNDING = 3
-local HP_BAR_INSET = 1
+local HP_BAR_ROUNDING = Units.px(3)
+local HP_BAR_INSET = Units.px(1)
 local HP_BAR_GLOSS = 0.22
 local HP_FRONT_RATE = 14
 local HP_TRAIL_RATE = 5
@@ -42,7 +43,7 @@ function Entity.init(self, config)
     self.x = config.x or 0
     self.y = config.y or 0
     self.z = config.z or 0
-    self.radius = config.radius or 12
+    self.radius = config.radius or Units.px(12)
     self.sides = config.sides
     self.color = config.color or Palette.entity.Default.color
     self.hp = config.hp or 10
@@ -182,7 +183,7 @@ function Entity:draw()
     UI.Theme.setColor(Palette.entity.Default.outline, 0.55)
 
     Shape.draw("line", self.x, y, radius, self.sides, self.facing)
-    love.graphics.setLineWidth(1)
+    love.graphics.setLineWidth(Units.LINE)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -214,7 +215,7 @@ function Entity:drawHealth()
 
     if innerWidth * front > rounding * 2 then
         love.graphics.setColor(1, 1, 1, HP_BAR_GLOSS)
-        love.graphics.rectangle("fill", innerLeft + rounding, innerTop, innerWidth * front - rounding * 2, 1)
+        love.graphics.rectangle("fill", innerLeft + rounding, innerTop, innerWidth * front - rounding * 2, Units.LINE)
     end
 
     UI.Theme.setColor(Palette.hp.border, 0.9)

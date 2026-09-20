@@ -23,6 +23,13 @@ return {
         Grass2 = { 0.21, 0.36, 0.23 },
     },
 
+    biomes = { -- debug map tint only, until biomes have a look of their own
+        plains = { 0.85, 0.85, 0.35 },
+        forest = { 0.25, 0.75, 0.35 },
+        dappledForest = { 0.65, 0.35, 0.25 },
+        denseForest = { 0.05, 0.35, 0.20 },
+    },
+
     hp = {
         border = { 0.03, 0.05, 0.04 },
         back = { 0.06, 0.09, 0.07 },
@@ -40,6 +47,7 @@ return {
 
     items = {
         wood = { 0.62, 0.45, 0.28 },
+        planks = { 0.72, 0.55, 0.38 },
         stone = { 0.62, 0.64, 0.68 },
         herb = { 0.45, 0.75, 0.42 },
         gem = { 0.42, 0.72, 0.92 },

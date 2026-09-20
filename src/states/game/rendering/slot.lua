@@ -13,6 +13,7 @@ Slot.GAP = 6
 
 local ROUNDING = 4
 local ICON_FRACTION = 0.3 -- icon radius, of the slot size
+local TEXTURE_FRACTION = 0.8 -- the largest a texture may draw, of the slot size
 local SLOT_ALPHA = 0.6
 local SELECT_WIDTH = 2
 
@@ -26,6 +27,16 @@ function Slot.drawIcon(stack, cx, cy, size)
     local radius = size * ICON_FRACTION
 
     assert(spec, "No item spec for id: " .. tostring(stack.id))
+
+    local image = Items.texture(spec)
+    if image then
+        -- whole-number scale, so every texture pixel is the same size on screen
+        local scale = math.max(1, math.floor(size * TEXTURE_FRACTION / math.max(image:getWidth(), image:getHeight())))
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(image, math.floor(cx), math.floor(cy), 0, scale, scale,
+            math.floor(image:getWidth() / 2), math.floor(image:getHeight() / 2))
+        return
+    end
 
     love.graphics.setColor(Palette.items[spec.color])
     Shape.draw("fill", cx, cy, radius, spec.sides, spec.rotation)

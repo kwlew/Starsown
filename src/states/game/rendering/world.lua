@@ -3,26 +3,34 @@
 -- Tile size, Tiles, World size, World generation, etc.
 
 local Palette = require "states.game.rendering.palette"
+local Biomes = require "states.game.biomes"
 
 local World = {}
 World.__index = World
 
-World.TILE = 32 -- pixels
-
 local GRID_ALPHA = 0.55
 
+---@param config? { seed?: integer } # same seed, same world; random when omitted
 function World.new(config)
     config = config or {}
     local self = setmetatable({}, World)
+    self.seed = config.seed or love.math.random(1, 2147483646)
+    self.biomes = Biomes.new(self.seed)
     return self
 end
 
-function World:toTile(x, y)
-    return math.floor(x / World.TILE), math.floor(y / World.TILE)
+---@param col integer
+---@param row integer
+---@return string biome # a Biomes id
+function World:biomeAt(col, row)
+    return self.biomes.at(col, row)
 end
 
-function World:tileOrigin(col, row)
-    return col * World.TILE, row * World.TILE
+--- A tile is one meter square, so its coordinates are the floor of the position.
+---@return integer col
+---@return integer row
+function World:toTile(x, y)
+    return math.floor(x), math.floor(y)
 end
 
 --- The middle of a tile, where anything placed on the grid stands. Static, so
@@ -32,15 +40,12 @@ end
 ---@return number x
 ---@return number y
 function World.tileCenter(col, row)
-    local half = World.TILE / 2
-    return col * World.TILE + half, row * World.TILE + half
+    return col + 0.5, row + 0.5
 end
 
 function World:drawFlat(c1, r1, c2, r2)
-    local tile = World.TILE
-    local left, top = self:tileOrigin(c1, r1)
-    local width = (c2 - c1 + 1 ) * tile
-    local height = (r2 - r1 + 1) * tile
+    local left, top = c1, r1
+    local width, height = c2 - c1 + 1, r2 - r1 + 1
 
     love.graphics.setColor(Palette.tiles.Grass)
     love.graphics.rectangle("fill", left, top, width, height)
@@ -49,7 +54,7 @@ function World:drawFlat(c1, r1, c2, r2)
     for row = r1, r2 do
         for col = c1, c2 do
             if (col + row) % 2 == 0 then
-                love.graphics.rectangle("fill", col * tile, row * tile, tile, tile)
+                love.graphics.rectangle("fill", col, row, 1, 1)
             end
         end
     end
@@ -57,11 +62,11 @@ function World:drawFlat(c1, r1, c2, r2)
     love.graphics.setColor(Palette.gridLine[1], Palette.gridLine[2], Palette.gridLine[3], GRID_ALPHA)
 
     for col = c1, c2 do
-        love.graphics.line(col * tile, top, col * tile, top + height)
+        love.graphics.line(col, top, col, top + height)
     end
 
     for row = r1, r2 do
-        love.graphics.line(left, row * tile, left + width, row * tile)
+        love.graphics.line(left, row, left + width, row)
     end
 end
 

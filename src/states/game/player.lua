@@ -3,17 +3,17 @@
 -- Player module.
 
 local Entity = require "states.game.kernel.entity"
-local World = require "states.game.rendering.world"
+local Units = require "states.game.units"
 local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
 local Math = require "utils.math"
 
 local Player = Entity.extend()
 
-Player.RADIUS = World.TILE / 2
-Player.RANGE = World.TILE * 3
+Player.RADIUS = 0.5 -- meters
+Player.RANGE = 3
 
-local SPEED = 140
+local SPEED = 4.4 -- m/s
 local ACCEL = 12
 local FACING_GRACE = math.rad(50) -- wider than 45 so a diagonal off a cardinal aim still counts as forward
 local OFF_FACING_SPEED = 0.55 -- speed/accel multipliers when moving directly away from facing
@@ -30,8 +30,8 @@ local STAMINA_TRAIL_RATE = 5
 local STAMINA_TRAIL_DELAY = 0.45
 local EXHAUST_FADE_RATE = 8
 local NUB_INNER = 0.55
-local NUB_WIDTH = 7
-local GLOW_SPREAD = 6
+local NUB_WIDTH = Units.px(7)
+local GLOW_SPREAD = Units.px(6)
 local GLOW_ALPHA = 0.10
 local GLOW_LAYERS = 3
 
@@ -175,7 +175,7 @@ function Player:update(dt, ctx)
     local dx, dy = self:moveInput()
     local forward = self:forwardness(dx, dy)
     self:updateStamina(dt, dx ~= 0 or dy ~= 0)
-    local speed = SPEED * (OFF_FACING_SPEED + (1 - OFF_FACING_SPEED) * forward)
+    local speed = SPEED * ((ctx and ctx.speedScale) or 1) * (OFF_FACING_SPEED + (1 - OFF_FACING_SPEED) * forward)
     speed = speed * (1 + (SPRINT_SPEED - 1) * self.sprintBlend)
     local accel = ACCEL * (OFF_FACING_ACCEL + (1 - OFF_FACING_ACCEL) * forward)
     self.vx = Math.damp(self.vx, dx * speed, accel, dt)
@@ -247,7 +247,7 @@ function Player:draw()
     local innerX, innerY = Math.polar(self.x, y, self.facing, radius * NUB_INNER)
     local outerX, outerY = Math.polar(self.x, y, self.facing, radius)
     love.graphics.line(innerX, innerY, outerX, outerY)
-    love.graphics.setLineWidth(1)
+    love.graphics.setLineWidth(Units.LINE)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
