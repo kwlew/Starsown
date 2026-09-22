@@ -92,7 +92,7 @@ local STATES = {
     { "options", "states.options" },
     { "stats", "states.stats" },
     { "achievements", "states.achievements" },
-    { "game", "states.game" },
+    { "game", "states.inGame" },
 }
 
 --- the load itself, as weighted tasks. Each `run` gets a `yield(fraction)` to
