@@ -35,13 +35,14 @@ end
 local function generate(self, cx, cy)
     local size = Chunks.SIZE
     local chunk = { cx = cx, cy = cy, trees = {}, byTile = {} }
+    local settled = {} -- share spacing decisions while generating this chunk
     for row = cy * size, cy * size + size - 1 do
         for col = cx * size, cx * size + size - 1 do
             local tile = key(col, row)
             local species = self.changes[tile] ~= "removed"
-                and TreeGen.at(self.world.biomes, self.world.seed, col, row)
+                and TreeGen.at(self.world.biomes, self.world.seed, col, row, settled)
             if species then
-                local tree = Tree.new(col, row, species)
+                local tree = Tree.new(col, row, species, self.world.seed)
                 if self.changes[tile] == "stump" then tree:becomeStump() end
                 chunk.trees[#chunk.trees + 1] = tree
                 chunk.byTile[tile] = tree

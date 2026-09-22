@@ -7,6 +7,7 @@ local Units = require "states.game.units"
 local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
 local Math = require "utils.math"
+local Items = require "states.game.items"
 
 local Player = Entity.extend()
 
@@ -38,6 +39,7 @@ local GLOW_LAYERS = 3
 local RANGE_FADE = 12
 local RANGE_ALPHA = 0.34
 local RANGE_SEGMENTS = 64
+local SWING_TIME = 0.22 -- free swings; chopping uses the target's actual impact phase
 
 local BINDINGS = {
     w = "up", up = "up",
@@ -64,6 +66,7 @@ function Player.new(x, y)
     self.maxStamina = 100
     self.held = {}
     self.attacking = false
+    self.toolId, self.swingPhase = nil, nil
     self.aimX, self.aimY = x + Player.RANGE, y
     self.aimPinned = false
     self.rangeGlow = 0
@@ -92,6 +95,66 @@ end
 function Player:releaseAll()
     for action in pairs(self.held) do self.held[action] = nil end
     self.attacking = false
+    self.swingPhase = nil
+end
+
+--- Animate the selected tool, finishing a swing on release and resetting on swap.
+---@param dt number
+---@param itemId string?
+---@param attacking boolean
+---@param impactPhase number? # target's progress between hits, zero at impact
+function Player:updateTool(dt, itemId, attacking, impactPhase)
+    local spec = itemId and Items.get(itemId)
+    if not spec or not spec.swing then itemId = nil end
+    if itemId ~= self.toolId then self.swingPhase = nil end
+    self.toolId = itemId
+    self.attacking = attacking and itemId ~= nil
+    if not itemId then self.swingPhase = nil return end
+
+    if self.attacking and impactPhase then
+        self.swingPhase = impactPhase
+    elseif self.swingPhase then
+        local phase = self.swingPhase + dt / SWING_TIME
+        if phase >= 1 then
+            self.swingPhase = self.attacking and phase % 1 or nil
+        else
+            self.swingPhase = phase
+        end
+    elseif self.attacking then
+        self.swingPhase = 0
+    end
+end
+
+function Player:drawTool()
+    local spec = self.toolId and Items.get(self.toolId)
+    if not spec then return end
+    local image = Items.texture(spec)
+    if not image then return end
+
+    -- Follow-through after impact, wind back, then sweep into the next hit.
+    -- Zero and one both point at the aim, so holding attack loops smoothly.
+    local phase, arc = self.swingPhase, 0
+    if phase then
+        local t, from, to
+        if phase < 0.18 then
+            t, from, to = phase / 0.18, 0, 0.8
+        elseif phase < 0.62 then
+            t, from, to = (phase - 0.18) / 0.44, 0.8, -1
+        else
+            t, from, to = (phase - 0.62) / 0.38, -1, 0
+        end
+        t = t * t * (3 - 2 * t)
+        arc = (from + (to - from) * t) * spec.swing.arc
+    end
+    local liftScale = Perspective.scale(self.z)
+    local gripAngle = self.facing + 0.55 + arc * 0.3
+    local x, y = Math.polar(self.x, self:drawY(), gripAngle, self.radius * liftScale * 0.9)
+    local width, height = image:getDimensions()
+    local scale = spec.swing.size * liftScale / math.max(width, height)
+    love.graphics.setColor(1, 1, 1, 1)
+    -- Existing sprites point up-right; pivot near the bottom-left handle.
+    love.graphics.draw(image, x, y, self.facing + arc + math.pi / 4,
+        scale, scale, width * 0.16, height * 0.84)
 end
 
 --- Handle key press events for the player.
@@ -249,6 +312,7 @@ function Player:draw()
     love.graphics.line(innerX, innerY, outerX, outerY)
     love.graphics.setLineWidth(Units.LINE)
     love.graphics.setColor(1, 1, 1, 1)
+    self:drawTool()
 end
 
 return Player

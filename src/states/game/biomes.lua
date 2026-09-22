@@ -15,11 +15,11 @@ local Math = require "utils.math"
 local Biomes = {}
 
 -- Ordered by `below`: a tile takes the first biome whose limit its vegetation is
--- under. `trees` is the chance a tile is a tree candidate (see treeGen.lua).
+-- under. Tree chances are smoothly interpolated at the densityAt anchors.
 local specs = {
-    { id = "plains",            below = 0.47,       color = "plains",        trees = 0.005 },
-    { id = "forest",            below = 0.60,       color = "forest",        trees = 0.03 },
-    { id = "dense_forest",      below = math.huge,  color = "denseForest",   trees = 0.15 },
+    { id = "plains",       below = 0.47,      color = "plains",      densityAt = 0.44, trees = 0.005 },
+    { id = "forest",       below = 0.60,      color = "forest",      densityAt = 0.60, trees = 0.07 },
+    { id = "dense_forest", below = math.huge, color = "denseForest", densityAt = 0.72, trees = 0.24 },
 }
 
 local BY_ID = {}
@@ -30,6 +30,22 @@ local OCTAVES = 3 -- How many layers of noise.
 local WARP = 0.7 -- how far the edges are pushed off straight noise contours, in cells
 local SPAWN_RADIUS = 24 -- meters around (0, 0) kept open so a run starts in plains
 local SPAWN_BIAS = 0.6 -- how much vegetation is subtracted at the very center
+
+local function smoothstep(low, high, value)
+    local t = Math.clamp01((value - low) / (high - low))
+    return t * t * (3 - 2 * t)
+end
+
+function Biomes.treeDensity(vegetation)
+    for i = 2, #specs do
+        local a, b = specs[i - 1], specs[i]
+        if vegetation < b.densityAt then
+            local t = smoothstep(a.densityAt, b.densityAt, vegetation)
+            return a.trees + (b.trees - a.trees) * t
+        end
+    end
+    return specs[#specs].trees
+end
 
 ---@param id string
 ---@return table? spec

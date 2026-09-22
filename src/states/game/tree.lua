@@ -12,7 +12,7 @@
 -- grass in the tile's corner and miss a trunk leaning over the tile's edge.
 
 local Entity = require "states.game.kernel.entity"
-local World = require "states.game.rendering.world"
+local TreeGen = require "states.game.treeGen"
 local Palette = require "states.game.rendering.palette"
 local Perspective = require "states.game.rendering.perspective"
 local Math = require "utils.math"
@@ -136,16 +136,16 @@ local function rollDrops(spec)
     return { id = spec.id, count = Math.randInt(spec.min, spec.max) }
 end
 
---- Trees are placed by tile, not by pixel: one tree owns one tile and stands
--- at its centre.
+--- Trees own a tile, with a seeded offset shared by drawing, hits and collision.
 ---@param col integer
 ---@param row integer
 ---@param species string? # defaults to "oak", the only one defined so far
+---@param seed integer?
 ---@return table
-function Tree.new(col, row, species)
+function Tree.new(col, row, species, seed)
     species = species or "oak"
     local spec = SPECS[species].standing
-    local x, y = World.tileCenter(col, row)
+    local x, y = TreeGen.position(seed or 0, col, row)
     local self = Entity.init(setmetatable({}, Tree), {
         x = x, y = y,
         radius = spec.radius, sides = spec.sides,
@@ -189,6 +189,11 @@ function Tree:canopySpec()
     return self.stage == "standing" and SPECS[self.species].standing.canopy or nil
 end
 
+--- Progress between chopping impacts, for the held tool's animation.
+function Tree:breakPhase()
+    return self.breakTimer / HIT_INTERVAL
+end
+
 function Tree:becomeStump()
     local spec = SPECS[self.species].stump
     self.stage = "stump"
@@ -196,6 +201,7 @@ function Tree:becomeStump()
     self.color = Palette.trees[spec.color]
     self.hp, self.maxHp = spec.hp, spec.hp
     self.hpFront, self.hpTrail, self.trailDelay = self.hp, self.hp, 0
+    self.breakTimer, self.breakAccum = 0, 0
     self.dead = false
 end
 
@@ -208,7 +214,7 @@ function Tree:breakWith(dt, ctx)
     self.breakTimer = self.breakTimer + dt
     self.breakAccum = self.breakAccum + dt * ctx.speed
     if self.breakTimer < HIT_INTERVAL then return nil, false end
-    self.breakTimer = self.breakTimer - HIT_INTERVAL
+    self.breakTimer = self.breakTimer % HIT_INTERVAL
 
     local bite = self.breakAccum
     self.breakAccum = 0
@@ -245,8 +251,11 @@ function Tree:update(dt)
     self.shake = math.max(0, self.shake - dt)
     if self.breaking then
         self.breaking = false
-    elseif self.hp < self.maxHp then
-        self:heal(REGEN * dt)
+    else
+        -- Releasing the swing discards an unfinished bite; it must not be
+        -- banked across pauses while the tree's integrity recovers.
+        self.breakTimer, self.breakAccum = 0, 0
+        if self.hp < self.maxHp then self:heal(REGEN * dt) end
     end
 end
 
@@ -324,7 +333,7 @@ function Tree:collide(entity)
     local distance = Math.length(dx, dy)
     if distance >= reach then return end
 
-    if distance == 0 then dx, dy, distance = 1, 0, 1 end -- dead centre: any direction will do
+    if distance == 0 then entity.x = self.x + reach return end
     local push = (reach - distance) / distance
     entity.x = entity.x + dx * push
     entity.y = entity.y + dy * push

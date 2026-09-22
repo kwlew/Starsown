@@ -140,6 +140,11 @@ function Engine:update(dt)
     Engine:chopAimedTree(dt)
     Engine.EFFECTS:update(dt)
     InventoryPanel.update(Engine.INVENTORY)
+    local held = Engine.INVENTORY:selectedStack()
+    local blocked = Engine:isInventoryOpen()
+    player:updateTool(dt, not blocked and held and held.id or nil,
+        not blocked and love.mouse.isDown(1),
+        Engine.chopping and Engine.aimedTree and Engine.aimedTree:breakPhase() or nil)
 
     Engine.camX = Math.damp(Engine.camX, player.x, CAMERA_FOLLOW, dt)
     Engine.camY = Math.damp(Engine.camY, player.y, CAMERA_FOLLOW, dt)
