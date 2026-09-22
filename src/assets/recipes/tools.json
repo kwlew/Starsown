@@ -1,0 +1,17 @@
+[
+    {
+        "result": "axe",
+        "pattern": ["WW", "WS", " S"],
+        "key": { "W": "wood", "S": "stone" }
+    },
+    {
+        "result": "stone_pickaxe",
+        "pattern": ["SSS", " W ", " W "],
+        "key": { "S": "stone", "W": "wood" }
+    },
+    {
+        "result": "stone_sword",
+        "pattern": [" S ", " S ", " W "],
+        "key": { "S": "stone", "W": "wood" }
+    }
+]

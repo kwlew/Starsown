@@ -1,0 +1,21 @@
+{
+    "hud": {
+        "hp": "Vida",
+        "stamina": "Aguante",
+        "currency": "Monedas"
+    },
+    "inventory": {
+        "title": "Inventario"
+    },
+    "crafting": {
+        "title": "Fabricación"
+    },
+    "items": {
+        "wood": "Madera",
+        "stone": "Piedra",
+        "herb": "Hierba",
+        "gem": "Gema",
+        "axe": "Hacha",
+        "stone_sword": "Espada de piedra"
+    }
+}

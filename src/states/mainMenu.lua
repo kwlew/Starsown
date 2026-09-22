@@ -95,7 +95,7 @@ end
 -- already made; the menu itself is stateless between visits and built once
 ---@param previousName string|nil # the entrance animation only plays coming from loading
 function MainMenu:enter(previousName)
-    UI.Music.start()
+    UI.Music.start("menu")
     self.title = buildTitle()
     self.version = buildVersionLabel()
     self.onlineCount = Stats.online
@@ -121,7 +121,7 @@ function MainMenu:enter(previousName)
         self.menu = Menu.new({
             { label = function() return I18n.t("menu.play") end, primary = true, onSelect = function()
                 UI.Sfx.select()
-                -- StateManager.fadeTo("play")
+                StateManager.fadeTo("game", { returnTo = "mainMenu" })
             end },
             { label = function() return I18n.t("menu.stats") end, onSelect = function()
                 UI.Sfx.select()
