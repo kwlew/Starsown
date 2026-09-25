@@ -5,7 +5,7 @@ local Diagnostics = require "core.diagnostics"
 local Stats = {}
 
 local NAME = "stats" -- this service's name in Diagnostics
-local ENDPOINT = "https://tdidle-presence.kwlew.workers.dev/stats"
+local ENDPOINT = "https://api.kwlew.dev/stats" -- Starsown-API's custom domain; its old workers.dev address is off
 local endpoint = ENDPOINT
 
 local INTERVAL = 5

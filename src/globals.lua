@@ -4,7 +4,7 @@ local Globals   = {}
 
 Globals.game = {
     name        = "Starsown",
-    version     = "0.2.0",
+    version     = "0.3.0",
     startedAt   = 0,
 }
 
@@ -18,7 +18,7 @@ Globals.menu = {
     Particles = {
         starfield = Particles.Starfield.new{
             burst = Particles.Burst.new {
-            countMin   = 10, countMax       = 15,
+            countMin   = 10, countMax       = 20,
             sizeMin    = 0.1, sizeMax       = 2.5,
             speedMin   = 50, speedMax       = 200,
             lifeMin    = 0.35, lifeMax      = 0.75,

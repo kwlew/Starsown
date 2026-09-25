@@ -12,8 +12,8 @@ Splash.__index = Splash
 local FONT_ROLE = "small"
 local GAP = 14
 local SHADOW_OFFSET = 2
-local BOB_SPEED = 1
-local BOB_AMOUNT = 2
+local BOB_SPEED = 0.1
+local BOB_AMOUNT = 1
 local FADE_IN_TIME = 1.4 -- seconds
 
 --- "" when the active locale has no splashes; draws as nothing

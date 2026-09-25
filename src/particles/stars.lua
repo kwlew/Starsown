@@ -28,7 +28,7 @@ local QUAD_CORNERS = { { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, -1 }, { 1, 1 }, { 
 -- The two touch so nothing squeezes in under the splash text.
 local KEEP_OUT = {
     { 0.25, 0.04, 0.75, 0.34 }, -- title + splash
-    { 0.33, 0.34, 0.67, 0.90 }, -- menu
+    { 0.33, 0.34, 0.67, 0.80 }, -- menu (four rows end near 0.77)
 }
 local KEEP_OUT_PAD = 28 -- design px of clearance around each, so lines don't graze the UI
 

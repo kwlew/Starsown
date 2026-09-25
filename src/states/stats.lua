@@ -17,9 +17,6 @@ local LIST_MAX_W = 420
 local BACK_W     = 180
 local STATUS_MAX_W = 460
 
--- below STATUS_GRACE_SECONDS since the last Stats.start(), an empty readout
--- reads as "stats.loading" (normal, still waiting on the first reply);
--- past it, as "stats.waiting" (something's actually stuck)
 local STATUS_GRACE_SECONDS = 8
 
 local COPIED_SECONDS = 2 -- how long the copy button says "Copied" after a click

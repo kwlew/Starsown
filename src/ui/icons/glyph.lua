@@ -82,6 +82,7 @@ local FLAME  = { 0.50, 0.04, 0.72, 0.30, 0.63, 0.43, 0.80, 0.63, 0.62, 0.94,
                  0.38, 0.94, 0.20, 0.63, 0.37, 0.43, 0.28, 0.30 }
 local TOWER_BASE = { 0.20, 0.94, 0.80, 0.94, 0.70, 0.74, 0.30, 0.74 }
 local CUP = { 0.26, 0.10, 0.74, 0.10, 0.66, 0.52, 0.34, 0.52 }
+local PLAY = { 0.26, 0.12, 0.86, 0.50, 0.26, 0.88 }
 
 --- Every glyph below takes the same three arguments and is documented by its
 -- shape rather than repeating them:
@@ -179,6 +180,25 @@ function glyphs.clock(x, y, s)
     circle("line", x, y, s, 0.5, 0.5, 0.40)
     line(x, y, s, 0.5, 0.5, 0.5, 0.24)
     line(x, y, s, 0.5, 0.5, 0.70, 0.60)
+end
+
+--- a right-pointing triangle
+function glyphs.play(x, y, s)
+    poly("fill", x, y, s, PLAY)
+end
+
+--- three bars on a common baseline, tallest in the middle
+function glyphs.bars(x, y, s)
+    box("fill", x, y, s, 0.14, 0.46, 0.32, 0.88)
+    box("fill", x, y, s, 0.41, 0.12, 0.59, 0.88)
+    box("fill", x, y, s, 0.68, 0.32, 0.86, 0.88)
+end
+
+--- a ring broken at the top, with a stroke dropping into the gap
+function glyphs.power(x, y, s)
+    love.graphics.arc("line", "open", x + 0.5 * s, y + 0.55 * s, 0.35 * s,
+        -math.pi / 2 + 0.65, 3 * math.pi / 2 - 0.65, 24)
+    line(x, y, s, 0.5, 0.08, 0.5, 0.50)
 end
 
 --- a padlock: a shackle arc over a rounded body

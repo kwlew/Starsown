@@ -16,7 +16,7 @@
       "unsupported": "Esta versão está sem a biblioteca de conexão segura (lua-https), então as estatísticas mundiais não estão disponíveis.",
       "code": "Código de erro: {code} · Se for reportar, inclua os detalhes abaixo."
     },
-    "copyDetails": "Copiar detalhes do erro",
+    "copyDetails": "Copiar erro",
     "copied": "Copiado!",
     "back": "Voltar",
     "hint": "Esc: voltar"

@@ -16,7 +16,7 @@
       "unsupported": "This build is missing its secure-connection library (lua-https), so world stats aren't available.",
       "code": "Error code: {code} · If you report it, include the details below."
     },
-    "copyDetails": "Copy error details",
+    "copyDetails": "Copy error",
     "copied": "Copied!",
     "back": "Back",
     "hint": "Esc: back"
