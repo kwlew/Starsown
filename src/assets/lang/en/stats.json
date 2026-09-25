@@ -11,6 +11,13 @@
     "loading": "Loading world stats...",
     "waiting": "Still trying to connect. Check your internet connection.",
     "updated": "Updated {t} ago",
+    "error": {
+      "generic": "World stats couldn't be reached.",
+      "unsupported": "This build is missing its secure-connection library (lua-https), so world stats aren't available.",
+      "code": "Error code: {code} · If you report it, include the details below."
+    },
+    "copyDetails": "Copy error details",
+    "copied": "Copied!",
     "back": "Back",
     "hint": "Esc: back"
   }

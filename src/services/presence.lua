@@ -13,10 +13,20 @@
 -- the developer portal and ignores an activity `name`.
 
 local RPC = require "vendor.discordRPC"
+local Diagnostics = require "core.diagnostics"
 
 local Presence = {}
 
 local APP_ID = "1528201797863473362"
+local NAME = "discord" -- this service's name in Diagnostics
+
+-- what the F3 overlay says for each connection state; "not running" isn't an
+-- error, most players simply don't have Discord open
+local STATUS = {
+    disconnected = "waiting for Discord",
+    handshaking = "connecting",
+    connected = "connected",
+}
 
 Presence.SESSION_START = os.time()
 
@@ -33,11 +43,15 @@ local PRESETS = {
 local pending = nil
 local pendingKey = nil
 local delivered = false
+local wasReady = false
 
 --- opens the connection; call once at boot. The handshake finishes async, so
 -- nothing is ready yet when this returns.
 function Presence.initialize()
-    RPC.initialize(APP_ID)
+    RPC.initialize(APP_ID, {
+        onError = function(code, detail) Diagnostics.report(NAME, code, detail) end,
+    })
+    Diagnostics.setStatus(NAME, STATUS.disconnected)
 end
 
 --- shows a preset, with any of its fields overridden. Asking for what's
@@ -78,8 +92,19 @@ end
 ---@param dt number
 function Presence.update(dt)
     RPC.update(dt)
+    Diagnostics.setStatus(NAME, STATUS[RPC.state()] or RPC.state())
+
+    -- a fresh connection (first, or after Discord restarted) shows nothing
+    -- until told, so whatever is current has to be sent again
+    local ready = RPC.isReady()
+    if ready and not wasReady then
+        delivered = false
+        Diagnostics.clear(NAME)
+    end
+    wasReady = ready
+
     if delivered or not pending then return end
-    if RPC.isReady() and RPC.setActivity(pending) then
+    if ready and RPC.setActivity(pending) then
         delivered = true
     end
 end

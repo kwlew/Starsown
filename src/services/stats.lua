@@ -1,9 +1,12 @@
 local Json = require "vendor.json"
 local Settings = require "core.settings"
+local Diagnostics = require "core.diagnostics"
 
 local Stats = {}
 
+local NAME = "stats" -- this service's name in Diagnostics
 local ENDPOINT = "https://tdidle-presence.kwlew.workers.dev/stats"
+local endpoint = ENDPOINT
 
 local INTERVAL = 5
 local ID_FILE = "client_id"
@@ -33,7 +36,8 @@ local loadedPending = false
 local pending = { stars = 0, golden = 0, rainbow = 0 }
 local inflight = nil
 local inflightSince = nil
-local consecutiveTimeouts = 0 
+local consecutiveTimeouts = 0
+local fatal = false -- a failure retrying can't fix (no https, no worker); reporting stops until restarted
 
 local generation = 0
 
@@ -109,10 +113,29 @@ local function savePending()
     love.filesystem.write(PENDING_FILE, ("%d %d %d"):format(pending.stars, pending.golden, pending.rainbow))
 end
 
----@return any # a love.Thread, or nil when the worker file isn't there
-local function newWorkerThread()
-    if not love.filesystem.getInfo(WORKER) then return nil end
-    return love.thread.newThread(WORKER)
+--- stops reporting for this session with a reason the player can quote;
+-- the backlog stays and is saved as usual
+---@param code string
+---@param detail any
+local function fail(code, detail)
+    fatal = true
+    Diagnostics.report(NAME, code, detail)
+    Diagnostics.setStatus(NAME, "error")
+end
+
+--- LÖVE won't load C modules from the game folder, so an unpackaged
+-- `love src` run points the worker at the dev build of lua-https that
+-- tools/ keeps in .tools/lua-https, when it's there
+---@return string|nil # a package.cpath entry
+local function devCpath()
+    if love.filesystem.isFused() then return nil end
+    local source = love.filesystem.getSource()
+    local ext = love.system.getOS() == "Windows" and "dll" or "so"
+    local path = source .. "/../.tools/lua-https/https." .. ext
+    local file = io.open(path, "rb")
+    if not file then return nil end
+    file:close()
+    return source .. "/../.tools/lua-https/?." .. ext
 end
 
 --- Abandons the current worker and starts a new one, with a fresh channel pair.
@@ -121,12 +144,15 @@ local function spinUpWorker()
     local jobName    = "stats.job." .. generation
     local resultName = "stats.result." .. generation
 
-    thread = newWorkerThread()
-    if not thread then return end -- nothing to fall back to; the menu just never shows a figure
+    if not love.filesystem.getInfo(WORKER) then
+        thread = nil
+        return fail("ST-NOWORKER", WORKER .. " is missing from this build")
+    end
+    thread = love.thread.newThread(WORKER)
 
     jobChannel    = love.thread.getChannel(jobName)
     resultChannel = love.thread.getChannel(resultName)
-    thread:start(ENDPOINT, clientId(), jobName, resultName)
+    thread:start(endpoint, clientId(), jobName, resultName, devCpath())
 end
 
 --- sends up to MAX_REPORT pops, moving them out of the backlog and into
@@ -171,6 +197,50 @@ local function retryable(code)
     return code < 400 or code >= 500 or code == 429
 end
 
+---@param body any
+---@return string # the start of a response body, enough to recognise an error page
+local function snippet(body)
+    if type(body) ~= "string" or body == "" then return "empty body" end
+    return body:sub(1, 160)
+end
+
+--- one reply from the worker
+---@param result table
+local function handleResult(result)
+    if result.fatal then return fail(result.fatal, result.detail) end
+
+    clearInflight() -- answered either way; whether it goes back into the backlog is separate
+    consecutiveTimeouts = 0 -- a reply of any kind proves the worker+network path still works
+
+    if result.failure then
+        requeue(result)
+        Diagnostics.report(NAME, "ST-NET", result.failure)
+        Diagnostics.setStatus(NAME, "error")
+        return
+    end
+
+    if result.code ~= 200 then
+        if retryable(result.code) then requeue(result) end
+        Diagnostics.report(NAME, "ST-HTTP-" .. tostring(result.code), snippet(result.body))
+        Diagnostics.setStatus(NAME, "error")
+        return
+    end
+
+    local ok, data = pcall(Json.decode, result.body or "")
+    if not ok or type(data) ~= "table" then
+        Diagnostics.report(NAME, "ST-BADREPLY", snippet(result.body))
+        Diagnostics.setStatus(NAME, "error")
+        return
+    end
+    Stats.lastUpdated = love.timer.getTime()
+    if type(data.online) == "number" then Stats.online = math.floor(data.online) end
+    if type(data.stars) == "number" then Stats.stars = math.floor(data.stars) end
+    if type(data.golden) == "number" then Stats.golden = math.floor(data.golden) end
+    if type(data.rainbow) == "number" then Stats.rainbow = math.floor(data.rainbow) end
+    Diagnostics.clear(NAME)
+    Diagnostics.setStatus(NAME, "ok")
+end
+
 --- drains the worker's replies. A failed request never clears a value -- nil
 -- means "unknown" and screens draw nothing rather than a 0.
 local function readResults()
@@ -178,24 +248,20 @@ local function readResults()
 
     local result = resultChannel:pop() -- drain, not pop-once: a stalled frame can queue more than one response
     while result do
-        clearInflight() -- answered either way; whether it goes back into the backlog is separate
-        consecutiveTimeouts = 0 -- a reply of any kind proves the worker+network path still works
-
-        if result.code == 200 then
-            local ok, data = pcall(Json.decode, result.body or "")
-            if ok and type(data) == "table" then
-                Stats.lastUpdated = love.timer.getTime()
-                if type(data.online) == "number" then Stats.online = math.floor(data.online) end
-                if type(data.stars) == "number" then Stats.stars = math.floor(data.stars) end
-                if type(data.golden) == "number" then Stats.golden = math.floor(data.golden) end
-                if type(data.rainbow) == "number" then Stats.rainbow = math.floor(data.rainbow) end
-            end
-        elseif retryable(result.code) then
-            requeue(result)
-        end
-
+        handleResult(result)
+        if fatal then return end
         result = resultChannel:pop()
     end
+end
+
+--- a worker that errored, or stopped without saying why, would otherwise
+-- leave requests unanswered until the watchdog, forever
+local function checkWorker()
+    local err = thread:getError()
+    if err then return fail("ST-CRASH", err) end
+    if thread:isRunning() then return end
+    readResults() -- it may have pushed its reason just before exiting
+    if not fatal then fail("ST-CRASH", "worker stopped without reporting an error") end
 end
 
 --- an `inflight` request that's sat unanswered past STATS_TIMEOUT is treated
@@ -210,6 +276,8 @@ local function checkWatchdog()
     requeue(inflight)
     clearInflight()
     consecutiveTimeouts = consecutiveTimeouts + 1
+    Diagnostics.report(NAME, "ST-TIMEOUT", ("no reply from %s within %ds"):format(endpoint, STATS_TIMEOUT))
+    Diagnostics.setStatus(NAME, "error")
 
     if jobChannel then jobChannel:push("stop") end -- in case the stuck worker ever does unblock
     spinUpWorker()
@@ -227,7 +295,8 @@ end
 -- missing lua-https (the LÖVE Windows installer doesn't bundle it) degrades to
 -- no stats rather than a crash.
 function Stats.start()
-    if thread or not Stats.enabled then return end
+    if not Stats.enabled then return Diagnostics.setStatus(NAME, "off") end
+    if thread then return end
 
     Stats.startedAt = love.timer.getTime()
     loadPending()
@@ -235,16 +304,39 @@ function Stats.start()
     timer = INTERVAL
     clearInflight()
     consecutiveTimeouts = 0
+    fatal = false
+    Diagnostics.clear(NAME)
+    Diagnostics.setStatus(NAME, "connecting")
 
     spinUpWorker()
+end
+
+--- points reporting somewhere other than the live endpoint (a local test
+-- server); takes effect for workers started after it
+---@param url string
+function Stats.setEndpoint(url)
+    endpoint = url
+end
+
+---@return table|nil # the current failure: { code, detail, count, first, last }
+function Stats.lastError()
+    return Diagnostics.error(NAME)
+end
+
+---@return string|nil # the text a player should paste into a bug report
+function Stats.reportText()
+    return Diagnostics.reportText(NAME)
 end
 
 --- reads replies every frame, and sends at most one request per interval
 ---@param dt number
 function Stats.update(dt)
-    if not thread then return end
+    if not thread or fatal then return end
 
     readResults()
+    if fatal then return end
+    checkWorker()
+    if fatal then return end
     checkWatchdog()
 
     timer = timer + (dt or 0)
@@ -312,6 +404,8 @@ function Stats.setEnabled(enabled)
 
     Stats.shutdown()
     clearLocalData()
+    Diagnostics.clear(NAME)
+    Diagnostics.setStatus(NAME, "off")
 end
 
 --- records the player's consent (accept or decline), persists it, and

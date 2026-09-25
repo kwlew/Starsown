@@ -11,6 +11,13 @@
     "loading": "Carregando estatísticas mundiais...",
     "waiting": "Ainda tentando conectar. Verifique sua conexão com a internet.",
     "updated": "Atualizado há {t}",
+    "error": {
+      "generic": "Não foi possível acessar as estatísticas mundiais.",
+      "unsupported": "Esta versão está sem a biblioteca de conexão segura (lua-https), então as estatísticas mundiais não estão disponíveis.",
+      "code": "Código de erro: {code} · Se for reportar, inclua os detalhes abaixo."
+    },
+    "copyDetails": "Copiar detalhes do erro",
+    "copied": "Copiado!",
     "back": "Voltar",
     "hint": "Esc: voltar"
   }

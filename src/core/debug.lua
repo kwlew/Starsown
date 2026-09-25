@@ -1,5 +1,6 @@
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
+local Diagnostics = require "core.diagnostics"
 
 local Debug = {
     fps = 0,
@@ -65,7 +66,8 @@ function Debug:update()
     Debug.latency = Math.round(love.timer.getDelta() * 1000)
 end
 
---- the F3 panel, top left
+--- the F3 panel, top left: engine numbers, then one line per background
+-- service, so a player's screenshot of it carries any error code
 function Debug:draw()
     if not Debug.visible then return end
 
@@ -78,6 +80,9 @@ function Debug:draw()
     love.graphics.printf("FPS: " .. Debug.fps, 4, 2, width, "left")
     love.graphics.printf("Memory: " .. Debug.memory .. " KB", 4, 2 + lineHeight, width, "left")
     love.graphics.printf("Latency: " .. Debug.latency .. " ms", 4, 2 + lineHeight * 2, width, "left")
+    for i, line in ipairs(Diagnostics.lines()) do
+        love.graphics.printf(line, 4, 2 + lineHeight * (3 + i), width, "left")
+    end
     Theme.popFont()
 
     love.graphics.setColor(1, 1, 1, 1)
