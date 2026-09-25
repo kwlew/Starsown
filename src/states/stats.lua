@@ -4,7 +4,6 @@ local I18n = require "core.i18n"
 local Format = require "utils.format"
 local StatsService = require "services.stats"
 local Presence = require "services.presence"
-local Globals = require "globals"
 local TextFactory = require "ui.text.textFactory"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
@@ -81,12 +80,7 @@ end
 ---@param previousName string|nil
 ---@param opts? table # { returnTo?: string }
 function Stats:enter(previousName, opts)
-    Presence.set{
-        details = "Stats",
-        state = "Viewing stats",
-        smallText = "Stats",
-        startedAt = Globals.game.startedAt,
-    }
+    Presence.show("stats")
     self.returnTo = StateManager.returnTarget(previousName, opts, "stats")
     self.settings = Assets.get("settings") or Settings.load()
 

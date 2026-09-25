@@ -136,13 +136,13 @@ function Loading:buildTasks()
             label = I18n.t("loading.task.world"),
             weight = 3,
             run = function(yield)
-                local stars = Particles.Stars.new{ alpha = 0 }
+                local settings = Assets.get("settings")
+                local stars = Particles.Stars.new{ alpha = 0, enabled = settings.showStars }
                 stars:spawnStars()
                 Assets.set("stars", stars)
                 self.stars = stars
                 yield(0.5)
 
-                local settings = Assets.get("settings")
                 local nebula = Particles.Nebula.new{ alpha = 0, enabled = settings.showNebula }
                 Assets.set("nebula", nebula)
                 self.nebula = nebula

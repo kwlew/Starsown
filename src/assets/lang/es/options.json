@@ -25,6 +25,7 @@
     "vsync": "VSync",
     "uncapFps": "FPS sin límite",
     "showNebula": "Nebulosa del menú",
+    "showStars": "Estrellas del menú",
     "shareStats": "Compartir estadísticas",
     "tab": {
       "audio": "Audio",
@@ -85,6 +86,7 @@
       "vsync": "Sincroniza la tasa de fotogramas con tu monitor para evitar el tearing.",
       "uncapFps": "Elimina el límite interno de fotogramas del motor. VSync (arriba) seguirá limitando los fotogramas a menos que también esté desactivado. Se aplica de inmediato.",
       "showNebula": "Muestra la nebulosa animada del menú principal.",
+      "showStars": "Muestra las estrellas de fondo y las constelaciones del menú principal. Las estrellas fugaces siempre aparecen.",
       "shareStats": "Comparte recuentos de estrellas reventadas y un identificador aleatorio de la instalación para estadísticas agregadas y el recuento de jugadores en línea. Solo se envían estos valores.",
       "apply": "Aplica todos los cambios gráficos pendientes, incluidos los de otras pestañas.",
       "back": "Vuelve a la pantalla anterior."

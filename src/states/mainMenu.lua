@@ -107,8 +107,9 @@ function MainMenu:enter(previousName)
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Globals.menu.Particles.starfield
     self.stars = inheritSky(self.stars, "stars", function()
-        local stars = Particles.Stars.new{}
+        local stars = Particles.Stars.new{ enabled = Settings.load().showStars }
         stars:spawnStars()
+        Assets.set("stars", stars) -- where Options' toggle finds it
         return stars
     end)
     self.nebula = inheritSky(self.nebula, "nebula", function()
@@ -157,8 +158,7 @@ function MainMenu:enter(previousName)
         self.menu:playIntro()
     end
 
-    Presence.set{ details = "Main Menu", state = "Getting ready",
-                  smallText = "In the menu" }
+    Presence.show("mainMenu")
 
     self:layout()
 
@@ -204,6 +204,11 @@ end
 ---@param dt number
 function MainMenu:update(dt)
     self.nebula:update(dt)
+    if self.statsConsentDialog:isOpen() or not love.window.hasMouseFocus() then
+        self.stars:setPointer(nil, nil)
+    else
+        self.stars:setPointer(self.mouseX, self.mouseY)
+    end
     self.stars:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)

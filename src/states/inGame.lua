@@ -1,16 +1,13 @@
 local StateManager = require "core.stateManager"
 local Presence = require "services.presence"
-local Globals = require "globals"
 
 local InGame = {}
 
 function InGame:enter(previousName, opts)
-    Presence.set{
-        details = "In game",
-        state = "Playing",
-        smallText = "In game",
-        startedAt = Globals.game.startedAt,
-    }
+    if previousName == "mainMenu" or not self.runStartedAt then
+        self.runStartedAt = os.time()
+    end
+    Presence.show("game", { startedAt = self.runStartedAt })
 end
 
 function InGame:keypressed(key, scancode, isrepeat)

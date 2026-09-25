@@ -14,10 +14,6 @@ local MAX_REPORT = 400
 
 local MAX_PENDING = 5000
 
--- how long an `inflight` request may sit unanswered before the watchdog
--- below gives up on it and abandons the worker -- lua-https has no working
--- request-timeout option of its own, so this is the only place a genuinely
--- stalled (not just slow-to-error) connection ever gets noticed
 local STATS_TIMEOUT = 10
 local EXTENDED_INTERVAL_CAP = 180 -- backoff ceiling for a host that stays unresponsive
 
@@ -27,9 +23,8 @@ Stats.golden = nil
 Stats.rainbow = nil
 Stats.enabled = true
 
-Stats.startedAt = nil -- love.timer.getTime() of the last Stats.start(); nil until one is attempted --
--- lets a screen tell "just asked, still waiting on the first reply" from "been trying a while"
-Stats.lastUpdated = nil -- love.timer.getTime() of the last successful reply; nil until one arrives
+Stats.startedAt = nil
+Stats.lastUpdated = nil
 
 local thread, jobChannel, resultChannel
 local timer = INTERVAL
@@ -37,8 +32,8 @@ local loadedPending = false
 
 local pending = { stars = 0, golden = 0, rainbow = 0 }
 local inflight = nil
-local inflightSince = nil -- love.timer.getTime() `inflight` was set; nil whenever inflight is
-local consecutiveTimeouts = 0 -- watchdog hits in a row since the last real reply; drives the backoff below
+local inflightSince = nil
+local consecutiveTimeouts = 0 
 
 local generation = 0
 
@@ -55,16 +50,7 @@ local function hashString(s)
     return h
 end
 
---- os.time() alone is a second-resolution value anyone who knows roughly
--- when the game launched can narrow to a handful of guesses, and
--- os.clock() this early in boot is bounded to whatever sliver of CPU time
--- the process has used so far -- neither carries remotely enough entropy
--- for something meant to tell two installs apart, and using just those two
--- means two players who happen to launch around the same moment (hardly a
--- rare case) have an elevated chance of colliding IDs. tostring() on a
--- table exposes its heap address, which moves with allocation history and
--- ASLR and isn't derivable from outside the process -- mixing that in is
--- what actually defeats "I know when you launched, so I can guess your ID."
+--- Make a random seed that changes every time the game is launched, but is stable.
 ---@return number
 local function uuidSeed()
     return (os.time() * 1000003 + math.floor(os.clock() * 1000000) + hashString(tostring({}))) % 2^31
@@ -91,10 +77,7 @@ local function clientId()
     return id
 end
 
---- reads back the pop counts a previous session couldn't deliver, then removes
--- the file so a crash mid-send can't double-report them. Values are sanity
--- checked and clamped, and a file that doesn't add up is dropped entirely.
--- Also handles the older two-field format, written before rainbow stars.
+--- reads back the pop counts a previous session couldn't deliver.
 local function loadPending()
     loadedPending = true -- guards savePending: a session that never read the file must not rewrite/delete it
 
@@ -132,13 +115,7 @@ local function newWorkerThread()
     return love.thread.newThread(WORKER)
 end
 
---- abandons whatever worker is currently wired up -- a hung one can't be
--- cancelled, only dropped, since LÖVE has no thread-kill primitive -- and
--- wires up a fresh one under a new channel generation. The generation bump
--- matters even though the old worker is discarded either way: it's blocked
--- inside https.request, not waiting at demand(), so if it ever does unblock
--- its late reply must land on a channel nothing reads anymore rather than
--- being mistaken for a reply to whatever request comes next.
+--- Abandons the current worker and starts a new one, with a fresh channel pair.
 local function spinUpWorker()
     generation = generation + 1
     local jobName    = "stats.job." .. generation
@@ -174,9 +151,7 @@ local function dispatch()
 end
 
 --- puts an undelivered report back into the backlog, capped so an endpoint
--- that's been down for a long time can't grow it without bound. Takes the
--- same {stars, golden, rainbow} shape `inflight` and a worker result both
--- already carry, so callers never unpack just to repack.
+-- that's been down for a long time can't grow it without bound.
 ---@param counts { stars: integer, golden: integer, rainbow: integer }
 local function requeue(counts)
     pending.stars = math.min(pending.stars + counts.stars, MAX_PENDING)
@@ -184,8 +159,7 @@ local function requeue(counts)
     pending.rainbow = math.min(pending.rainbow + counts.rainbow, pending.stars - pending.golden)
 end
 
---- clears the inflight bookkeeping -- the two fields always move together,
--- so this is the one place that has to remember that
+--- Clears the inflight bookkeeping.
 local function clearInflight()
     inflight, inflightSince = nil, nil
 end

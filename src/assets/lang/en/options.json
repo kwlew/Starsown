@@ -25,6 +25,7 @@
     "vsync": "VSync",
     "uncapFps": "Uncapped FPS",
     "showNebula": "Menu Nebula",
+    "showStars": "Menu Stars",
     "shareStats": "Share Play Stats",
     "tab": {
       "audio": "Audio",
@@ -85,6 +86,7 @@
       "vsync": "Matches the frame rate to your monitor to stop tearing.",
       "uncapFps": "Removes the engine's internal frame rate cap. VSync above still limits frames unless it's off too. Applies immediately.",
       "showNebula": "Shows the drifting nebula on the main menu.",
+      "showStars": "Shows the background stars and constellations on the main menu. Shooting stars always appear.",
       "shareStats": "Shares star-pop counts and a random installation ID for aggregate statistics and the online player count. Only these values are sent.",
       "apply": "Applies all pending graphics changes, including changes made on another tab.",
       "back": "Returns to the previous screen."
