@@ -1,21 +1,11 @@
 {
-    "hud": {
-        "hp": "Vida",
-        "stamina": "Aguante",
-        "currency": "Monedas"
-    },
-    "inventory": {
-        "title": "Inventario"
-    },
-    "crafting": {
-        "title": "Fabricación"
-    },
-    "items": {
-        "wood": "Madera",
-        "stone": "Piedra",
-        "herb": "Hierba",
-        "gem": "Gema",
-        "axe": "Hacha",
-        "stone_sword": "Espada de piedra"
+  "game": {
+    "hint": "Esc: pausa",
+    "pause": {
+      "title": "PAUSA",
+      "resume": "Continuar",
+      "quit": "Menú principal",
+      "hint": "Esc: continuar    W/S o Mouse: navegar    Enter o Clic: seleccionar"
     }
+  }
 }

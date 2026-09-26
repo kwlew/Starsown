@@ -5,7 +5,6 @@
 local StateManager  = require "core.stateManager"
 local Assets        = require "core.assets"
 local Presence      = require "services.presence"
-local Menu          = require "ui.widgets.menu"
 local TextFactory   = require "ui.text.textFactory"
 local UI            = require "ui"
 local I18n          = require "core.i18n"
@@ -25,6 +24,33 @@ local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
 local SOCIAL_ICON_SIZE = 26
 local CORNER_PAD = 12
 local CORNER_GAP = 8 -- gap between version and online players labels, bottom-right corner.
+
+local STARFIELD = {
+    burst = {
+        countMin = 10,  countMax = 50,
+        sizeMin  = 0.1, sizeMax  = 2.5,
+        speedMin = 50,  speedMax = 200,
+        lifeMin  = 0.35, lifeMax = 0.75,
+        drag     = 5,
+    },
+    embers = {
+        countMin = 1,   countMax = 7,
+        sizeMin  = 0.5, sizeMax  = 1.0,
+        speedMin = 20,  speedMax = 60,
+        lifeMin  = 0.35, lifeMax = 0.75,
+        drag     = 15,
+    },
+    clickRadius    = 16,
+    spawnMin       = 0.4, spawnMax      = 1.3,
+    speedMin       = 100, speedMax      = 350,
+    lengthMin      = 100, lengthMax     = 400,
+    lifeMin        = 1.5, lifeMax       = 5.2,
+    dyingThreshold = 0.6,
+    goldenChance   = 0.004, -- ~1 in 250 stars
+    goldenSpeedMin = 70,  goldenSpeedMax = 150,
+    goldenLifeMin  = 4,   goldenLifeMax  = 13,
+    rainbowChance  = 0.001, -- ~1 in 1000 stars
+}
 
 local MainMenu = {}
 
@@ -105,7 +131,7 @@ function MainMenu:enter(previousName)
         UI.IconLink.new{ mark = "discord", url = DISCORD_URL, label = "Discord" },
     }
     self.mouseX, self.mouseY = love.mouse.getPosition()
-    self.starfield = self.starfield or Globals.menu.Particles.starfield
+    self.starfield = self.starfield or Particles.Starfield.new(STARFIELD)
     self.stars = inheritSky(self.stars, "stars", function()
         local stars = Particles.Stars.new{ enabled = Settings.load().showStars }
         stars:spawnStars()
@@ -119,10 +145,10 @@ function MainMenu:enter(previousName)
     self.splash = self.splash or Splash.pick()
 
     if not self.menu then -- stateless between visits, so build it just once
-        self.menu = Menu.new({
+        self.menu = UI.Menu.new({
             { label = function() return I18n.t("menu.play") end, icon = "play", primary = true, onSelect = function()
                 UI.Sfx.select()
-                StateManager.fadeTo("game", { returnTo = "mainMenu" })
+                StateManager.fadeTo("game")
             end },
             { label = function() return I18n.t("menu.stats") end, icon = "bars", onSelect = function()
                 UI.Sfx.select()

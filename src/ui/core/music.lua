@@ -1,13 +1,14 @@
---- Background music for the menu: picks a random track, plays it through, and
--- crossfades into another random track (never a repeat) as it nears its end
--- -- forever, so the menu never falls silent or cuts hard between songs.
+--- Background music: picks a random track from the active playlist, plays it
+-- through, and crossfades into another (never a repeat) as it nears its end
+-- -- forever, so a screen never falls silent or cuts hard between songs.
 --
---   Music.start()      -- once, when the music should begin (MainMenu:enter())
---   Music.update(dt)   -- every frame, globally (main.lua), not just while
---                         the menu is active, so a crossfade due while on
---                         Options still happens on schedule
---   Music.stop()       -- forgets what was playing; pair with Audio.stop/stopAll
---                         to actually silence it
+--   Music.start("menu")  -- on entering a screen; a no-op if that playlist is
+--                           already playing, a crossfade if another one is
+--   Music.update(dt)     -- every frame, globally (main.lua), not just while
+--                           a given screen is active, so a crossfade due while
+--                           on Options still happens on schedule
+--   Music.stop()         -- forgets what was playing; pair with Audio.stop/stopAll
+--                           to actually silence it
 --
 -- Tracks are preloaded as streams by states/loading.lua's CLIPS list and
 -- handed out by name through utils/audios.lua, like every other clip.
@@ -18,8 +19,10 @@ local Math = require "utils.math"
 
 local Music = {}
 
-local MENU_TRACKS = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" }
-local GAME_TRACKS = { "forest", "StarryNight", "Snowfall" }
+local PLAYLISTS = {
+    menu = { "mainMenuBG", "mainMenuBG2", "mainMenuBG3" },
+    game = { "forest", "StarryNight", "Snowfall" },
+}
 
 local CROSSFADE = 4
 
@@ -28,22 +31,18 @@ local FADE_IN = 1.5 -- the very first track of a session eases up too, just fast
 local current = nil  -- { source, name }
 local next_   = nil  -- { source, name, fade = 0..1 }, set once a crossfade begins
 local introFade = 1  -- 0..1; only < 1 while the very first track eases in
+local playlist = "menu"
 
 --- never `exclude` (the one playing) as long as there's another to pick, or
 -- "the next track" sometimes reads as the same one stuttering back to the start
 ---@param exclude string|nil # the track currently playing
----@param type string|nil # the type of track to pick
 ---@return string name
-local function pickTrack(exclude, type)
-    if type == "menu" and #MENU_TRACKS <= 1 then return MENU_TRACKS[1] end
-    if type == "game" and #GAME_TRACKS <= 1 then return GAME_TRACKS[1] end
+local function pickTrack(exclude)
+    local tracks = PLAYLISTS[playlist]
+    if #tracks <= 1 then return tracks[1] end
     local name
     repeat
-        if type == "menu" then
-            name = MENU_TRACKS[Math.randInt(1, #MENU_TRACKS)]
-        else
-            name = GAME_TRACKS[Math.randInt(1, #GAME_TRACKS)]
-        end
+        name = tracks[Math.randInt(1, #tracks)]
     until name ~= exclude
     return name
 end
@@ -59,16 +58,34 @@ local function playTrack(name)
     return { source = source, name = name }
 end
 
---- begins the menu music, or resumes it if a track finished while nothing
--- polled update() (player was on another screen). No-op while something's
--- already playing, so re-entering the menu doesn't restart from zero.
-function Music.start(type)
-    if current and current.source:isPlaying() then return end
+--- begins `kind`'s playlist, or resumes it if a track finished while nothing
+-- polled update(). No-op while that playlist is already playing, so
+-- re-entering a screen doesn't restart it from zero; crossfades out of
+-- whatever else is playing.
+---@param kind "menu"|"game"
+function Music.start(kind)
+    assert(PLAYLISTS[kind], "Music.start: no playlist named '" .. tostring(kind) .. "'")
+    local playing = current and current.source:isPlaying()
+    if playing and kind == playlist then return end
+    playlist = kind
 
-    current = playTrack(pickTrack(current and current.name, type))
-    if current then
-        introFade = 0
-        current.source:setVolume(0)
+    if not playing then
+        current = playTrack(pickTrack(current and current.name))
+        if current then
+            introFade = 0
+            current.source:setVolume(0)
+        end
+        return
+    end
+
+    if next_ then
+        Audio.stop("music", current.source)
+        current = next_
+    end
+    next_ = playTrack(pickTrack(current.name))
+    if next_ then
+        next_.fade = 0
+        next_.source:setVolume(0)
     end
 end
 

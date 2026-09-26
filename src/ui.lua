@@ -11,6 +11,7 @@ return {
     Widget      = require "ui.widgets.widget",
     FocusGroup  = require "ui.widgets.focusGroup",
     Dialog      = require "ui.widgets.dialog",
+    Menu        = require "ui.widgets.menu",
     Button      = require "ui.widgets.button",
     Toggle      = require "ui.widgets.toggle",
     Slider      = require "ui.widgets.slider",
