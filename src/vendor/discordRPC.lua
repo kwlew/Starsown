@@ -17,13 +17,14 @@
     USAGE: nothing else in the game talks to this directly --
     services/presence.lua owns the connection, payload shape, and retry.
 
-        RPC.initialize(applicationId)  -- once, at load
+        RPC.initialize(applicationId, { onError = fn(code, detail) })  -- once, at load
         RPC.update(dt)                 -- every frame; drives connect + retry
         RPC.isReady()                  -- true once Discord has sent READY
         RPC.setActivity(activity)      -- details/state/timestamps/assets
         RPC.clearActivity()
         RPC.shutdown()                 -- on quit, so the presence clears now
         RPC.getLastError()
+        RPC.state()                    -- "disconnected" | "handshaking" | "connected"
 
     CAVEATS:
       - Only local Rich Presence (details/state/images/timestamps/buttons).
@@ -31,7 +32,9 @@
         handling and a lobby system -- not included.
       - Requires LuaJIT, not plain Lua -- `ffi` doesn't exist elsewhere.
       - If Discord isn't running, RPC.update() just retries quietly every
-        few seconds; the game never blocks or crashes waiting for it.
+        few seconds; the game never blocks or crashes waiting for it. Anything
+        worse (Discord refusing the app id, an error reply, a broken pipe)
+        goes to onError as a short code plus detail, then reconnects.
       - pid is sent so Discord can clear the presence if the game dies
         without calling RPC.shutdown().
 --]]
@@ -246,8 +249,8 @@ end
 -- Pipe: platform-specific transport (Windows named pipe / Unix socket)
 
 --- The transport, one implementation per platform below. Both provide the same
--- four methods: write(data) -> boolean, available() -> bytes waiting or nil
--- when the platform can't peek, read(n) -> string|nil, and close().
+-- three methods: write(data) -> ok, err; readAvailable() -> whatever is
+-- waiting ("" if nothing) or nil, err once closed; and close().
 local Pipe = {}
 Pipe.__index = Pipe
 local getCurrentPid -- filled in per-platform below
@@ -271,6 +274,7 @@ if isWindows then
         BOOL PeekNamedPipe(HANDLE hNamedPipe, void* lpBuffer, DWORD nBufferSize,
                            DWORD* lpBytesRead, DWORD* lpTotalBytesAvail, DWORD* lpBytesLeftThisMessage);
         DWORD GetCurrentProcessId(void);
+        DWORD GetLastError(void);
     ]]
 
     local bit = require("bit")
@@ -308,30 +312,35 @@ if isWindows then
         return nil
     end
 
+    ---@param call string
+    ---@return string
+    local function lastError(call)
+        return ("%s failed (Windows error %d)"):format(call, tonumber(kernel32.GetLastError()))
+    end
+
     ---@param data string
     ---@return boolean sent
+    ---@return string? err
     function Pipe:write(data)
         local written = ffi.new("DWORD[1]")
-        local ok = kernel32.WriteFile(self.handle, data, #data, written, nil)
-        return ok ~= 0
+        if kernel32.WriteFile(self.handle, data, #data, written, nil) == 0 then return false, lastError("WriteFile") end
+        return true
     end
 
-    -- bytes currently sitting in the pipe, without blocking
-    ---@return any # bytes waiting
-    function Pipe:available()
-        local totalAvail = ffi.new("DWORD[1]")
-        local ok = kernel32.PeekNamedPipe(self.handle, nil, 0, nil, totalAvail, nil)
-        if ok == 0 then return 0 end
-        return tonumber(totalAvail[0])
-    end
-
-    ---@param n integer # bytes to read
+    --- whatever is waiting, without blocking: "" when nothing is, nil + why
+    -- once the pipe is broken (Discord closed it)
     ---@return string|nil
-    function Pipe:read(n)
-        local buf = ffi.new("char[?]", n)
+    ---@return string? err
+    function Pipe:readAvailable()
+        local totalAvail = ffi.new("DWORD[1]")
+        if kernel32.PeekNamedPipe(self.handle, nil, 0, nil, totalAvail, nil) == 0 then
+            return nil, lastError("PeekNamedPipe")
+        end
+        local avail = tonumber(totalAvail[0])
+        if avail == 0 then return "" end
+        local buf = ffi.new("char[?]", avail)
         local readCount = ffi.new("DWORD[1]")
-        local ok = kernel32.ReadFile(self.handle, buf, n, readCount, nil)
-        if ok == 0 then return nil end
+        if kernel32.ReadFile(self.handle, buf, avail, readCount, nil) == 0 then return nil, lastError("ReadFile") end
         return ffi.string(buf, tonumber(readCount[0]))
     end
 
@@ -342,9 +351,12 @@ if isWindows then
 
 elseif isLinux or isMac then
 
+    -- sockaddr_un differs: Linux is a 2-byte family then 108 path bytes,
+    -- Darwin a 1-byte length, a 1-byte family, then 104
+    ffi.cdef(isMac
+        and "struct sockaddr_un { uint8_t sun_len; uint8_t sun_family; char sun_path[104]; };"
+        or  "struct sockaddr_un { unsigned short sun_family; char sun_path[108]; };")
     ffi.cdef[[
-        typedef unsigned short sa_family_t;
-        struct sockaddr_un { sa_family_t sun_family; char sun_path[108]; };
         int socket(int domain, int type, int protocol);
         int connect(int sockfd, const struct sockaddr_un *addr, unsigned int addrlen);
         long read(int fd, void *buf, unsigned long count);
@@ -352,6 +364,9 @@ elseif isLinux or isMac then
         int close(int fd);
         int fcntl(int fd, int cmd, int arg);
         int getpid(void);
+        long send(int fd, const void *buf, unsigned long len, int flags);
+        int setsockopt(int fd, int level, int optname, const void *optval, unsigned int optlen);
+        char *strerror(int errnum);
     ]]
 
     local bit = require("bit")
@@ -361,20 +376,44 @@ elseif isLinux or isMac then
     local F_GETFL     = 3
     local F_SETFL     = 4
     local O_NONBLOCK  = isMac and 0x0004 or 0x800 -- differs between Linux and Darwin libc
+    local EAGAIN      = isMac and 35 or 11 -- "nothing to read yet" on a non-blocking socket
+    local SUN_PATH_MAX = isMac and 104 or 108 -- including the terminating NUL
+    -- a write to a socket Discord has closed raises SIGPIPE, whose default
+    -- action kills the whole game: Linux opts out per call, macOS per socket
+    local MSG_NOSIGNAL = isMac and 0 or 0x4000
+    local SOL_SOCKET, SO_NOSIGPIPE = 0xffff, 0x1022
+
+    ---@param call string
+    ---@return string
+    local function lastError(call)
+        local errno = ffi.errno()
+        return ("%s failed: %s (errno %d)"):format(call, ffi.string(C.strerror(errno)), errno)
+    end
 
     --- sent with every activity, so Discord can clear the presence if the game
     -- dies without calling shutdown()
     getCurrentPid = function() return tonumber(C.getpid()) end
 
-    --- where Discord's socket may live, best guess first
+    -- sandboxed Discord installs keep their socket in a subfolder of the usual place
+    local SANDBOXES = { "", "/app/com.discordapp.Discord", "/app/com.discordapp.DiscordCanary", "/snap.discord" }
+
+    --- where Discord's socket may live, best guess first.
+    -- STARSOWN_DISCORD_IPC_DIR replaces the search outright: for an install
+    -- that keeps its socket somewhere unusual, or a fake Discord in a test.
     ---@return string[]
     local function candidateDirs()
+        local override = os.getenv("STARSOWN_DISCORD_IPC_DIR")
+        if override and override ~= "" then return { override } end
         local dirs = {}
+        local bases = {}
         for _, name in ipairs({ "XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP" }) do
             local v = os.getenv(name)
-            if v and v ~= "" then dirs[#dirs + 1] = v end
+            if v and v ~= "" then bases[#bases + 1] = v end
         end
-        dirs[#dirs + 1] = "/tmp"
+        bases[#bases + 1] = "/tmp"
+        for _, base in ipairs(bases) do
+            for _, sandbox in ipairs(SANDBOXES) do dirs[#dirs + 1] = base .. sandbox end
+        end
         return dirs
     end
 
@@ -385,19 +424,26 @@ elseif isLinux or isMac then
         for _, dir in ipairs(candidateDirs()) do
             for i = 0, 9 do
                 local path = dir .. "/discord-ipc-" .. i
-                local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
+                -- ffi.copy doesn't bounds-check: a path that doesn't fit would
+                -- overrun sun_path and corrupt the heap, and can't be a socket anyway
+                local fd = #path < SUN_PATH_MAX and C.socket(AF_UNIX, SOCK_STREAM, 0) or -1
                 if fd >= 0 then
                     local addr = ffi.new("struct sockaddr_un")
                     -- sockaddr_un's fields come from the ffi.cdef string above, invisible
-                    -- to static analysis, hence the two disables below.
+                    -- to static analysis, hence the disables below.
                     ---@diagnostic disable-next-line: inject-field
                     addr.sun_family = AF_UNIX
+                    ---@diagnostic disable-next-line: inject-field
+                    if isMac then addr.sun_len = ffi.sizeof(addr) end
                     ---@diagnostic disable-next-line: undefined-field
                     ffi.copy(addr.sun_path, path)
                     if C.connect(fd, addr, ffi.sizeof(addr)) == 0 then
                         local flags = C.fcntl(fd, F_GETFL, 0)
                         C.fcntl(fd, F_SETFL, bit.bor(flags, O_NONBLOCK))
-                        return setmetatable({ fd = fd }, Pipe)
+                        if isMac then
+                            C.setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, ffi.new("int[1]", 1), ffi.sizeof("int"))
+                        end
+                        return setmetatable({ fd = fd, path = path }, Pipe)
                     else
                         C.close(fd)
                     end
@@ -409,22 +455,39 @@ elseif isLinux or isMac then
 
     ---@param data string
     ---@return boolean sent
+    ---@return string? err
     function Pipe:write(data)
-        local n = C.write(self.fd, data, #data)
-        return n == #data
+        local sent = 0
+        while sent < #data do
+            local n = C.send(self.fd, ffi.cast("const char*", data) + sent, #data - sent, MSG_NOSIGNAL)
+            if n < 0 then return false, lastError("send") end
+            sent = sent + tonumber(n)
+        end
+        return true
     end
 
-    -- already non-blocking; no cheap "peek" on Unix, so the connection layer loops read() until it's empty
-    ---@return nil
-    function Pipe:available() return nil end
-
-    ---@param n integer # bytes to read
-    ---@return string|nil # nil when nothing is waiting
-    function Pipe:read(n)
-        local buf = ffi.new("char[?]", n)
-        local result = C.read(self.fd, buf, n)
-        if result <= 0 then return nil end
-        return ffi.string(buf, result)
+    --- whatever is waiting, without blocking: "" when nothing is, nil + why
+    -- once the socket is closed. read() returning 0 is Discord hanging up,
+    -- which is not the same thing as -1/EAGAIN, "nothing yet".
+    ---@return string|nil
+    ---@return string? err
+    function Pipe:readAvailable()
+        local chunks = {}
+        local buf = ffi.new("char[4096]")
+        while true do
+            local n = tonumber(C.read(self.fd, buf, 4096))
+            if n > 0 then
+                chunks[#chunks + 1] = ffi.string(buf, n)
+                if n < 4096 then break end
+            elseif n == 0 then
+                return nil, "Discord closed the socket"
+            elseif ffi.errno() == EAGAIN then
+                break
+            else
+                return nil, lastError("read")
+            end
+        end
+        return table.concat(chunks)
     end
 
     --- closes the socket
@@ -447,26 +510,14 @@ function Connection.new(pipe)
     return setmetatable({ pipe = pipe, buffer = "" }, Connection)
 end
 
---- reads whatever is waiting into the buffer, without blocking either way:
--- Windows can say how much is there, so it reads exactly that; Unix has no
--- cheap peek, so it reads chunks off a non-blocking socket until one comes up short
+--- reads whatever is waiting into the buffer, without blocking
+---@return boolean ok
+---@return string? err # why the connection is gone
 function Connection:pump()
-    if self.pipe.available and self.pipe:available() ~= nil then
-        -- Windows: ask how many bytes are waiting, read exactly that many
-        local avail = self.pipe:available()
-        if avail > 0 then
-            local chunk = self.pipe:read(avail)
-            if chunk then self.buffer = self.buffer .. chunk end
-        end
-    else
-        -- Unix: non-blocking socket, keep reading chunks until empty
-        while true do
-            local chunk = self.pipe:read(4096)
-            if not chunk or #chunk == 0 then break end
-            self.buffer = self.buffer .. chunk
-            if #chunk < 4096 then break end
-        end
-    end
+    local chunk, err = self.pipe:readAvailable()
+    if not chunk then return false, err end
+    self.buffer = self.buffer .. chunk
+    return true
 end
 
 --- one complete frame, or nil while the buffer holds only part of one
@@ -485,13 +536,14 @@ end
 ---@param opcode integer # 0 HANDSHAKE, 1 FRAME, 2 CLOSE, 3 PING, 4 PONG
 ---@param payloadStr string
 ---@return boolean sent
+---@return string? err
 function Connection:sendFrame(opcode, payloadStr)
     return self.pipe:write(packU32LE(opcode) .. packU32LE(#payloadStr) .. payloadStr)
 end
 
---- closes the underlying pipe
+--- closes the underlying pipe; safe to call on one that's already broken
 function Connection:close()
-    self.pipe:close()
+    pcall(self.pipe.close, self.pipe)
 end
 
 -- Public API
@@ -501,6 +553,7 @@ local RPC = {
 }
 
 local clientId = nil
+local onError = nil
 local conn = nil
 local state = "disconnected" -- disconnected -> handshaking -> connected
 local retryTimer = 0
@@ -519,23 +572,54 @@ end
 
 --- records the app id and arms the connect; update() does the connecting
 ---@param discordApplicationId string
-function RPC.initialize(discordApplicationId)
+---@param opts? table # { onError = fun(code: string, detail: string) } -- told about anything worse than "Discord isn't running"
+function RPC.initialize(discordApplicationId, opts)
     clientId = discordApplicationId
+    onError = opts and opts.onError
     state = "disconnected"
     retryTimer = 0
     handshakeTimer = 0
 end
 
+---@param code string # short and stable, e.g. "DC-CLOSED-4000"
+---@param detail string
+local function report(code, detail)
+    RPC.lastError = code .. ": " .. tostring(detail)
+    if onError then onError(code, tostring(detail)) end
+end
+
+--- drops the connection (closing it, so nothing leaks) and schedules the
+-- next attempt; `code` is the reason, when there is one worth reporting
+---@param code? string
+---@param detail? string
+---@param retryIn? number # seconds
+local function disconnect(code, detail, retryIn)
+    if conn then conn:close() end
+    conn = nil
+    state = "disconnected"
+    retryTimer = retryIn or 5
+    if code then report(code, detail) end
+end
+
 --- one attempt at the local IPC socket, sending the handshake if it opens. A
--- failure is silent -- Discord simply may not be running yet.
+-- socket that isn't there is silent -- Discord simply may not be running yet.
 local function tryConnect()
     local pipe = Pipe.connect()
-    if pipe then
-        conn = Connection.new(pipe)
-        conn:sendFrame(0, json.encode({ v = 1, client_id = clientId }))
-        state = "handshaking"
-        handshakeTimer = 0
-    end
+    if not pipe then return end
+    conn = Connection.new(pipe)
+    local sent, err = conn:sendFrame(0, json.encode({ v = 1, client_id = clientId }))
+    if not sent then return disconnect("DC-IO", "handshake: " .. tostring(err)) end
+    state = "handshaking"
+    handshakeTimer = 0
+end
+
+---@param data any # a decoded CLOSE or ERROR payload
+---@return string # "code: message", whatever of it is there, whatever of it is there
+local function describe(data)
+    if type(data) ~= "table" then return "no details" end
+    local code, message = data.code, data.message
+    if code and message then return tostring(code) .. ": " .. tostring(message) end
+    return tostring(message or code or "no details")
 end
 
 ---@param opcode integer
@@ -547,13 +631,16 @@ local function handleFrame(opcode, payload)
             if msg.evt == "READY" then
                 state = "connected"
             elseif msg.evt == "ERROR" then
-                RPC.lastError = msg.data and msg.data.message or "unknown error"
+                report("DC-ERROR", (msg.cmd and (msg.cmd .. " -> ") or "") .. describe(msg.data))
             end
         end
-    elseif opcode == 2 then -- Discord closed the connection
-        state = "disconnected"
-        if conn then conn:close() end
-        conn = nil
+    elseif opcode == 2 then -- Discord closed the connection, usually with a reason (4000 = bad app id)
+        local data = json.decode(payload)
+        local code = type(data) == "table" and data.code
+        disconnect("DC-CLOSED" .. (code and ("-" .. tostring(code)) or ""), describe(data))
+    elseif opcode == 3 then -- PING: Discord drops clients that don't answer
+        local sent, err = conn:sendFrame(4, payload)
+        if not sent then disconnect("DC-IO", "pong: " .. tostring(err)) end
     end
 end
 
@@ -579,56 +666,62 @@ function RPC.update(dt)
     if state == "handshaking" then
         handshakeTimer = handshakeTimer + dt
         if handshakeTimer >= HANDSHAKE_TIMEOUT then
-            if conn then conn:close() end
-            conn = nil
-            state = "disconnected"
-            retryTimer = HANDSHAKE_RETRY_DELAY
-            return
+            return disconnect("DC-HANDSHAKE", ("Discord accepted the connection but sent no READY within %ds")
+                :format(HANDSHAKE_TIMEOUT), HANDSHAKE_RETRY_DELAY)
         end
     end
 
     if not conn then return end
 
     local ok, err = pcall(function()
-        conn:pump()
-        while true do
+        local open, why = conn:pump()
+        if not open then return disconnect("DC-LOST", why) end
+        while conn do
             local opcode, payload = conn:popFrame()
             if not opcode then break end
             handleFrame(opcode, payload)
         end
     end)
 
-    if not ok then
-        RPC.lastError = err
-        state = "disconnected"
-        conn = nil
-    end
+    if not ok then disconnect("DC-INTERNAL", err) end
+end
+
+--- a failed write means the connection is gone, not that the frame should
+-- be retried on it
+---@param payload string
+---@return boolean sent
+local function sendCommand(payload)
+    if state ~= "connected" or not conn then return false end
+    local sent, err = conn:sendFrame(1, payload)
+    if not sent then disconnect("DC-LOST", err) end
+    return sent
 end
 
 ---@param activity table # details/state/timestamps/assets
 ---@return boolean # sent; false while the connection isn't up
 function RPC.setActivity(activity)
-    if state ~= "connected" or not conn then return false end
-    local payload = json.encode({
+    return sendCommand(json.encode({
         cmd = "SET_ACTIVITY",
         args = {
             pid = getCurrentPid(),
             activity = activity,
         },
         nonce = nextNonce(),
-    })
-    return conn:sendFrame(1, payload)
+    }))
 end
 
 ---@return boolean sent
 function RPC.clearActivity()
-    if state ~= "connected" or not conn then return false end
-    local payload = json.encode({
+    return sendCommand(json.encode({
         cmd = "SET_ACTIVITY",
         args = { pid = getCurrentPid() },
         nonce = nextNonce(),
-    })
-    return conn:sendFrame(1, payload)
+    }))
+end
+
+---@return string # "disconnected" | "handshaking" | "connected"
+function RPC.state()
+    return state
 end
 
 ---@return boolean # true only once Discord has answered READY
@@ -645,7 +738,7 @@ end
 -- when Discord notices the process is gone
 function RPC.shutdown()
     if conn then
-        conn:sendFrame(2, "") -- opcode 2 = CLOSE
+        conn:sendFrame(2, "{}") -- opcode 2 = CLOSE; a failure here doesn't matter, we're leaving
         conn:close()
         conn = nil
     end

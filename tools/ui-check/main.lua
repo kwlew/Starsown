@@ -1,7 +1,7 @@
 -- Runs against a temporary copy of src with real LÖVE fonts and rendering.
 -- External services are disabled. Transactions use a simulated display driver;
 -- real monitor/fullscreen behavior still needs an interactive platform check.
-package.loaded["services.presence"] = { set = function() end }
+package.loaded["services.presence"] = { show = function() end }
 package.loaded["services.stats"] = { setEnabled = function() end }
 
 local UI = require "ui"

@@ -37,6 +37,7 @@ Settings.defaults = {
     customCursorClickGrowth = 3,
     reducedMotion = false,
     showNebula = true,
+    showStars = true,
     shareStats = false,
     statsConsentAsked = false,
 }

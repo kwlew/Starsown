@@ -107,8 +107,9 @@ function MainMenu:enter(previousName)
     self.mouseX, self.mouseY = love.mouse.getPosition()
     self.starfield = self.starfield or Globals.menu.Particles.starfield
     self.stars = inheritSky(self.stars, "stars", function()
-        local stars = Particles.Stars.new{}
+        local stars = Particles.Stars.new{ enabled = Settings.load().showStars }
         stars:spawnStars()
+        Assets.set("stars", stars) -- where Options' toggle finds it
         return stars
     end)
     self.nebula = inheritSky(self.nebula, "nebula", function()
@@ -119,30 +120,26 @@ function MainMenu:enter(previousName)
 
     if not self.menu then -- stateless between visits, so build it just once
         self.menu = Menu.new({
-            { label = function() return I18n.t("menu.play") end, primary = true, onSelect = function()
+            { label = function() return I18n.t("menu.play") end, icon = "play", primary = true, onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("game", { returnTo = "mainMenu" })
             end },
-            { label = function() return I18n.t("menu.stats") end, onSelect = function()
+            { label = function() return I18n.t("menu.stats") end, icon = "bars", onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("stats", { returnTo = "mainMenu" })
             end },
-            { label = function() return I18n.t("menu.achievements") end, onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("achievements", { returnTo = "mainMenu" })
-            end },
-            { label = function() return I18n.t("menu.options") end, onSelect = function()
+            { label = function() return I18n.t("menu.options") end, icon = "gear", onSelect = function()
                 UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
             end },
-            { label = function() return I18n.t("menu.quit") end, danger = true,
+            { label = function() return I18n.t("menu.quit") end, icon = "power", danger = true,
               onSelect = function()
                 love.event.quit()
             end },
         })
 
         -- One combined group so Tab reaches the corner links too, after the
-        -- five buttons -- Menu keeps its own internal group (still what
+        -- menu buttons -- Menu keeps its own internal group (still what
         -- draws/positions the buttons), but real input now goes through
         -- this one, the only thing that still calls `setFocus` on any of them.
         self.group = UI.FocusGroup.new()
@@ -157,8 +154,7 @@ function MainMenu:enter(previousName)
         self.menu:playIntro()
     end
 
-    Presence.set{ details = "Main Menu", state = "Getting ready",
-                  smallText = "In the menu" }
+    Presence.show("mainMenu")
 
     self:layout()
 
@@ -204,6 +200,11 @@ end
 ---@param dt number
 function MainMenu:update(dt)
     self.nebula:update(dt)
+    if self.statsConsentDialog:isOpen() or not love.window.hasMouseFocus() then
+        self.stars:setPointer(nil, nil)
+    else
+        self.stars:setPointer(self.mouseX, self.mouseY)
+    end
     self.stars:update(dt)
     self.starfield:update(dt)
     self.title:update(dt)

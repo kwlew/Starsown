@@ -4,7 +4,6 @@ local I18n = require "core.i18n"
 local Format = require "utils.format"
 local StatsService = require "services.stats"
 local Presence = require "services.presence"
-local Globals = require "globals"
 local TextFactory = require "ui.text.textFactory"
 local Assets = require "core.assets"
 local Settings = require "core.settings"
@@ -18,10 +17,9 @@ local LIST_MAX_W = 420
 local BACK_W     = 180
 local STATUS_MAX_W = 460
 
--- below STATUS_GRACE_SECONDS since the last Stats.start(), an empty readout
--- reads as "stats.loading" (normal, still waiting on the first reply);
--- past it, as "stats.waiting" (something's actually stuck)
 local STATUS_GRACE_SECONDS = 8
+
+local COPIED_SECONDS = 2 -- how long the copy button says "Copied" after a click
 
 local INTRO_DURATION = 1.00
 local INTRO_STAGGER = 0.05
@@ -81,12 +79,7 @@ end
 ---@param previousName string|nil
 ---@param opts? table # { returnTo?: string }
 function Stats:enter(previousName, opts)
-    Presence.set{
-        details = "Stats",
-        state = "Viewing stats",
-        smallText = "Stats",
-        startedAt = Globals.game.startedAt,
-    }
+    Presence.show("stats")
     self.returnTo = StateManager.returnTarget(previousName, opts, "stats")
     self.settings = Assets.get("settings") or Settings.load()
 
@@ -113,6 +106,19 @@ function Stats:enter(previousName, opts)
                 self:layout()
             end,
         }
+        -- the error line names a code; this puts that code and everything
+        -- behind it on the clipboard, ready to paste into a bug report
+        self.copyButton = UI.Button.new{
+            label = function()
+                local copied = self.copiedAt and love.timer.getTime() - self.copiedAt < COPIED_SECONDS
+                return I18n.t(copied and "stats.copied" or "stats.copyDetails")
+            end,
+            onSelect = function()
+                UI.Sfx.select()
+                love.system.setClipboardText(StatsService.reportText())
+                self.copiedAt = love.timer.getTime()
+            end,
+        }
         self.rowAlpha = {}
     end
     self:syncFocusWidgets()
@@ -129,10 +135,9 @@ end
 
 --- centres the readout in a bordered card, keeping it clear of the heading
 -- above and the hint line below however short the window is. Also
--- positions whatever sits below it -- the status/staleness line, and the
--- enable-sharing button when sharing is off -- which needs the status
--- line's own wrapped height, since "sharing is off" is the one message
--- here long enough to wrap on a narrow window.
+-- positions whatever sits below it -- the status line, and the button that
+-- goes with it -- which needs the status line's own wrapped height, since
+-- "sharing is off" and the error lines wrap on a narrow window.
 function Stats:layout()
     local w, h = love.graphics.getDimensions()
     local m = UI.Theme.metrics
@@ -164,12 +169,13 @@ function Stats:layout()
 
     self.noteW = math.min(w * 0.7, UI.Theme.px(STATUS_MAX_W))
     self.statusY = self.backButton.y + self.backButton.h + m.rowGap * 2
-    if self.enableSharingButton then
+    local text, button = self:status()
+    self.statusText = text
+    if button then
         local smallFont = UI.Theme.font("small")
-        local _, lines = smallFont:getWrap(I18n.t("stats.sharingOff"), self.noteW)
+        local _, lines = smallFont:getWrap(text or "", self.noteW)
         local statusH = math.max(1, #lines) * smallFont:getHeight()
-        self.enableSharingButton:setBounds((w - backW) / 2,
-            self.statusY + statusH + m.rowGap, backW, m.rowHeight)
+        button:setBounds((w - backW) / 2, self.statusY + statusH + m.rowGap, backW, m.rowHeight)
     end
 
     self:syncChroma()
@@ -180,12 +186,14 @@ function Stats:resize()
     self:layout()
 end
 
---- the enable-sharing button only belongs in the focus order while sharing
--- is actually off; rebuilt whenever that flips so Tab never lands on a
--- hidden button, and so the freshly-hidden one gives its focus back
+--- the status line's button only belongs in the focus order while it's
+-- shown; rebuilt whenever that changes so Tab never lands on a hidden
+-- button, and so the freshly-hidden one gives its focus back
 function Stats:syncFocusWidgets()
+    local _, button = self:status()
+    self.statusButton = button
     local widgets = { self.backButton }
-    if not StatsService.enabled then widgets[#widgets + 1] = self.enableSharingButton end
+    if button then widgets[#widgets + 1] = button end
     self.group:setWidgets(widgets)
 end
 
@@ -198,12 +206,20 @@ function Stats:playIntro()
     if UI.Motion.reduced then return end
     self.introTime = 0
     self.backButton.introAlpha = 0
-    if self.enableSharingButton then self.enableSharingButton.introAlpha = 0 end
+    self.enableSharingButton.introAlpha = 0
+    self.copyButton.introAlpha = 0
     for i = 1, #ROWS do self.rowAlpha[i] = 0 end
 end
 
 ---@param dt number
 function Stats:update(dt)
+    -- an error can arrive (or clear) while the screen is up
+    local text, button = self:status()
+    if button ~= self.statusButton or (button and text ~= self.statusText) then
+        self:syncFocusWidgets()
+        self:layout()
+    end
+
     self.group:update(dt)
 
     self:syncChroma()
@@ -224,7 +240,8 @@ function Stats:update(dt)
         if buttonT < 1 then finished = false end
         local buttonAlpha = Ease.outCubic(Math.clamp01(buttonT))
         self.backButton.introAlpha = buttonAlpha
-        if self.enableSharingButton then self.enableSharingButton.introAlpha = buttonAlpha end
+        self.enableSharingButton.introAlpha = buttonAlpha
+        self.copyButton.introAlpha = buttonAlpha
         if finished then self.introTime = nil end
     end
 end
@@ -249,20 +266,29 @@ function Stats:mousemoved(x, y)
     self.group:mousemoved(x, y)
 end
 
----@return string|nil # a line to explain an empty readout, or nil once any value has arrived
-function Stats:statusKey()
-    for _, row in ipairs(ROWS) do
-        if row.get() ~= nil then return nil end
+--- the line under the readout: an error with its code (over any stale
+-- values still showing), how fresh the values are, or why there are none
+---@return string|nil text
+---@return table|nil button # the button that goes with this line, if any
+---@return boolean|nil isError
+function Stats:status()
+    local err = StatsService.enabled and StatsService.lastError()
+    if err then
+        local key = err.code == "ST-NOHTTPS" and "stats.error.unsupported" or "stats.error.generic"
+        return I18n.t(key) .. "\n" .. I18n.t("stats.error.code", { code = err.code }), self.copyButton, true
     end
-    if not StatsService.enabled then return "stats.sharingOff" end
+    for _, row in ipairs(ROWS) do
+        if row.get() ~= nil then return self:updatedText() end
+    end
+    if not StatsService.enabled then return I18n.t("stats.sharingOff"), self.enableSharingButton end
     -- fresh off Stats.start(), an empty readout just means the first reply
-    -- hasn't landed yet -- not worth alarming the player about their
-    -- internet before it's actually had a fair chance to arrive
+    -- hasn't landed yet -- not worth alarming the player before it's had a
+    -- fair chance to arrive
     local elapsed = StatsService.startedAt and (love.timer.getTime() - StatsService.startedAt) or 0
-    return elapsed < STATUS_GRACE_SECONDS and "stats.loading" or "stats.waiting"
+    return I18n.t(elapsed < STATUS_GRACE_SECONDS and "stats.loading" or "stats.waiting")
 end
 
----@return string|nil # "Updated Xs ago", once any value has arrived; nil otherwise (statusKey covers that case)
+---@return string|nil # "Updated Xs ago", once any value has arrived
 function Stats:updatedText()
     if not StatsService.lastUpdated then return nil end
     local elapsed = love.timer.getTime() - StatsService.lastUpdated
@@ -369,32 +395,19 @@ function Stats:draw()
 
     self.backButton:draw()
 
-    local statusKey = self:statusKey()
-    if statusKey then
+    local text, button, isError = self:status()
+    if text then
         UI.Label.draw{
-            text = I18n.t(statusKey),
+            text = text,
             x = (love.graphics.getWidth() - self.noteW) / 2,
             y = self.statusY,
             width = self.noteW,
             font = UI.Theme.font("small"),
-            color = UI.Theme.colors.textDim,
+            color = isError and UI.Theme.colors.warning or UI.Theme.colors.textDim,
             shadow = true,
         }
-        if statusKey == "stats.sharingOff" then self.enableSharingButton:draw() end
-    else
-        local updated = self:updatedText()
-        if updated then
-            UI.Label.draw{
-                text = updated,
-                x = (love.graphics.getWidth() - self.noteW) / 2,
-                y = self.statusY,
-                width = self.noteW,
-                font = UI.Theme.font("small"),
-                color = UI.Theme.colors.textDim,
-                shadow = true,
-            }
-        end
     end
+    if button then button:draw() end
 
     UI.Label.hint(I18n.t("stats.hint"))
 

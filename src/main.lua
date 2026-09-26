@@ -13,10 +13,21 @@ local Globals = require "globals"
 
 local Stats = require "services.stats"
 
+--- the value after `flag` on the command line, if the flag is there
+---@param args string[]
+---@param flag string
+---@return string|nil
+local function option(args, flag)
+    for i, value in ipairs(args or {}) do
+        if value == flag then return args[i + 1] end
+    end
+end
+
 --- boot: scale the UI, read settings, apply language/theme/cursor/motion, then
 -- hand off to the loading screen, which owns the rest of the load
+---@param args string[] # command line; `--stats-endpoint <url>` points stats at a test server
 ---@diagnostic disable-next-line: duplicate-set-field
-function love.load()
+function love.load(args)
     love.window.setTitle(Globals.game.name)
 
     UI.Theme.rescale()
@@ -27,6 +38,8 @@ function love.load()
 
     local settings = Settings.load()
 
+    local endpoint = option(args, "--stats-endpoint")
+    if endpoint then Stats.setEndpoint(endpoint) end
     Stats.enabled = settings.statsConsentAsked and settings.shareStats
     Stats.start()
     I18n.load()
@@ -59,6 +72,16 @@ function love.update(dt)
     Stats.update(dt)
     UI.Cursor.update(dt)
     UI.Music.update(dt)
+end
+
+--- LÖVE's default handler turns a worker thread's runtime error into a crash
+-- of the whole game. The service owning the thread reads the same error off
+-- it (Thread:getError) and reports it properly; this only keeps it alive.
+---@param thread any # a love.Thread
+---@param message string
+---@diagnostic disable-next-line: duplicate-set-field
+function love.threaderror(thread, message)
+    print("[thread] " .. tostring(message))
 end
 
 --- closes the Discord connection and saves any undelivered stats backlog;

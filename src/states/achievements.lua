@@ -5,7 +5,6 @@
 
 local StateManager = require "core.stateManager"
 local Presence = require "services.presence"
-local Globals = require "globals"
 local UI = require "ui"
 local I18n = require "core.i18n"
 
@@ -17,12 +16,7 @@ local Achievements = {}
 ---@param previousName string|nil
 ---@param opts? table # { returnTo?: string }
 function Achievements:enter(previousName, opts)
-    Presence.set{
-        details = "Achievements",
-        state = "Viewing achievements",
-        smallText = "Achievements",
-        startedAt = Globals.game.startedAt,
-    }
+    Presence.show("achievements")
     self.returnTo = StateManager.returnTarget(previousName, opts, "achievements")
 
     self.mouseX, self.mouseY = love.mouse.getPosition()

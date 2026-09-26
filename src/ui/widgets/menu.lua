@@ -31,6 +31,7 @@ function Menu.new(items, font)
             enabled = item.enabled ~= false,
             danger = item.danger,
             primary = item.primary,
+            icon = item.icon,
             font = self.font,
         }
     end
@@ -74,7 +75,8 @@ function Menu:layout(y, spacing)
 
     local width = Theme.px(self.minWidth)
     for _, button in ipairs(self:buttons()) do
-        width = math.max(width, font:getWidth(button:labelText()) + m.padding * 4)
+        local icon = button.icon and m.rowHeight or 0 -- the icon column is one row-height square
+        width = math.max(width, font:getWidth(button:labelText()) + m.padding * 4 + icon)
     end
 
     local x = (love.graphics.getWidth() - width) / 2

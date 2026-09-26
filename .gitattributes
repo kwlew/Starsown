@@ -1,0 +1,17 @@
+# LF in the repository and in every checkout, whatever the platform or
+# core.autocrlf -- mixed CRLF/LF made any edit risk a whole-file diff.
+* text=auto eol=lf
+
+# assets and native modules: never line-ending converted or diffed as text
+*.png binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.flac binary
+*.so binary
+*.dll binary
+*.exe binary
+*.love binary

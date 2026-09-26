@@ -502,6 +502,22 @@ function Theme.px(value)
     return Math.round(value * Theme.scale)
 end
 
+local capHeights = setmetatable({}, { __mode = "k" }) -- font -> px a capital rises above the baseline
+
+--- read off the rasterizer's "H" rather than guessed from the line box; the
+-- font itself doesn't expose glyph bounds
+---@param path string|nil # nil for LÖVE's built-in font
+---@param size integer
+---@return number|nil
+local function measureCapHeight(path, size)
+    local ok, height = pcall(function()
+        local rasterizer = path and love.font.newRasterizer(path, size) or love.font.newRasterizer(size)
+        local _, bearingY = rasterizer:getGlyphData("H"):getBearing()
+        return bearingY
+    end)
+    return ok and height or nil
+end
+
 --- best-effort: a missing font file degrades to LÖVE's default rather than
 -- crashing, and the Cyrillic fallback is attached only if it loads too
 ---@param name string # role name, for the assert message
@@ -514,6 +530,7 @@ local function buildFont(name, role, size)
 
     local ok, font = pcall(love.graphics.newFont, dir .. role.file, size)
     font = ok and font or love.graphics.newFont(size)
+    capHeights[font] = measureCapHeight(ok and dir .. role.file or nil, size)
 
     if role.fallback then
         local fbOk, fallback = pcall(love.graphics.newFont, FONT_FAMILIES.play .. role.fallback, size)
@@ -642,12 +659,21 @@ function Theme.pulse(time)
     return 0.6 + 0.4 * math.sin(time * 3)
 end
 
+---@param font any # a love.Font
+---@return number # px a capital letter rises above the baseline
+function Theme.capHeight(font)
+    return capHeights[font] or font:getBaseline() * 0.7 -- a typical ratio, for a font this module didn't build
+end
+
+--- Centres the capitals, not the line box: getHeight() includes room below
+-- the baseline for descenders, so centring that sat every label a few px
+-- high -- invisible until an icon sat beside one.
 ---@param y number # row top
 ---@param h number # row height
 ---@param font any # a love.Font
----@return number # the y that centres one line of that font in the row
+---@return number # the y to draw one line of that font at
 function Theme.centerY(y, h, font)
-    return y + (h - font:getHeight()) / 2
+    return Math.round(y + (h + Theme.capHeight(font)) / 2 - font:getBaseline())
 end
 
 local fontStack = {}
@@ -791,6 +817,35 @@ function Theme.glowRect(x, y, w, h, radius, intensity, color, cached)
     love.graphics.setBlendMode("alpha")
 end
 
+local CORNER_TICK = 15 -- design px, how far a row's corner accent reaches along each edge
+local CORNER_TICK_REST = 0.55 -- its alpha while the row is unfocused
+local CORNER_TICK_SEGMENTS = 6
+
+local wedge = {}
+
+--- fills a row's corner out to `leg` along both edges, following the rounded
+-- corner rather than cutting across it, so it sits inside the frame
+---@param cx number # the corner of the row's bounding box
+---@param cy number
+---@param dx number # 1 or -1: which way is into the row
+---@param dy number
+---@param r number # the row's corner radius
+---@param leg number
+local function cornerWedge(cx, cy, dx, dy, r, leg)
+    local n = 0
+    local function add(px, py)
+        wedge[n + 1], wedge[n + 2] = px, py
+        n = n + 2
+    end
+    add(cx + dx * leg, cy)
+    for i = 0, CORNER_TICK_SEGMENTS do
+        local a = (math.pi / 2) * i / CORNER_TICK_SEGMENTS
+        add(cx + dx * r * (1 - math.sin(a)), cy + dy * r * (1 - math.cos(a)))
+    end
+    add(cx, cy + dy * leg)
+    love.graphics.polygon("fill", unpack(wedge, 1, n))
+end
+
 local TONES = {
     accent = { rest = "panelBorder",  lit = "accent", fill = "accentDark", glow = "glow" },
     danger = { rest = "dangerBorder", lit = "danger", fill = "dangerDark", glow = "danger" },
@@ -822,6 +877,14 @@ function Theme.rowChrome(x, y, w, h, glow, time, alpha, tone, baseGlow)
     end
     love.graphics.setColor(Theme.lerp(c.panel, c[set.fill], fillGlow))
     love.graphics.rectangle("fill", x, y, w, h, m.radius, m.radius, 10)
+
+    -- accents in the top-left and bottom-right corners, lit even at rest and
+    -- brighter on focus; drawn before the border so it covers their seam
+    local leg = math.max(Theme.px(CORNER_TICK), m.radius + 2)
+    Theme.setColor(lit, (CORNER_TICK_REST + (1 - CORNER_TICK_REST) * fillGlow) * alpha)
+    cornerWedge(x, y, 1, 1, m.radius, leg)
+    cornerWedge(x + w, y + h, -1, -1, m.radius, leg)
+
     local br, bg, bb = Theme.lerp(c[set.rest], lit, fillGlow)
     love.graphics.setColor(br, bg, bb, alpha)
     love.graphics.rectangle("line", x, y, w, h, m.radius, m.radius, 10)

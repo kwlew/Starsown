@@ -1,14 +1,14 @@
 --- Deep-space gas for the menu backdrop, baked into a Canvas once at load and
 -- composited from textured layers each frame (too expensive to redraw the
--- stamps live). Authored in a fixed 1920x1080 space like Stars, but stretched
--- to fit the window instead of cropped, since it's a framed composition (see
--- centerHole) rather than a uniform starfield.
+-- stamps live). Authored in Sky's design space and fitted to the window with
+-- the same transform as Stars, so the two stay aligned.
 
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 local Motion = require "ui.core.motion"
+local Sky = require "particles.sky"
 
-local DESIGN_W, DESIGN_H = 1920, 1080
+local DESIGN_W, DESIGN_H = Sky.W, Sky.H
 local CANVAS_SCALE = 0.5
 local COMPOSITE_W = Math.round(DESIGN_W * CANVAS_SCALE)
 local COMPOSITE_H = Math.round(DESIGN_H * CANVAS_SCALE)
@@ -19,6 +19,75 @@ local SLACK_X, SLACK_Y = DESIGN_W * OVERSCAN, DESIGN_H * OVERSCAN
 local BLOB_SIZE = 128 -- reusable stamp texture size, px
 
 local blob
+local bakeFormat
+local noiseShader
+
+--- modulates a finished layer by domain-warped fBm, so the gas breaks into
+-- wisps and filaments instead of reading as smooth overlapping discs. Runs
+-- once per layer at bake, never per frame.
+---@return any # a love.Shader
+local function getNoiseShader()
+    if noiseShader then return noiseShader end
+    noiseShader = love.graphics.newShader([[
+        extern vec2 seed;
+        extern number scale;    // noise cells across the layer's height
+        extern number aspect;   // layer width / height, so cells stay square
+        extern number strength; // 0 leaves the gas as baked, 1 lets the noise carve it to nothing
+
+        number hash(vec2 p)
+        {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        number noise(vec2 p)
+        {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                       mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+
+        number fbm(vec2 p)
+        {
+            number value = 0.0;
+            number amplitude = 0.5;
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * noise(p);
+                p = p * 2.03 + vec2(17.1, 9.2);
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
+        {
+            vec2 p = texture_coords * vec2(aspect, 1.0) * scale + seed;
+            vec2 warp = vec2(fbm(p), fbm(p + vec2(5.2, 1.3)));
+            number n = fbm(p + 2.0 * warp);
+            number body = smoothstep(0.3, 0.7, n);
+            // where the warped field crosses its midpoint it traces long, thin,
+            // swirling contours -- those are the filaments
+            number ridge = 1.0 - smoothstep(0.0, 0.06, abs(n - 0.5));
+            number mask = 1.0 - strength + strength * (0.6 * body + 1.4 * ridge);
+            return Texel(texture, texture_coords) * color * mask;
+        }
+    ]])
+    return noiseShader
+end
+
+--- layers are baked in half-float where the GPU allows it: each stamp adds a
+-- fraction of one 8-bit step, so an 8-bit bake rounds the faint edges and the
+-- lanes away entirely
+---@return string # a love.PixelFormat
+local function getBakeFormat()
+    if not bakeFormat then
+        bakeFormat = love.graphics.getCanvasFormats().rgba16f and "rgba16f" or "normal"
+    end
+    return bakeFormat
+end
 
 --- the one soft round stamp every cloud is built from, generated once. Its
 -- alpha falls off cubically, which is what makes overlapping stamps read as
@@ -99,8 +168,11 @@ function Nebula.new(config)
         lanesPerCloud = config.lanesPerCloud or 2,
         laneSegments = config.laneSegments or 3,
         laneTurn = config.laneTurn or 0.35, -- max radians the chain swings per link
-        laneAlphaMin = config.laneAlphaMin or 0.001,
-        laneAlphaMax = config.laneAlphaMax or 0.005,
+        laneAlphaMin = config.laneAlphaMin or 0.03, -- vertex colours are 8-bit: much under ~0.01 rounds the lanes away
+        laneAlphaMax = config.laneAlphaMax or 0.06,
+
+        noiseScale = config.noiseScale or 4.5, -- noise cells across a layer's height
+        noiseStrength = config.noiseStrength or 0.6,
 
         colors = config.colors or { Theme.colors.accent, Theme.colors.accentAlt }, -- core tint / rim tint
 
@@ -226,6 +298,34 @@ local function drawOnLayer(canvas, blendMode, draw)
     if not ok then error(err, 0) end
 end
 
+--- copies a finished layer into the 8-bit canvas it's stored as, through the
+-- noise pass. Subtracting lanes can drive a float canvas below zero, which
+-- would then darken whatever is drawn behind the nebula; the copy clamps it.
+---@param canvas any # a love.Canvas
+---@return any # a love.Canvas
+function Nebula:resolveLayer(canvas)
+    local w, h = canvas:getDimensions()
+    local stored = love.graphics.newCanvas(w, h)
+    stored:setFilter("linear", "linear")
+
+    local shader = getNoiseShader()
+    shader:send("seed", { Math.randRange(0, 100), Math.randRange(0, 100) })
+    shader:send("scale", self.noiseScale)
+    shader:send("aspect", w / h)
+    shader:send("strength", self.noiseStrength)
+
+    love.graphics.push("all")
+    love.graphics.origin()
+    love.graphics.setCanvas(stored)
+    love.graphics.setBlendMode("replace", "premultiplied")
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setShader(shader)
+    love.graphics.draw(canvas)
+    love.graphics.pop()
+    canvas:release()
+    return stored
+end
+
 --- plans every layer's clouds and readies the incremental bake; bakeStep()
 -- does the actual work one unit at a time
 ---@return table self
@@ -279,7 +379,7 @@ function Nebula:bakeStep()
     end
 
     if state.phase == "prepare" then
-        local canvas = love.graphics.newCanvas(state.canvasW, state.canvasH)
+        local canvas = love.graphics.newCanvas(state.canvasW, state.canvasH, { format = getBakeFormat() })
         canvas:setFilter("linear", "linear")
         local prevCanvas = love.graphics.getCanvas()
         love.graphics.setCanvas(canvas)
@@ -308,7 +408,7 @@ function Nebula:bakeStep()
     else
         local depth = self.layerCount > 1 and (i - 1) / (self.layerCount - 1) or 1
         self.layers[i] = {
-            canvas = plan.canvas,
+            canvas = self:resolveLayer(plan.canvas),
             alpha = self.layerAlpha * (self.layerFalloff + (1 - self.layerFalloff) * depth),
             parallax = self.parallaxMin + (1 - self.parallaxMin) * depth,
             driftRateX = Math.randRange(self.driftRateMin, self.driftRateMax),
@@ -350,12 +450,12 @@ function Nebula:update(dt)
     self.time = self.time + dt
 end
 
---- composites the drifting layers into the half-res canvas, then stretches that
--- to the window in one draw
+--- composites the drifting layers into the half-res canvas, then scales that
+-- to cover the window in one draw
 function Nebula:draw()
     if not self.enabled or self.alpha <= 0 or #self.layers == 0 then return end
 
-    local w, h = love.graphics.getDimensions()
+    local scale, x, y = Sky.cover(love.graphics.getDimensions())
     local composite = self:ensureComposite()
     local previousCanvas = love.graphics.getCanvas()
     local previousBlend, previousAlphaMode = love.graphics.getBlendMode()
@@ -380,7 +480,7 @@ function Nebula:draw()
 
     love.graphics.setCanvas(previousCanvas)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(composite, 0, 0, 0, w / COMPOSITE_W, h / COMPOSITE_H)
+    love.graphics.draw(composite, x, y, 0, scale / CANVAS_SCALE)
 
     love.graphics.setBlendMode(previousBlend, previousAlphaMode)
     love.graphics.setColor(previousR, previousG, previousB, previousA)
