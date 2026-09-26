@@ -163,6 +163,7 @@ function Options:enter(previousName, opts)
 
         self.backButton = UI.Button.new{
             label = function() return I18n.t("options.back") end,
+            icon = "back",
             onSelect = function() self:goBack() end,
         }
         self.backButton.descKey = "options.desc.back"

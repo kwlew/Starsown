@@ -15,3 +15,4 @@
 *.dll binary
 *.exe binary
 *.love binary
+*.aseprite binary

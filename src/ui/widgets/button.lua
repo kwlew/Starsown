@@ -4,13 +4,14 @@
 --   local b = Button.new{ label = "Play", icon = "play", onSelect = function() ... end }
 --   -- a FocusGroup (or the owning layout) sets b's bounds and routes input
 --
--- b.enabled = false greys it out and makes it inert. With an `icon` (a
--- Glyph name) the label moves left, after an icon column and a divider;
+-- b.enabled = false greys it out and makes it inert. With an `icon` (an
+-- IconTexture name, falling back to the Glyph of that name) the label moves left, after an icon column and a divider;
 -- without one it stays centred.
 
 local Theme = require "ui.core.theme"
 local Widget = require "ui.widgets.widget"
 local Glyph = require "ui.icons.glyph"
+local IconTexture = require "ui.icons.iconTexture"
 
 local Button = {}
 Widget.extend(Button)
@@ -54,7 +55,13 @@ function Button:drawIcon(alpha)
     local lit = Theme.colors[self.danger and "danger" or "accent"]
     local r, g, b = Theme.lerp(Theme.colors.textMuted, lit, math.max(self.glow, self.primary and 1 or 0))
     love.graphics.setColor(r, g, b, alpha)
-    Glyph.draw(self.icon, self.x + (column - size) / 2, self.y + (self.h - size) / 2, size)
+    local iconX, iconY = self.x + (column - size) / 2, self.y + (self.h - size) / 2
+    local texture = IconTexture.get(self.icon)
+    if texture then
+        IconTexture.draw(texture, iconX, iconY, size)
+    else
+        Glyph.draw(self.icon, iconX, iconY, size)
+    end
 
     Theme.setColor(Theme.colors.textDim, 0.5 * alpha) -- not panelBorder: that vanishes into a lit row's fill
     local previous = love.graphics.getLineWidth()

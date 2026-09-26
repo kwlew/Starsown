@@ -1,11 +1,14 @@
 {
   "game": {
-    "hint": "Esc: pause",
     "pause": {
       "title": "PAUSED",
       "resume": "Resume",
       "quit": "Main Menu",
-      "hint": "Esc: resume    W/S or Mouse: navigate    Enter or Click: select"
+      "hint": "Esc: resume    W/S or Mouse: navigate    Enter or Click: select",
+      "confirmQuit": {
+        "title": "Leave this run?",
+        "message": "You'll return to the main menu and this run will end."
+      }
     }
   }
 }
