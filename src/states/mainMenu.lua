@@ -158,7 +158,7 @@ function MainMenu:enter(previousName)
                 UI.Sfx.select()
                 StateManager.fadeTo("options", { returnTo = "mainMenu" })
             end },
-            { label = function() return I18n.t("menu.quit") end, icon = "power", danger = true,
+            { label = function() return I18n.t("menu.quit") end, icon = "quit", danger = true,
               onSelect = function()
                 love.event.quit()
             end },

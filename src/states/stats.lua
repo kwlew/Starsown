@@ -93,6 +93,7 @@ function Stats:enter(previousName, opts)
     if not self.backButton then
         self.backButton = UI.Button.new{
             label = function() return I18n.t("stats.back") end,
+            icon = "back",
             onSelect = function() self:leave() end,
         }
         -- a direct shortcut for the exact problem "stats.sharingOff" names,

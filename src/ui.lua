@@ -8,6 +8,7 @@ return {
     Sfx         = require "ui.core.sfx",
     Music       = require "ui.core.music",
     Glyph       = require "ui.icons.glyph",
+    IconTexture = require "ui.icons.iconTexture",
     Widget      = require "ui.widgets.widget",
     FocusGroup  = require "ui.widgets.focusGroup",
     Dialog      = require "ui.widgets.dialog",

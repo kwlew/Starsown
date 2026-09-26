@@ -29,6 +29,7 @@ function Achievements:enter(previousName, opts)
     if not self.backButton then
         self.backButton = UI.Button.new{
             label = function() return I18n.t("achievements.back") end,
+            icon = "back",
             onSelect = function() self:leave() end,
         }
         self.group:setWidgets{ self.backButton }

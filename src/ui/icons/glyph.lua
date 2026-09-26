@@ -201,6 +201,8 @@ function glyphs.power(x, y, s)
     line(x, y, s, 0.5, 0.08, 0.5, 0.50)
 end
 
+glyphs.quit = glyphs.power
+
 --- a padlock: a shackle arc over a rounded body
 function glyphs.lock(x, y, s)
     love.graphics.arc("line", "open", x + 0.5 * s, y + 0.44 * s, 0.20 * s, math.pi, 2 * math.pi, 16)

@@ -1,11 +1,14 @@
 {
   "game": {
-    "hint": "Esc: pausar",
     "pause": {
       "title": "PAUSADO",
       "resume": "Continuar",
       "quit": "Menu principal",
-      "hint": "Esc: continuar    W/S ou Mouse: navegar    Enter ou Clique: selecionar"
+      "hint": "Esc: continuar    W/S ou Mouse: navegar    Enter ou Clique: selecionar",
+      "confirmQuit": {
+        "title": "Sair desta partida?",
+        "message": "Você voltará ao menu principal e esta partida terminará."
+      }
     }
   }
 }

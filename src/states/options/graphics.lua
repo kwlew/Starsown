@@ -250,6 +250,7 @@ function GraphicsTab.new(screen)
 
     self.applyButton = UI.Button.new{
         label = function() return I18n.t("options.applyGraphics") end,
+        icon = "apply",
         onSelect = function()
             UI.Sfx.press()
             self:applyPending()
