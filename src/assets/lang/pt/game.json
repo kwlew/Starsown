@@ -1,21 +1,14 @@
 {
-    "hud": {
-        "hp": "Vida",
-        "stamina": "Vigor",
-        "currency": "Moedas"
-    },
-    "inventory": {
-        "title": "Inventário"
-    },
-    "crafting": {
-        "title": "Criação"
-    },
-    "items": {
-        "wood": "Madeira",
-        "stone": "Pedra",
-        "herb": "Erva",
-        "gem": "Gema",
-        "axe": "Machado",
-        "stone_sword": "Espada de pedra"
+  "game": {
+    "pause": {
+      "title": "PAUSADO",
+      "resume": "Continuar",
+      "quit": "Menu principal",
+      "hint": "Esc: continuar    W/S ou Mouse: navegar    Enter ou Clique: selecionar",
+      "confirmQuit": {
+        "title": "Sair desta partida?",
+        "message": "Você voltará ao menu principal e esta partida terminará."
+      }
     }
+  }
 }

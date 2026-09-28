@@ -54,8 +54,9 @@ function Menu:buttons()
 end
 
 ---@param index integer
-function Menu:setFocus(index)
-    self.group:setFocus(index)
+---@param silent? boolean # skip onFocusChanged, for focus the player didn't move
+function Menu:setFocus(index, silent)
+    self.group:setFocus(index, silent)
 end
 
 --- fn(widget, index) fires when the player moves the focus, not when the menu is built

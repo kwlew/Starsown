@@ -11,6 +11,7 @@
     "titleFont": "Шрифт заголовка",
     "uiFont": "Шрифт интерфейса",
     "customCursor": "Свой курсор",
+    "customCursorColor": "Цвет указателя",
     "customCursorSize": "Размер курсора",
     "customCursorOutlineWidth": "Контур курсора",
     "customCursorHoverOutlineWidth": "Контур курсора при наведении",
@@ -58,6 +59,19 @@
       "orbitron": "Orbitron",
       "jetmono": "JetBrains Mono"
     },
+    "customCursorColorName": {
+      "theme": "Тема",
+      "original": "Оригинал",
+      "white": "Белый",
+      "red": "Красный",
+      "orange": "Оранжевый",
+      "yellow": "Жёлтый",
+      "green": "Зелёный",
+      "cyan": "Голубой",
+      "blue": "Синий",
+      "purple": "Фиолетовый",
+      "pink": "Розовый"
+    },
     "uiFontName": {
       "oxanium": "Oxanium",
       "jetmono": "JetBrains Mono"
@@ -74,6 +88,7 @@
       "titleFont": "Шрифт заголовка игры. Применяется сразу.",
       "uiFont": "Шрифт для всего остального: меню, кнопок и текста настроек. Применяется сразу.",
       "customCursor": "Заменяет системный указатель на собственный курсор игры. Применяется сразу.",
+      "customCursorColor": "Цвет указателя в меню. «Тема» следует текущей теме; «Оригинал» показывает рисунок как есть. Применяется сразу.",
       "customCursorSize": "Размер собственного курсора игры. Применяется сразу.",
       "customCursorOutlineWidth": "Толщина контура курсора в состоянии покоя. Применяется сразу.",
       "customCursorHoverOutlineWidth": "Толщина контура курсора при наведении на интерактивный элемент. Применяется сразу.",

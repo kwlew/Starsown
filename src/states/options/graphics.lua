@@ -170,6 +170,14 @@ function GraphicsTab:pendingToggle(key, pendingKey, transform)
     return toggle
 end
 
+-- setMode recreates the GL context, which wipes the nebula's baked canvases.
+local function applyGraphics(settings)
+    local ok, err, adjusted, modeChanged = Settings.applyGraphics(settings)
+    local nebula = Assets.get("nebula")
+    if modeChanged and nebula and nebula:isBaked() then nebula:bake() end
+    return ok, err, adjusted
+end
+
 --- A disabled-at-boot nebula is intentionally not baked during loading. Pay
 -- that one-time cost only if the player later asks to see it.
 ---@param value boolean
@@ -242,6 +250,7 @@ function GraphicsTab.new(screen)
 
     self.applyButton = UI.Button.new{
         label = function() return I18n.t("options.applyGraphics") end,
+        icon = "apply",
         onSelect = function()
             UI.Sfx.press()
             self:applyPending()
@@ -459,7 +468,7 @@ function GraphicsTab:applyPending()
     settings.res_x, settings.res_y = res[1], res[2]
     settings.msaa, settings.windowMode = self.pending.msaa, self.pending.windowMode
     settings.vsync, settings.display = self.pending.vsync, self.pending.display
-    local ok, _, adjusted = Settings.applyGraphics(settings)
+    local ok, _, adjusted = applyGraphics(settings)
     if not ok then
         local recovery = self:restore()
         return self:showError(recovery or "failed")
@@ -490,13 +499,13 @@ function GraphicsTab:restore()
     if not baseline then return end
     local settings = self.screen.settings
     for key, value in pairs(baseline) do settings[key] = value end
-    local ok = Settings.applyGraphics(settings)
+    local ok = applyGraphics(settings)
     local recovery
     if not ok then
         settings.display, settings.windowMode = 1, "windowed"
         settings.res_x, settings.res_y = DisplayLimits.minimum(1)
         settings.msaa, settings.vsync = 0, 1
-        ok = Settings.applyGraphics(settings)
+        ok = applyGraphics(settings)
         recovery = ok and "recovery" or "restoreFailed"
     end
     if not ok then Settings.readGraphics(settings) end

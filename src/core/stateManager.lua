@@ -136,12 +136,12 @@ local blockedWhileFading = {
 local callbacks = {
     "keypressed", "keyreleased", "chordpressed", "textinput",
     "mousepressed", "mousereleased", "mousemoved", "wheelmoved",
-    "resize",
+    "resize", "focus",
 }
 
 --- forwards each LÖVE input/resize callback to the current state's own, if it
--- has one. Input is dropped mid-fade -- everything except mouse-move and
--- resize, which would otherwise leave stale hover/layout on arrival.
+-- has one. Input is dropped mid-fade -- everything except mouse-move, resize
+-- and focus, which would otherwise leave stale hover/layout/pause on arrival.
 for _, name in ipairs(callbacks) do
     ---@diagnostic disable-next-line: assign-type-mismatch
     StateManager[name] = function(...)

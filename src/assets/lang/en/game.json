@@ -1,21 +1,14 @@
 {
-    "hud": {
-        "hp": "HP",
-        "stamina": "Stamina",
-        "currency": "Coins"
-    },
-    "inventory": {
-        "title": "Inventory"
-    },
-    "crafting": {
-        "title": "Crafting"
-    },
-    "items": {
-        "wood": "Wood",
-        "stone": "Stone",
-        "herb": "Herb",
-        "gem": "Gem",
-        "axe": "Axe",
-        "stone_sword": "Stone Sword"
+  "game": {
+    "pause": {
+      "title": "PAUSED",
+      "resume": "Resume",
+      "quit": "Main Menu",
+      "hint": "Esc: resume    W/S or Mouse: navigate    Enter or Click: select",
+      "confirmQuit": {
+        "title": "Leave this run?",
+        "message": "You'll return to the main menu and this run will end."
+      }
     }
+  }
 }

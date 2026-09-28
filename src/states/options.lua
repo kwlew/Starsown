@@ -7,7 +7,7 @@
 -- an entry in `self.tabs` below. Shared row builders are in rows.lua.
 --
 -- Esc or "Back" returns to whichever state opened this one:
---   StateManager.fadeTo("options", { returnTo = "pause" })
+--   StateManager.fadeTo("options", { returnTo = "game" })
 --
 -- Abandoning a run isn't offered here: during a run this screen is reached
 -- through the pause menu, and that's where quitting lives.
@@ -163,6 +163,7 @@ function Options:enter(previousName, opts)
 
         self.backButton = UI.Button.new{
             label = function() return I18n.t("options.back") end,
+            icon = "back",
             onSelect = function() self:goBack() end,
         }
         self.backButton.descKey = "options.desc.back"

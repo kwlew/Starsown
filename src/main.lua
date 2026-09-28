@@ -48,6 +48,7 @@ function love.load(args)
     GameTitle.setFont(settings.titleFont)
     UI.Theme.setUiFontFamily(settings.uiFont)
     UI.Cursor.setEnabled(settings.customCursor)
+    UI.Cursor.setPointerColor(settings.customCursorColor)
     UI.Cursor.setSize(settings.customCursorSize)
     UI.Cursor.setOutlineWidth(settings.customCursorOutlineWidth)
     UI.Cursor.setHoverOutlineWidth(settings.customCursorHoverOutlineWidth)
@@ -144,6 +145,7 @@ love.mousepressed  = StateManager.mousepressed
 love.mousereleased = StateManager.mousereleased
 love.mousemoved    = StateManager.mousemoved
 love.wheelmoved    = StateManager.wheelmoved
+love.focus         = StateManager.focus
 
 --- LÖVE's main loop, replaced only to make the frame cap optional: the stock
 -- loop always sleeps, and the uncapFps setting needs that to be conditional
