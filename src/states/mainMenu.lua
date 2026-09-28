@@ -59,7 +59,7 @@ local buildTitle = GameTitle.build
 ---@return table # a TextFactory
 local function buildVersionLabel()
     return TextFactory:new{
-        text = "v" .. Globals.game.version,
+        text = Globals.game.version,
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }

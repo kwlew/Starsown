@@ -47,7 +47,7 @@ end
 ---@return table # a TextFactory
 local function buildVersionLabel()
     return TextFactory:new{
-        text = "v" .. Globals.game.version,
+        text = Globals.game.version,
         font = UI.Theme.font("small"),
         color = UI.Theme.colors.textDim,
     }
@@ -60,7 +60,7 @@ end
 ---@return table # a TextFactory
 local function buildBigVersionLabel()
     return TextFactory:new{
-        text = "v" .. Globals.game.version,
+        text = Globals.game.version,
         font = UI.Theme.fontSized("small", VERSION_BIG_SIZE),
         color = UI.Theme.colors.text,
     }

@@ -3,13 +3,13 @@
 -- learns -- including that it can't run at all -- goes back as a result,
 -- because an error that stays in this thread is an error nobody sees.
 
-local url, clientId, jobName, resultName, devCpath = ...
+local url, clientId, jobName, resultName, extraCpath = ...
 
 local out = love.thread.getChannel(resultName)
 
--- an unpackaged `love src` run can't load C modules from the game folder,
--- so the main thread points us at the dev copy of lua-https when it exists
-if devCpath then package.cpath = devCpath .. ";" .. package.cpath end
+-- LÖVE can't load C modules from the game folder or a .love, so the main
+-- thread points us at the dev copy or the extracted bundled copy of lua-https
+if extraCpath then package.cpath = extraCpath .. ";" .. package.cpath end
 
 local loaded, https = pcall(require, "https")
 if not loaded then

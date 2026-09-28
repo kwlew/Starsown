@@ -23,11 +23,28 @@ local function option(args, flag)
     end
 end
 
+---@param args string[]
+---@param flag string
+---@return boolean
+local function hasFlag(args, flag)
+    for _, value in ipairs(args or {}) do
+        if value == flag then return true end
+    end
+    return false
+end
+
 --- boot: scale the UI, read settings, apply language/theme/cursor/motion, then
 -- hand off to the loading screen, which owns the rest of the load
----@param args string[] # command line; `--stats-endpoint <url>` points stats at a test server
+---@param args string[] # command line; `--stats-endpoint <url>` points stats at a test server,
+-- `--check-https` only loads lua-https, prints the result and exits (the build scripts' verify)
 ---@diagnostic disable-next-line: duplicate-set-field
 function love.load(args)
+    if hasFlag(args, "--check-https") then
+        local ok, err = Stats.checkHttps()
+        print(ok and "[check-https] ok" or ("[check-https] failed: " .. err))
+        os.exit(ok and 0 or 1)
+    end
+
     love.window.setTitle(Globals.game.name)
 
     UI.Theme.rescale()

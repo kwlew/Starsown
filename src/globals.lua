@@ -1,8 +1,12 @@
 local Globals = {}
 
+-- version.txt is written into the archive by the build scripts (git describe);
+-- an unpackaged `love src` run has none
+local stamped = love.filesystem.read("version.txt")
+
 Globals.game = {
     name      = "Starsown",
-    version   = "0.3.0",
+    version   = stamped and stamped:match("^%s*(%S+)") or "dev",
     startedAt = 0,
 }
 

@@ -1,28 +1,40 @@
 name: Build
 
-# Builds and verifies both supported targets. Windows also checks fused PE
-# executables; Fedora checks the portable .love archive against LÖVE 11.5.
+# Builds and verifies both supported targets. Windows ships the fused bytecode
+# .exe (no .love); Linux ships the bytecode .love with lua-https bundled, since
+# no Linux LÖVE package includes it and world stats need it. Pushing a v* tag
+# also attaches both to that tag's GitHub release.
 
 on:
   push:
     branches: [main, dev-build]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   # Keep in sync with src/conf.lua's t.version.
   LOVE_VERSION: "11.5"
   # Keep in sync with tools/build.ps1's $RCEDIT_VERSION.
   RCEDIT_VERSION: "v2.0.0"
+  # love2d/lua-https commit bundled into the Linux .love.
+  LUA_HTTPS_REF: "e1b77046dd3cf1a9f61ddeb63cb39d47c844c089"
 
 jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
+      # Full history and tags: the build scripts stamp `git describe` into
+      # the archive as the game's version.
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Cache LÖVE download
         id: love-cache
@@ -78,15 +90,86 @@ jobs:
         shell: pwsh
         run: tools/build.ps1 -Fuse -Bytecode -Verify
 
-      - name: Upload build artifacts
-        if: always()
+      # The last build above left the bytecode exe in dist/. The .love is
+      # already inside the exe, so it isn't shipped separately.
+      - name: Upload Windows build
         uses: actions/upload-artifact@v7
         with:
-          name: Starsown-dist
-          path: dist/
-          if-no-files-found: ignore
+          name: Starsown-windows-x64
+          path: |
+            dist/Starsown.exe
+            dist/*.dll
+            dist/love-license.txt
+          if-no-files-found: error
+
+  # Built on the oldest glibc we want to support (2.35) so the bundled module
+  # loads on any newer distro; libstdc++ is linked statically for the same
+  # reason. lua-https dlopens libcurl/OpenSSL at runtime, so those aren't linked.
+  lua-https-linux:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    timeout-minutes: 10
+    steps:
+      - name: Cache lua-https build
+        id: https-cache
+        uses: actions/cache@v5
+        with:
+          path: lua-https-out
+          key: lua-https-${{ env.LUA_HTTPS_REF }}-ubuntu22.04-x64
+
+      - name: Install build dependencies
+        if: steps.https-cache.outputs.cache-hit != 'true'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: >-
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          ca-certificates git cmake make g++ binutils
+          libluajit-5.1-dev libcurl4-openssl-dev libssl-dev
+
+      - name: Checkout lua-https
+        if: steps.https-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: love2d/lua-https
+          ref: ${{ env.LUA_HTTPS_REF }}
+          path: lua-https
+
+      - name: Build lua-https
+        if: steps.https-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S lua-https -B lua-https-build -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_MODULE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          cmake --build lua-https-build -j"$(nproc)"
+          mkdir -p lua-https-out
+          find lua-https-build -name https.so -exec cp {} lua-https-out/https.so \;
+          strip --strip-unneeded lua-https-out/https.so
+
+      - name: Check lua-https portability
+        shell: bash
+        run: |
+          set -euo pipefail
+          needed=$(objdump -p lua-https-out/https.so | awk '/NEEDED/ { print $2 }')
+          echo "$needed"
+          unexpected=$(grep -Ev '^(libc\.so\.6|ld-linux-x86-64\.so\.2)$' <<<"$needed" || true)
+          if [[ -n $unexpected ]]; then
+              echo "https.so links more than glibc, so it won't be portable: $unexpected" >&2
+              exit 1
+          fi
+          echo "Newest glibc symbol: $(objdump -T lua-https-out/https.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+
+      - name: Upload lua-https
+        uses: actions/upload-artifact@v7
+        with:
+          name: lua-https-linux-x64
+          path: lua-https-out/https.so
+          if-no-files-found: error
+          retention-days: 1
 
   linux-fedora:
+    needs: lua-https-linux
     runs-on: ubuntu-latest
     container: fedora:44
     timeout-minutes: 10
@@ -99,15 +182,28 @@ jobs:
           git love zip unzip
           xorg-x11-server-Xvfb xorg-x11-xauth
 
+      # Full history and tags: the build scripts stamp `git describe` into
+      # the archive as the game's version.
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
+      - name: Download lua-https
+        uses: actions/download-artifact@v7
+        with:
+          name: lua-https-linux-x64
+          path: .ci/lua-https
+
+      # Checked, not shipped: catches a source-only packaging problem the
+      # bytecode build would hide.
       - name: Build + verify (.love)
         shell: bash
         run: >-
           xvfb-run -a bash tools/build-linux.sh
           --verify
-          --output dist/Starsown.love
+          --https-lib .ci/lua-https/https.so
+          --output dist/check/Starsown-source.love
 
       - name: Build + verify (bytecode .love)
         shell: bash
@@ -115,12 +211,70 @@ jobs:
           xvfb-run -a bash tools/build-linux.sh
           --bytecode
           --verify
-          --output dist/Starsown-bytecode.love
+          --https-lib .ci/lua-https/https.so
+          --output dist/Starsown.love
 
-      - name: Upload Fedora artifacts
-        if: always()
+      - name: Upload Linux build
         uses: actions/upload-artifact@v7
         with:
-          name: Starsown-linux-fedora44
-          path: dist/*.love
-          if-no-files-found: ignore
+          name: Starsown-linux
+          path: dist/Starsown.love
+          if-no-files-found: error
+
+  # Attaches the builds to the tag's release: uploads into one that already
+  # exists (made in GitHub's UI), otherwise opens a draft to name and publish.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux-fedora]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download builds
+        uses: actions/download-artifact@v7
+        with:
+          pattern: Starsown-*
+          path: builds
+
+      # Python rather than unzip: unzip exits non-zero on the fused exe's
+      # prepended love.exe bytes.
+      - name: Check version stamps
+        shell: bash
+        run: |
+          set -euo pipefail
+          for build in builds/Starsown-windows-x64/Starsown.exe builds/Starsown-linux/Starsown.love; do
+              stamped=$(python3 -c 'import sys, zipfile; print(zipfile.ZipFile(sys.argv[1]).read("version.txt").decode().strip())' "$build")
+              if [[ $stamped != "$TAG" ]]; then
+                  echo "::error::$build is stamped '$stamped', expected '$TAG'"
+                  exit 1
+              fi
+          done
+
+      - name: Package release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release "stage/Starsown-$TAG"
+          cp builds/Starsown-windows-x64/* "stage/Starsown-$TAG/"
+          (cd stage && zip -q -9 -r "../release/Starsown-$TAG-windows-x64.zip" "Starsown-$TAG")
+          cp builds/Starsown-linux/Starsown.love "release/Starsown-$TAG.love"
+          (cd release && sha256sum -- * > SHA256SUMS)
+          ls -l release
+
+      - name: Publish to release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" release/* --clobber
+          else
+              prerelease=()
+              if [[ $TAG == *-* ]]; then prerelease=(--prerelease); fi
+              gh release create "$TAG" release/* --draft --verify-tag --generate-notes \
+                  --title "Starsown $TAG" "${prerelease[@]}"
+          fi
