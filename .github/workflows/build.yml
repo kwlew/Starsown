@@ -147,7 +147,10 @@ jobs:
           find lua-https-build -name https.so -exec cp {} lua-https-out/https.so \;
           strip --strip-unneeded lua-https-out/https.so
 
+      # A cached https.so already passed this on the run that built it, and
+      # binutils (objdump) is only installed on a cache miss.
       - name: Check lua-https portability
+        if: steps.https-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
