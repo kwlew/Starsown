@@ -32,3 +32,11 @@ values, missing monitors, and saves during an unconfirmed preview. Monitor
 switching and fullscreen Keep/Revert still need an interactive check.
 The script uses SDL's offscreen driver by default; set `SDL_VIDEODRIVER` to use
 another driver.
+
+## License
+
+- **Code** is [MIT](LICENSE).
+- **Art** (sprites, icons, the logo) is all rights reserved - see
+  [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
+- **Fonts** are third-party, credited in [CREDITS.md](CREDITS.md) with their
+  licenses alongside them. **Music and sound effects** are CC0.
