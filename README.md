@@ -2,11 +2,10 @@
 
 ## Features
 
-![Version](https://img.shields.io/badge/version-v0.2.0-black?style=for-the-badge
+![Version](https://img.shields.io/badge/version-v0.3.1-black?style=for-the-badge
 )
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge
 )
-
 
 - **Fourteen color themes**, switchable any time from Options.
 - **English, Spanish, Portuguese, and Russian** localization.
@@ -18,7 +17,7 @@ The gameplay itself is still in game design phase.
 
 Requires [LÖVE 11.5](https://love2d.org/). From the project root:
 
-```
+``` bash
 love src
 ```
 
