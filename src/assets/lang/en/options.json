@@ -11,6 +11,7 @@
     "titleFont": "Title Font",
     "uiFont": "Interface Font",
     "customCursor": "Custom Cursor",
+    "customCursorColor": "Pointer Color",
     "customCursorSize": "Cursor Size",
     "customCursorOutlineWidth": "Cursor Outline",
     "customCursorHoverOutlineWidth": "Cursor Hover Outline",
@@ -58,6 +59,19 @@
       "orbitron": "Orbitron",
       "jetmono": "JetBrains Mono"
     },
+    "customCursorColorName": {
+      "theme": "Theme",
+      "original": "Original",
+      "white": "White",
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "cyan": "Cyan",
+      "blue": "Blue",
+      "purple": "Purple",
+      "pink": "Pink"
+    },
     "uiFontName": {
       "oxanium": "Oxanium",
       "jetmono": "JetBrains Mono"
@@ -74,6 +88,7 @@
       "titleFont": "Font used for the game's title. Applies immediately.",
       "uiFont": "Font used everywhere else: menus, buttons, and settings text. Applies immediately.",
       "customCursor": "Replaces your system pointer with the game's own cursor. Applies immediately.",
+      "customCursorColor": "Color of the menu pointer. Theme follows the current theme; Original shows the artwork as drawn. Applies immediately.",
       "customCursorSize": "Size of the custom cursor. Applies immediately.",
       "customCursorOutlineWidth": "Thickness of the cursor's outline at rest. Applies immediately.",
       "customCursorHoverOutlineWidth": "Thickness of the cursor's outline while hovering something interactive. Applies immediately.",

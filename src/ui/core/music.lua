@@ -28,7 +28,7 @@ local CROSSFADE = 4
 
 local FADE_IN = 1.5 -- the very first track of a session eases up too, just faster, so it doesn't pop in
 
-local current = nil  -- { source, name }
+local current = nil  -- { source, name, level = 0..1 }; level < 1 only when promoted mid-crossfade
 local next_   = nil  -- { source, name, fade = 0..1 }, set once a crossfade begins
 local introFade = 1  -- 0..1; only < 1 while the very first track eases in
 local playlist = "menu"
@@ -80,12 +80,15 @@ function Music.start(kind)
 
     if next_ then
         Audio.stop("music", current.source)
-        current = next_
+        current, next_ = next_, nil
+        current.level = current.fade
     end
     next_ = playTrack(pickTrack(current.name))
     if next_ then
         next_.fade = 0
         next_.source:setVolume(0)
+    else
+        current.level = nil
     end
 end
 
@@ -109,7 +112,7 @@ function Music.update(dt)
     if next_ then
         next_.fade = math.min(1, next_.fade + dt / CROSSFADE)
         next_.source:setVolume(volume * next_.fade)
-        current.source:setVolume(volume * (1 - next_.fade) * introFade)
+        current.source:setVolume(volume * (current.level or 1) * (1 - next_.fade) * introFade)
 
         if next_.fade >= 1 or not current.source:isPlaying() then
             Audio.stop("music", current.source)

@@ -172,9 +172,9 @@ end
 
 -- setMode recreates the GL context, which wipes the nebula's baked canvases.
 local function applyGraphics(settings)
-    local ok, err, adjusted = Settings.applyGraphics(settings)
+    local ok, err, adjusted, modeChanged = Settings.applyGraphics(settings)
     local nebula = Assets.get("nebula")
-    if nebula and nebula:isBaked() then nebula:bake() end
+    if modeChanged and nebula and nebula:isBaked() then nebula:bake() end
     return ok, err, adjusted
 end
 

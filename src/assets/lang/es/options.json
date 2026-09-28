@@ -11,6 +11,7 @@
     "titleFont": "Fuente del Título",
     "uiFont": "Fuente de la Interfaz",
     "customCursor": "Cursor Personalizado",
+    "customCursorColor": "Color del Puntero",
     "customCursorSize": "Tamaño del Cursor",
     "customCursorOutlineWidth": "Contorno del Cursor",
     "customCursorHoverOutlineWidth": "Contorno al Pasar el Cursor",
@@ -58,6 +59,19 @@
       "orbitron": "Orbitron",
       "jetmono": "JetBrains Mono"
     },
+    "customCursorColorName": {
+      "theme": "Tema",
+      "original": "Original",
+      "white": "Blanco",
+      "red": "Rojo",
+      "orange": "Naranja",
+      "yellow": "Amarillo",
+      "green": "Verde",
+      "cyan": "Cian",
+      "blue": "Azul",
+      "purple": "Morado",
+      "pink": "Rosa"
+    },
     "uiFontName": {
       "oxanium": "Oxanium",
       "jetmono": "JetBrains Mono"
@@ -74,6 +88,7 @@
       "titleFont": "Fuente usada en el título del juego. Se aplica de inmediato.",
       "uiFont": "Fuente usada en todo lo demás: menús, botones y textos de ajustes. Se aplica de inmediato.",
       "customCursor": "Reemplaza el puntero de tu sistema con el cursor propio del juego. Se aplica de inmediato.",
+      "customCursorColor": "Color del puntero en los menús. Tema sigue el tema actual; Original muestra el dibujo tal cual. Se aplica de inmediato.",
       "customCursorSize": "Tamaño del cursor personalizado. Se aplica de inmediato.",
       "customCursorOutlineWidth": "Grosor del contorno del cursor en reposo. Se aplica de inmediato.",
       "customCursorHoverOutlineWidth": "Grosor del contorno del cursor al pasar sobre algo interactivo. Se aplica de inmediato.",

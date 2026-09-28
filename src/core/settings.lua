@@ -31,6 +31,7 @@ Settings.defaults = {
     titleFont = "acme",
     uiFont = "oxanium",
     customCursor = true,
+    customCursorColor = "theme",
     customCursorSize = 3,
     customCursorOutlineWidth = 0.5,
     customCursorHoverOutlineWidth = 1,
@@ -189,6 +190,7 @@ end
 -- window somewhere unreadable, the revert-countdown dialog in options.lua is
 -- what rescues the player, same as it does for a bad resolution.
 ---@param settings table
+---@return boolean ok, string|nil err, boolean|nil adjusted, boolean|nil changed # changed: setMode ran, recreating the GL context
 function Settings.applyGraphics(settings)
     if settings.display < 1 or settings.display > love.window.getDisplayCount() then
         return false, "Display is no longer available"
@@ -229,7 +231,7 @@ function Settings.applyGraphics(settings)
     end
     if changed and love.resize then love.resize(actualW, actualH) end
     love.mouse.setVisible(not settings.customCursor)
-    return true, nil, adjusted
+    return true, nil, adjusted, changed
 end
 
 --- called from main.lua's love.resize on every resize, not just a drag: a

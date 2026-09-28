@@ -92,12 +92,14 @@ function InterfaceTab.new(screen)
         CURSOR_HOVER_OUTLINE_WIDTHS, pxFormat, UI.Cursor.setHoverOutlineWidth)
     self.cursorClickGrowth = Rows.settingSelector(screen, "customCursorClickGrowth",
         CURSOR_CLICK_GROWTHS, pxFormat, UI.Cursor.setClickGrowth)
-    self.cursorTuning = { self.cursorSize, self.cursorOutlineWidth,
+    self.cursorColor = idSelector(screen, "customCursorColor", UI.Cursor.pointerColors(),
+        UI.Cursor.setPointerColor)
+    self.cursorTuning = { self.cursorColor, self.cursorSize, self.cursorOutlineWidth,
         self.cursorHoverOutlineWidth, self.cursorClickGrowth }
 
     self.customCursor = Rows.settingToggle(screen, "customCursor", function(value)
         UI.Cursor.setEnabled(value)
-        for _, widget in ipairs(self.cursorTuning) do widget.enabled = value end
+        self:syncCursorRows(screen.settings)
         screen.group:refresh()
     end)
 
@@ -114,12 +116,17 @@ function InterfaceTab.new(screen)
         self.theme, UI.Preview.newTheme{},
         self.titleFont, UI.Preview.newTitleFont{},
         self.uiFont, UI.Preview.newUiFont{},
-        self.customCursor, self.cursorSize, self.cursorOutlineWidth,
+        self.customCursor, self.cursorColor, self.cursorSize, self.cursorOutlineWidth,
         self.cursorHoverOutlineWidth, self.cursorClickGrowth,
         self.reducedMotion,
         self.shareStats,
     }
     return self
+end
+
+---@param settings table
+function InterfaceTab:syncCursorRows(settings)
+    for _, widget in ipairs(self.cursorTuning) do widget.enabled = settings.customCursor end
 end
 
 --- points every row back at the saved values; called on each visit
@@ -132,11 +139,12 @@ function InterfaceTab:sync(settings)
     self.uiFont.index = Rows.indexWhere(UI.Theme.uiFontFamilies(), byId(UI.Theme.currentUiFontFamily()))
 
     self.customCursor.value = settings.customCursor
+    self.cursorColor.index = Rows.indexWhere(UI.Cursor.pointerColors(), byId(settings.customCursorColor))
     Rows.selectValue(self.cursorSize, settings.customCursorSize)
     Rows.selectValue(self.cursorOutlineWidth, settings.customCursorOutlineWidth)
     Rows.selectValue(self.cursorHoverOutlineWidth, settings.customCursorHoverOutlineWidth)
     Rows.selectValue(self.cursorClickGrowth, settings.customCursorClickGrowth)
-    for _, widget in ipairs(self.cursorTuning) do widget.enabled = settings.customCursor end
+    self:syncCursorRows(settings)
 
     self.reducedMotion.value = settings.reducedMotion
     self.shareStats.value = settings.shareStats

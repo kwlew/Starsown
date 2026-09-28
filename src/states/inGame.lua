@@ -1,9 +1,11 @@
---- The play screen. Today it's only the shell a run lives in: Discord's elapsed
--- timer, the game playlist and the pause overlay -- the way a run reaches
--- Achievements and Options, which both return here paused.
+--- The play screen: the shell a run lives in. The simulation itself is
+-- game/engine.lua; this owns Discord's elapsed timer, the game playlist and
+-- the pause overlay -- the way a run reaches Achievements and Options, which
+-- both return here paused.
 
 local StateManager = require "core.stateManager"
 local Presence = require "services.presence"
+local Engine = require "game.engine"
 local UI = require "ui"
 local I18n = require "core.i18n"
 local Ease = require "utils.ease"
@@ -27,6 +29,7 @@ function InGame:enter(previousName)
     local resuming = PAUSE_DESTINATIONS[previousName] == true and self.runStartedAt ~= nil
     if not resuming then
         self.runStartedAt = os.time()
+        self.engine = Engine.new()
     end
     Presence.show("game", { startedAt = self.runStartedAt })
     UI.Music.start("game")
@@ -123,12 +126,16 @@ end
 
 function InGame:resize()
     self:layout()
+    if self.engine then self.engine:resize() end
 end
 
 ---@param dt number
 function InGame:update(dt)
     self.overlay = UI.Theme.approach(self.overlay, self.paused and 1 or 0, dt, FADE_SPEED)
-    if not self.paused then return end
+    if not self.paused then
+        self.engine:update(dt)
+        return
+    end
 
     if self.quitDialog:isOpen() then
         self.quitDialog:update(dt)
@@ -231,10 +238,12 @@ function InGame:drawPauseOverlay()
 end
 
 function InGame:draw()
+    self.engine:draw()
     if self.overlay > 0.001 then self:drawPauseOverlay() end
 
     if not self.paused then
         UI.Cursor.setHover(false)
+        UI.Cursor.useGameCursor()
         return
     end
 

@@ -203,6 +203,19 @@ end
 
 glyphs.quit = glyphs.power
 
+local BACK = { 0.74, 0.12, 0.14, 0.50, 0.74, 0.88 }
+
+--- a left-pointing triangle
+function glyphs.back(x, y, s)
+    poly("fill", x, y, s, BACK)
+end
+
+--- a check mark
+function glyphs.apply(x, y, s)
+    line(x, y, s, 0.14, 0.52, 0.40, 0.78)
+    line(x, y, s, 0.40, 0.78, 0.86, 0.22)
+end
+
 --- a padlock: a shackle arc over a rounded body
 function glyphs.lock(x, y, s)
     love.graphics.arc("line", "open", x + 0.5 * s, y + 0.44 * s, 0.20 * s, math.pi, 2 * math.pi, 16)
