@@ -17,6 +17,12 @@ Options:
   --strip-debug         Strip debug information from bytecode.
   --compile-seconds N   Bytecode compilation timeout (default: 30).
   --output PATH         Output archive (default: dist/Starsown.love).
+  --game-version TEXT   Version stamped into the archive's version.txt
+                        (default: git describe --tags --always --dirty).
+  --https-lib PATH      Bundle this Linux x64 lua-https (https.so) so world
+                        stats work; the game extracts it at runtime, since
+                        LÖVE can't load a C module from inside a .love.
+                        With --verify, also checks the packaged copy loads.
   -h, --help            Show this help.
 
 The Linux artifact is a .love file, not a fused native executable. Players can
@@ -30,6 +36,8 @@ strip_debug=false
 verify_seconds=12
 compile_seconds=30
 output_path=''
+https_lib=''
+game_version=''
 
 while (($# > 0)); do
     case "$1" in
@@ -45,7 +53,7 @@ while (($# > 0)); do
             strip_debug=true
             shift
             ;;
-        --verify-seconds|--compile-seconds|--output)
+        --verify-seconds|--compile-seconds|--output|--https-lib|--game-version)
             if (($# < 2)); then
                 printf 'Missing value for %s\n' "$1" >&2
                 usage >&2
@@ -55,6 +63,8 @@ while (($# > 0)); do
                 --verify-seconds) verify_seconds=$2 ;;
                 --compile-seconds) compile_seconds=$2 ;;
                 --output) output_path=$2 ;;
+                --https-lib) https_lib=$2 ;;
+                --game-version) game_version=$2 ;;
             esac
             shift 2
             ;;
@@ -100,6 +110,30 @@ if [[ $verify == true || $bytecode == true ]]; then
         printf 'LÖVE was not found in PATH. Install LÖVE 11.5 first.\n' >&2
         exit 1
     fi
+fi
+
+if [[ -n $https_lib ]]; then
+    if [[ ! -f $https_lib ]]; then
+        printf 'No lua-https library at %s\n' "$https_lib" >&2
+        exit 1
+    fi
+    if [[ $(head -c 4 -- "$https_lib" | od -An -tx1 | tr -d ' \n') != 7f454c46 ]]; then
+        printf '%s is not an ELF shared library.\n' "$https_lib" >&2
+        exit 1
+    fi
+fi
+
+# safe.directory: CI checks out inside a container as a different user than
+# the one running this, and git refuses to read such a repo without it.
+if [[ -z $game_version ]]; then
+    game_version=$(git -C "$root" -c safe.directory="$root" describe --tags --always --dirty 2>/dev/null || true)
+fi
+if [[ -z $game_version ]]; then
+    game_version=dev
+fi
+if [[ ! $game_version =~ ^[[:graph:]]+$ ]]; then
+    printf 'Game version must be one word, got: %s\n' "$game_version" >&2
+    exit 2
 fi
 
 if [[ -z $output_path ]]; then
@@ -161,10 +195,30 @@ rm -f -- "$output_path"
     zip -q -9 -r "$output_path" .
 )
 
+# Read by src/globals.lua.
+version_stage="$work_dir/version"
+mkdir -p -- "$version_stage"
+printf '%s\n' "$game_version" >"$version_stage/version.txt"
+(
+    cd -- "$version_stage"
+    zip -q -9 "$output_path" version.txt
+)
+
+# Must match BUNDLED_HTTPS in src/services/stats.lua.
+if [[ -n $https_lib ]]; then
+    native_stage="$work_dir/native"
+    mkdir -p -- "$native_stage/native/linux-x64"
+    cp -- "$https_lib" "$native_stage/native/linux-x64/https.so"
+    (
+        cd -- "$native_stage"
+        zip -q -9 "$output_path" native/linux-x64/https.so
+    )
+fi
+
 archive_list="$work_dir/archive-entries.txt"
 unzip -Z1 "$output_path" >"$archive_list"
 
-for required in main.lua conf.lua; do
+for required in main.lua conf.lua version.txt; do
     if ! grep -Fqx -- "$required" "$archive_list"; then
         printf '%s is not at the root of %s.\n' "$required" "$output_path" >&2
         exit 1
@@ -202,8 +256,11 @@ bytecode_note=''
 if [[ $bytecode == true ]]; then
     bytecode_note=', bytecode'
 fi
-printf 'Built %s (%s KiB, %s entries%s)\n' \
-    "$output_path" "$archive_kib" "$entry_count" "$bytecode_note"
+if [[ -n $https_lib ]]; then
+    bytecode_note="$bytecode_note, lua-https bundled"
+fi
+printf 'Built %s %s (%s KiB, %s entries%s)\n' \
+    "$output_path" "$game_version" "$archive_kib" "$entry_count" "$bytecode_note"
 
 if [[ $verify != true ]]; then
     exit 0
@@ -236,3 +293,20 @@ fi
 
 printf 'Verified: ran %s seconds from a clean directory with no errors.\n' \
     "$verify_seconds"
+
+if [[ -n $https_lib ]]; then
+    https_log="$work_dir/check-https.log"
+    set +e
+    (
+        cd -- "$verify_dir"
+        timeout --kill-after=2s 30s love "$artifact_name" --check-https
+    ) >"$https_log" 2>&1
+    https_status=$?
+    set -e
+    cat "$https_log"
+    if [[ $https_status -ne 0 ]] || ! grep -Fq '[check-https] ok' "$https_log"; then
+        printf 'The packaged lua-https did not load (status %s).\n' "$https_status" >&2
+        exit 1
+    fi
+    printf 'Verified: the bundled lua-https loads from the packaged game.\n'
+fi

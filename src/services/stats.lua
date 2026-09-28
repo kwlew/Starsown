@@ -138,6 +138,46 @@ local function devCpath()
     return source .. "/../.tools/lua-https/?." .. ext
 end
 
+-- lua-https copies packaged into the .love by tools/build-linux.sh --https-lib
+local BUNDLED_HTTPS = { Linux = "native/linux-x64/https.so" }
+
+--- A C module can't be dlopen'd from inside a .love, so a bundled lua-https is
+-- extracted to the save directory first. Each build gets its own folder, named
+-- by content hash, so an update never overwrites a copy a running game has loaded.
+---@return string|nil # a package.cpath entry
+local function bundledCpath()
+    local path = BUNDLED_HTTPS[love.system.getOS()]
+    if not path or jit.arch ~= "x64" then return nil end
+    local bundled = love.filesystem.read(path)
+    if not bundled then return nil end
+
+    local dir = "native/" .. love.data.encode("string", "hex", love.data.hash("md5", bundled))
+    if not love.filesystem.getInfo(dir .. "/https.so", "file") then
+        love.filesystem.createDirectory(dir)
+        local ok, err = love.filesystem.write(dir .. "/https.so", bundled)
+        if not ok then
+            print("[stats] couldn't extract the bundled lua-https: " .. tostring(err))
+            return nil
+        end
+    end
+    return love.filesystem.getSaveDirectory() .. "/" .. dir .. "/?.so"
+end
+
+---@return string|nil # where the stats worker should look for lua-https, beyond LÖVE's defaults
+local function httpsCpath()
+    return devCpath() or bundledCpath()
+end
+
+--- loads lua-https on this thread the same way the worker would; for the
+-- packaged-build check (`--check-https`), not for normal play
+---@return boolean ok, string|nil err
+function Stats.checkHttps()
+    local cpath = httpsCpath()
+    if cpath then package.cpath = cpath .. ";" .. package.cpath end
+    local ok, err = pcall(require, "https")
+    return ok, not ok and tostring(err) or nil
+end
+
 --- Abandons the current worker and starts a new one, with a fresh channel pair.
 local function spinUpWorker()
     generation = generation + 1
@@ -152,7 +192,7 @@ local function spinUpWorker()
 
     jobChannel    = love.thread.getChannel(jobName)
     resultChannel = love.thread.getChannel(resultName)
-    thread:start(endpoint, clientId(), jobName, resultName, devCpath())
+    thread:start(endpoint, clientId(), jobName, resultName, httpsCpath())
 end
 
 --- sends up to MAX_REPORT pops, moving them out of the backlog and into

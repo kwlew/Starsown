@@ -1,6 +1,7 @@
 local Theme = require "ui.core.theme"
 local Math = require "utils.math"
 local Diagnostics = require "core.diagnostics"
+local Globals = require "globals"
 
 local Debug = {
     fps = 0,
@@ -77,11 +78,16 @@ function Debug:draw()
 
     Theme.pushFont(font)
     love.graphics.setColor(Theme.colors.textDim)
-    love.graphics.printf("FPS: " .. Debug.fps, 4, 2, width, "left")
-    love.graphics.printf("Memory: " .. Debug.memory .. " KB", 4, 2 + lineHeight, width, "left")
-    love.graphics.printf("Latency: " .. Debug.latency .. " ms", 4, 2 + lineHeight * 2, width, "left")
-    for i, line in ipairs(Diagnostics.lines()) do
-        love.graphics.printf(line, 4, 2 + lineHeight * (3 + i), width, "left")
+    local lines = {
+        Globals.game.name .. " " .. Globals.game.version,
+        "FPS: " .. Debug.fps,
+        "Memory: " .. Debug.memory .. " KB",
+        "Latency: " .. Debug.latency .. " ms",
+        "",
+    }
+    for _, line in ipairs(Diagnostics.lines()) do lines[#lines + 1] = line end
+    for i, line in ipairs(lines) do
+        love.graphics.printf(line, 4, 2 + lineHeight * (i - 1), width, "left")
     end
     Theme.popFont()
 

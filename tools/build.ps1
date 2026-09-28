@@ -57,7 +57,10 @@ param(
     # Strip debug info (line numbers, local names) from the bytecode. Smaller,
     # but pcall/traceback messages lose their file:line — off by default so
     # a bug report is still debuggable.
-    [switch]$StripDebug
+    [switch]$StripDebug,
+    # Stamped into the archive's version.txt, which src/globals.lua reads.
+    # Defaults to `git describe --tags --always --dirty`, or "dev" without git.
+    [string]$GameVersion = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +74,13 @@ $exe  = Join-Path $dist 'Starsown.exe'
 if (-not (Test-Path (Join-Path $src 'main.lua'))) {
     throw "No main.lua in $src - is this the right repo?"
 }
+
+if (-not $GameVersion -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    $described = & git -C $root describe --tags --always --dirty 2>$null
+    if ($LASTEXITCODE -eq 0) { $GameVersion = "$described".Trim() }
+}
+if (-not $GameVersion) { $GameVersion = 'dev' }
+if ($GameVersion -notmatch '^\S+$') { throw "-GameVersion must be one word, got: $GameVersion" }
 
 # The LÖVE install directory: PATH first, then the usual Windows install
 # location. Shared by -Bytecode (needs a runtime to compile through), -Fuse
@@ -195,9 +205,18 @@ Move-Item $zip $love
 
 if ($Bytecode) { Remove-Item (Join-Path $dist '.bytecode-staging') -Recurse -Force }
 
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::Open($love, 'Update')
+try {
+    $writer = New-Object System.IO.StreamWriter($archive.CreateEntry('version.txt').Open(),
+        (New-Object System.Text.UTF8Encoding($false)))
+    try { $writer.Write("$GameVersion`n") } finally { $writer.Dispose() }
+} finally {
+    $archive.Dispose()
+}
+
 # The archive must be able to stand alone: main.lua and conf.lua at the root,
 # and every module the entry point pulls in present somewhere inside.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($love)
 try {
     $names = $archive.Entries.FullName
@@ -205,7 +224,7 @@ try {
     $archive.Dispose()
 }
 
-foreach ($required in @('main.lua', 'conf.lua')) {
+foreach ($required in @('main.lua', 'conf.lua', 'version.txt')) {
     if ($names -notcontains $required) {
         throw "$required is not at the root of the archive - LOVE will not run it."
     }
@@ -236,7 +255,7 @@ if ($missing.Count -gt 0) {
 
 $kb = [math]::Round((Get-Item $love).Length / 1KB)
 $bytecodeNote = if ($Bytecode) { ', bytecode' } else { '' }
-Write-Host "Built $love  ($kb KB, $($names.Count) entries$bytecodeNote)" -ForegroundColor Green
+Write-Host "Built $love $GameVersion  ($kb KB, $($names.Count) entries$bytecodeNote)" -ForegroundColor Green
 
 if ($Fuse) {
     $loveHome = Find-LoveHome
