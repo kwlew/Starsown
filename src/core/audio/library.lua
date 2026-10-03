@@ -7,8 +7,6 @@ local cache = {}
 ---@param path string
 ---@param name string
 ---@param sourceType? "static"|"stream"
----@return any|nil source
----@return string? err
 function Library.preload(path, name, sourceType)
     local ok, source = pcall(love.audio.newSource, path, sourceType or "static")
     if not ok then
