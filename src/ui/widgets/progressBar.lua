@@ -1,16 +1,18 @@
---- The glowing progress bar (extracted from the loading state): eased fill,
--- pulsing additive halo, optional percentage readout.
+--- A glowing progress bar: eased fill, pulsing additive halo, optional
+-- percentage readout. Not a Widget -- it's never focused or clicked.
 --
 --   local bar = ProgressBar.new{}
---   bar:setProgress(0.4)   -- target; the shown fill eases toward it
+--   bar:setProgress(0.4) -- the target; the shown fill eases toward it
 --   bar:update(dt)
---   bar:draw(x, y, w, h)   -- geometry can also be set once via fields
+--   bar:draw(x, y, w, h)
 
-local Theme = require "ui.core.theme"
-local Math = require "utils.math"
+local Math = require("utils.math")
+local Theme = require("ui.core.theme")
 
 local ProgressBar = {}
 ProgressBar.__index = ProgressBar
+
+local PULSE_BASE, PULSE_AMOUNT = 0.4, 0.4
 
 ---@param config? table # { x?: number, y?: number, w?: number, h?: number, fillSpeed?: number, pulseSpeed?: number, showPercent?: boolean, alpha?: number, color?: number[] }
 ---@return table
@@ -22,24 +24,22 @@ function ProgressBar.new(config)
         w = config.w or 300,
         h = config.h or 26,
         target = 0,
-        shown = 0, -- eased toward target for a smooth fill
+        shown = 0,
         fillSpeed = config.fillSpeed or 6,
         pulseSpeed = config.pulseSpeed or 4,
         showPercent = config.showPercent ~= false,
-        alpha = config.alpha or 1, -- set directly before drawing; lets an owning screen fade the bar out
-        color = config.color, -- nil takes the accent; the wave timer switches to `warning` on a boss wave
+        alpha = config.alpha or 1, -- set directly to fade the bar out
+        color = config.color,      -- nil takes the theme accent
         time = 0,
     }, ProgressBar)
 end
 
---- the target; the drawn fill eases toward it
 ---@param t number # 0..1
 function ProgressBar:setProgress(t)
     self.target = Math.clamp01(t)
 end
 
----@return boolean # true only once the eased fill has caught up, not the moment
--- the target hits 1 -- what an owner waits on before moving off the screen
+---@return boolean # true once the eased fill has caught up, not the moment the target hits 1
 function ProgressBar:isComplete()
     return self.target >= 1 and self.shown >= 0.995
 end
@@ -51,7 +51,7 @@ function ProgressBar:update(dt)
 end
 
 --- track, glowing fill, border, and the optional readout
----@param x? number # these also set the bar's stored geometry
+---@param x? number # these also set the stored geometry
 ---@param y? number
 ---@param w? number
 ---@param h? number
@@ -59,10 +59,9 @@ function ProgressBar:draw(x, y, w, h)
     self.x, self.y = x or self.x, y or self.y
     self.w, self.h = w or self.w, h or self.h
 
-    local c, m = Theme.colors, Theme.metrics
-    local radius = m.radius
     local alpha = self.alpha
     if alpha <= 0 then return end
+    local c, radius = Theme.colors, Theme.metrics.radius
 
     Theme.setColor(c.track, alpha)
     love.graphics.rectangle("fill", self.x, self.y, self.w, self.h, radius, radius)
@@ -70,7 +69,7 @@ function ProgressBar:draw(x, y, w, h)
     local fill = self.color or c.accent
     local fillW = self.w * self.shown
     if fillW > 0 then
-        local pulse = 0.4 + 0.4 * math.sin(self.time * self.pulseSpeed)
+        local pulse = PULSE_BASE + PULSE_AMOUNT * math.sin(self.time * self.pulseSpeed)
         Theme.glowRect(self.x, self.y, fillW, self.h, radius, pulse * alpha, fill)
         Theme.setColor(fill, alpha)
         love.graphics.rectangle("fill", self.x, self.y, fillW, self.h, radius, radius)

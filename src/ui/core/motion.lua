@@ -1,11 +1,10 @@
---- Controls reduced-motion behavior for interface animations.
+--- The reduced-motion switch every ambient UI animation checks, so the
+-- Options toggle has a single place to reach.
 
 local Motion = {}
 
 Motion.reduced = false
 
---- the one switch every ambient animation checks, so the Options toggle has a
--- single place to reach
 ---@param reduced boolean
 function Motion.setReduced(reduced)
     Motion.reduced = reduced

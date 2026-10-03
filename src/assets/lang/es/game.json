@@ -9,6 +9,11 @@
         "title": "¿Abandonar la partida?",
         "message": "Volverás al menú principal y esta partida terminará."
       }
+    },
+    "death": {
+      "title": "HAS MUERTO",
+      "respawn": "Reaparecer",
+      "hint": "W/S o Mouse: navegar    Enter o Clic: seleccionar"
     }
   }
 }

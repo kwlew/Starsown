@@ -8,10 +8,27 @@ local UI = require "ui"
 local Settings = require "core.settings"
 local Assets = require "core.assets"
 local I18n = require "core.i18n"
-local StateManager = require "core.stateManager"
+local StateManager = require "core.state.manager"
 local Options = require "states.options"
-local Limits = require "core.displayLimits"
+local Limits = require "core.display.limits"
+local Store = require "core.settings.store"
 local checks = 0
+
+-- the Graphics tab and its controls
+local function graphics() return Options.graphics end
+local function dialogs() return Options.graphics.dialogs end
+local function snapshot() return Settings.graphicsSnapshot(Options.settings) end
+
+--- every row that edits a setting, across all tabs
+local function settingRows()
+    local count = 0
+    for _, tab in ipairs(Options.tabs) do
+        for _, widget in ipairs(tab.widgets) do
+            if not widget.contentHeight then count = count + 1 end -- skip previews
+        end
+    end
+    return count
+end
 
 local function check(ok, message)
     assert(ok, message)
@@ -104,7 +121,7 @@ local function layoutChecks()
                 Options:update(1)
                 render(size[1] == 800 and tab == 3 and ("graphics-800-" .. language.code) or nil)
                 if size[1] == 800 then
-                    for _, dialog in ipairs({ Options.revertDialog, Options.unappliedDialog }) do
+                    for _, dialog in ipairs({ dialogs().revert, dialogs().unapplied }) do
                         Options:openDialog(dialog)
                         check(dialog.panel.y >= 0 and dialog.panel.y + dialog.panel.h <= size[2], "Dialog exceeds minimum window")
                         for _, button in ipairs(dialog.buttons) do
@@ -125,7 +142,7 @@ local function layoutChecks()
         UI.Theme.setTheme(palette.id)
         for _, reduced in ipairs({ false, true }) do
             UI.Motion.setReduced(reduced)
-            focus(Options.msaaSelector)
+            focus(Options.graphics.msaa)
             Options:update(0.2)
             render(palette.id == "default" and not reduced and "graphics-1280" or nil)
         end
@@ -140,13 +157,13 @@ local function inputChecks()
     Options:selectTab(3)
     local area = Options.scroll
     check(area.maxScroll > 0, "Graphics should scroll at the minimum size")
-    local height = Options.msaaSelector.h
+    local height = Options.graphics.msaa.h
     -- More content must add scrolling, not compress existing controls.
     local rows = Options.tabs[3].widgets
     local originalCount = #rows
     for i = 1, 5 do rows[#rows + 1] = UI.Toggle.new{ label = "Fixture " .. i } end
     Options:layout()
-    check(near(height, Options.msaaSelector.h), "Fixture rows compressed controls")
+    check(near(height, Options.graphics.msaa.h), "Fixture rows compressed controls")
     -- Test the clipped-click guard against a fixture buried well past the
     -- viewport, not the real last row: with per-row notes gone, real content
     -- is short enough that its natural overflow can land close to the footer.
@@ -169,13 +186,13 @@ local function inputChecks()
     Options:selectTab(1)
     Options:selectTab(3)
     check(near(area.scrollY, savedScroll), "Tab switch loses scroll position")
-    local bx, by, bw, bh = area:thumbRect()
+    local bx, by, bw, bh = area.scrollbar:thumbRect()
     Options:mousepressed(bx + bw / 2, by + bh / 2, 1)
     Options:mousemoved(bx, area.y + area.h + 100)
     Options:mousereleased(bx, area.y + area.h + 100, 1)
-    check(near(area.scrollY, area.maxScroll) and not area.dragOffset, "Scrollbar drag failed")
+    check(near(area.scrollY, area.maxScroll) and not area.scrollbar:isDragging(), "Scrollbar drag failed")
 
-    focus(Options.displaySelector)
+    focus(Options.graphics.display)
     Options:keypressed("pagedown")
     check(area.scrollY > 0, "Page Down did not move content")
     local prior = Options.group.index
@@ -186,7 +203,7 @@ local function inputChecks()
     check(Options.group.index ~= prior, "Shift+Tab did not move focus")
 
     Options:selectTab(1)
-    local slider = Options.musicVolumeSlider
+    local slider = Options.tabs[1].music
     focus(slider)
     local tx, ty, tw = slider:trackRect()
     Options:mousepressed(tx + tw / 2, ty, 1)
@@ -204,12 +221,12 @@ local function inputChecks()
     focus(slider)
     tx, ty, tw = slider:trackRect()
     Options:mousepressed(tx + tw / 2, ty, 1)
-    Options:openDialog(Options.unappliedDialog)
+    Options:openDialog(Options.graphics.dialogs.unapplied)
     check(not slider.dragging and not Options.group.capture, "Modal opening left a drag active")
     Options:keypressed("escape")
     Options:selectTab(3)
 
-    Options.msaaSelector:adjust(1)
+    Options.graphics.msaa:adjust(1)
     Options:goBack()
     check(Options:activeDialog() ~= nil, "Missing leave dialog")
     local index, offset = Options.group.index, area.scrollY
@@ -217,7 +234,7 @@ local function inputChecks()
     Options:keypressed("tab")
     check(Options.group.index == index and area.scrollY == offset, "Modal leaked input")
     Options:keypressed("escape")
-    check(Options:isDirty() and not Options:activeDialog(), "Cancel lost pending edits")
+    check(Options.graphics:isDirty() and not Options:activeDialog(), "Cancel lost pending edits")
 
     -- ScrollArea must restore an existing scissor, not clear it globally.
     love.graphics.setScissor(10, 20, 300, 200)
@@ -229,12 +246,12 @@ local function inputChecks()
     fresh()
     Options.settings.res_x, Options.settings.res_y = 900, 650
     Options:resize()
-    check(not Options:isDirty(), "Untouched resolution became dirty on window resize")
-    Options.resolutionSelector:adjust(1)
-    local pending = Options.resolutionSelector:selected()
+    check(not Options.graphics:isDirty(), "Untouched resolution became dirty on window resize")
+    Options.graphics.resolution:adjust(1)
+    local pending = Options.graphics.resolution:selected()
     Options.settings.res_x, Options.settings.res_y = 1000, 700
     Options:resize()
-    local selected = Options.resolutionSelector:selected()
+    local selected = Options.graphics.resolution:selected()
     check(selected[1] == pending[1] and selected[2] == pending[2], "Resize overwrote explicit pending resolution")
 end
 
@@ -277,14 +294,14 @@ local function smoothScrollChecks()
     Options:update(1)
     check(area.scrollY == previous and area.targetY == previous, "Content kept moving during pointer interaction")
     area:setScroll(goal, true)
-    Options:openDialog(Options.unappliedDialog)
+    Options:openDialog(Options.graphics.dialogs.unapplied)
     previous = area.scrollY
     Options:update(0.1)
     check(area.scrollY == previous and area.targetY == previous, "Content kept moving behind a modal")
     Options:keypressed("escape")
 
     area:setScroll(0)
-    focus(Options.displaySelector)
+    focus(Options.graphics.display)
     Options:keypressed("pagedown")
     check(area.targetY > 0 and area.scrollY == 0, "Page Down did not ease")
     Options:update(1)
@@ -304,7 +321,7 @@ local function smoothScrollChecks()
     check(area.scrollY == 0, "Reduced motion still animates scrolling")
     UI.Motion.setReduced(false)
     area:setScroll(goal, true)
-    local bx, by, bw, bh = area:thumbRect()
+    local bx, by, bw, bh = area.scrollbar:thumbRect()
     Options:mousepressed(bx + bw / 2, by + bh / 2, 1)
     Options:mousemoved(bx, area.y + area.h + 100)
     Options:mousereleased(bx, area.y + area.h + 100, 1)
@@ -318,43 +335,43 @@ local function transactionChecks()
     local apply = Settings.applyGraphics
     local destination, driver
     Settings.applyGraphics = function(settings)
-        driver = Options:graphicsSnapshot()
+        driver = snapshot()
         Options:resize()
         return true
     end
     local fade = StateManager.fadeTo
     StateManager.fadeTo = function(name) destination = name end
     fresh()
-    check(not Options:isDirty() and not Options.applyButton.enabled, "False initial dirty state")
-    for tab = 1, 3 do Options:selectTab(tab); check(not Options:isDirty(), "Tab creates edits") end
-    Options.msaaSelector:adjust(1)
-    Options.msaaSelector:adjust(-1)
-    check(not Options:isDirty(), "Restoring value does not clear dirty state")
-    Options.showNebulaToggle:activate()
-    Options.uncapFpsToggle:activate()
-    check(not Options:isDirty(), "Immediate setting enables Apply")
+    check(not Options.graphics:isDirty() and not Options.graphics.applyButton.enabled, "False initial dirty state")
+    for tab = 1, 3 do Options:selectTab(tab); check(not Options.graphics:isDirty(), "Tab creates edits") end
+    Options.graphics.msaa:adjust(1)
+    Options.graphics.msaa:adjust(-1)
+    check(not Options.graphics:isDirty(), "Restoring value does not clear dirty state")
+    Options.graphics.showNebula:activate()
+    Options.graphics.uncapFps:activate()
+    check(not Options.graphics:isDirty(), "Immediate setting enables Apply")
 
-    Options.msaaSelector:adjust(1)
-    Options.musicVolumeSlider:adjust(-1)
+    Options.graphics.msaa:adjust(1)
+    Options.tabs[1].music:adjust(-1)
     local music = Options.settings.musicVolume
     Options:goBack()
     Options:keypressed("return") -- Discard is first.
-    check(destination == "mainMenu" and not Options:isDirty(), "Discard did not leave cleanly")
+    check(destination == "mainMenu" and not Options.graphics:isDirty(), "Discard did not leave cleanly")
     check(Settings.load().musicVolume == music, "Discard reverted immediate setting")
 
     for _, result in ipairs({ "keep", "revert", "escape", "timeout" }) do
         fresh()
         Options:selectTab(3)
         destination = nil
-        local previous = Options:graphicsSnapshot()
-        Options.msaaSelector:adjust(1)
-        Options.vsyncToggle:activate()
-        local pendingMsaa = Options.pending.msaa
+        local previous = snapshot()
+        Options.graphics.msaa:adjust(1)
+        Options.graphics.vsync:activate()
+        local pendingMsaa = Options.graphics.pending.msaa
         Options:selectTab(1)
-        check(Options:isDirty() and Options.applyButton.enabled, "Tab switch lost pending edits")
-        focus(Options.applyButton)
+        check(Options.graphics:isDirty() and Options.graphics.applyButton.enabled, "Tab switch lost pending edits")
+        focus(Options.graphics.applyButton)
         Options:keypressed("return")
-        check(driver.msaa == pendingMsaa and Options.revertDialog:isOpen(), "Apply from Audio failed")
+        check(driver.msaa == pendingMsaa and Options.graphics.dialogs.revert:isOpen(), "Apply from Audio failed")
         if result == "keep" then
             Options:keypressed("right"); Options:keypressed("return")
             check(Settings.load().msaa == pendingMsaa, "Keep did not persist")
@@ -362,24 +379,24 @@ local function transactionChecks()
         elseif result == "escape" then Options:keypressed("escape")
         else Options:update(10.1) end
         if result ~= "keep" then check(driver.msaa == previous.msaa and driver.vsync == previous.vsync, "Revert did not restore graphics") end
-        check(not Options:activeDialog() and not Options:isDirty() and destination == nil, "Confirmation ended incorrectly")
+        check(not Options:activeDialog() and not Options.graphics:isDirty() and destination == nil, "Confirmation ended incorrectly")
     end
 
     fresh()
-    Options.msaaSelector:adjust(1)
+    Options.graphics.msaa:adjust(1)
     Options:goBack()
     Options:keypressed("right"); Options:keypressed("return")
-    check(Options.revertDialog:isOpen(), "Apply from leave prompt failed")
+    check(Options.graphics.dialogs.revert:isOpen(), "Apply from leave prompt failed")
     Options:keypressed("right"); Options:keypressed("return")
     check(destination == "mainMenu", "Apply/Keep from leave did not return")
     for _, result in ipairs({ "revert", "timeout" }) do
         fresh()
         destination = nil
-        Options.msaaSelector:adjust(1)
+        Options.graphics.msaa:adjust(1)
         Options:goBack()
         Options:keypressed("right"); Options:keypressed("return")
         if result == "revert" then Options:keypressed("return") else Options:update(10.1) end
-        check(not destination and not Options:activeDialog() and not Options.leaveAfterApply,
+        check(not destination and not Options:activeDialog() and not Options.graphics.leaveAfterApply,
             "Reverting from leave prompt exited or left a queued exit")
     end
     Settings.applyGraphics, StateManager.fadeTo = apply, fade
@@ -395,7 +412,7 @@ local function displayTransactionChecks()
     local savedResize, write = love.resize, love.filesystem.write
     local dw, dh, flags, behavior, displays, calls
     local function copy(t) local r = {}; for k, v in pairs(t) do r[k] = v end; return r end
-    local function disk() return assert(love.filesystem.load(Settings.FILENAME))() end
+    local function disk() return assert(love.filesystem.load(Store.FILENAME))() end
     local function same(a, b)
         for key, value in pairs(Settings.graphicsSnapshot(a)) do
             if b[key] ~= value then return false end
@@ -415,6 +432,8 @@ local function displayTransactionChecks()
         dw, dh = w, h
         if flags.fullscreen and flags.fullscreentype == "desktop" then dw, dh = love.window.getDesktopDimensions(flags.display) end
         if behavior == "downgrade" then flags.msaa = 2; behavior = nil end
+        -- a slow compositor (Wayland): fullscreen isn't reported yet
+        if behavior == "lateFullscreen" then flags.fullscreen, flags.fullscreentype = false, "desktop" end
         -- A driver may send resize before setMode returns. It must not save or
         -- overwrite partially applied settings during that callback.
         Settings.trackWindowResize(Options.settings, dw - 20, dh - 20)
@@ -434,50 +453,48 @@ local function displayTransactionChecks()
         Settings.save(Options.settings)
     end
     reset()
-    check(Options.tabs[3].widgets[1] == Options.displaySelector
-        and Options.tabs[3].widgets[2] == Options.windowModeSelector
-        and Options.tabs[3].widgets[3] == Options.resolutionSelector, "Display controls are out of order")
-    check(Options.tabs[3].widgets[4] == Options.msaaSelector
-        and Options.tabs[3].widgets[5] == Options.showNebulaToggle
-        and Options.tabs[3].widgets[6] == Options.vsyncToggle
-        and Options.tabs[3].widgets[7] == Options.uncapFpsToggle, "Graphics grouping changed or lost controls")
+    local g, rows = graphics(), Options.tabs[3].widgets
+    check(rows[1] == g.display and rows[2] == g.windowMode and rows[3] == g.resolution,
+        "Display controls are out of order")
+    check(rows[4] == g.msaa and rows[5] == g.showNebula and rows[6] == g.showStars
+        and rows[7] == g.vsync and rows[8] == g.uncapFps, "Graphics grouping changed or lost controls")
 
     displays = 1 -- single-monitor: same read-only-value-explanation contract as borderless resolution
     fresh()
     Options:selectTab(3)
-    check(Options.displaySelector.readOnly and not Options.displaySelector:isInteractive(),
+    check(Options.graphics.display.readOnly and not Options.graphics.display:isInteractive(),
         "Single monitor should be read-only")
-    check(Options.displaySelector:displayText():find(I18n.t("options.note.monitor"), 1, true) ~= nil,
+    check(Options.graphics.display:displayText():find(I18n.t("options.note.monitor"), 1, true) ~= nil,
         "Read-only monitor's own value doesn't show the explanation")
     reset()
 
-    Options.windowModeSelector:adjust(1) -- borderless
-    local desktop = Options.resolutionSelector:selected()
-    check(Options.resolutionSelector.readOnly and not Options.resolutionSelector:isInteractive()
+    Options.graphics.windowMode:adjust(1) -- borderless
+    local desktop = Options.graphics.resolution:selected()
+    check(Options.graphics.resolution.readOnly and not Options.graphics.resolution:isInteractive()
         and desktop[1] == 1920 and desktop[2] == 1080, "Borderless does not show the selected desktop")
     -- Read-only rows can never be focused (keyboard/mouse both skip them), so
     -- their explanation has to live in the rendered value itself.
-    check(Options.resolutionSelector:displayText():find(I18n.t("options.note.borderless"), 1, true) ~= nil,
+    check(Options.graphics.resolution:displayText():find(I18n.t("options.note.borderless"), 1, true) ~= nil,
         "Read-only resolution's own value doesn't show the explanation")
-    Options.displaySelector:adjust(1)
-    desktop = Options.resolutionSelector:selected()
+    Options.graphics.display:adjust(1)
+    desktop = Options.graphics.resolution:selected()
     check(desktop[1] == 1280 and desktop[2] == 720, "Borderless resolution did not follow the monitor")
-    Options.windowModeSelector:adjust(1) -- exclusive, prior custom 800x600 is not a reported mode
-    local selected = Options.resolutionSelector:selected()
-    check(not Options.resolutionSelector.readOnly and Options.resolutionAdjusted
+    Options.graphics.windowMode:adjust(1) -- exclusive, prior custom 800x600 is not a reported mode
+    local selected = Options.graphics.resolution:selected()
+    check(not Options.graphics.resolution.readOnly
         and selected[1] == 1920 and selected[2] == 1080, "Unsupported fullscreen resolution was retained")
-    Options:applyPending()
-    check(Options.revertDialog:isOpen(), "Exclusive mode did not open confirmation")
+    Options.graphics:applyPending()
+    check(Options.graphics.dialogs.revert:isOpen(), "Exclusive mode did not open confirmation")
     Options:keypressed("escape")
     check(Options.settings.windowMode == "windowed", "Exclusive mode did not revert")
 
     reset()
     local baseline = copy(Options.settings)
-    Options.msaaSelector:adjust(1)
+    Options.graphics.msaa:adjust(1)
     behavior = "downgrade"
-    Options:applyPending()
-    check(Options.previewAdjusted and Options.settings.msaa == 2 and Options.revertDialog:isOpen(), "Driver downgrade was not surfaced")
-    check(Options.revertDialog:messageText():find(I18n.t("options.adjustedGraphics"), 1, true), "Confirmation omits fallback explanation")
+    Options.graphics:applyPending()
+    check(Options.graphics.previewAdjusted and Options.settings.msaa == 2 and Options.graphics.dialogs.revert:isOpen(), "Driver downgrade was not surfaced")
+    check(Options.graphics.dialogs.revert:messageText():find(I18n.t("options.adjustedGraphics"), 1, true), "Confirmation omits fallback explanation")
     check(same(disk(), baseline), "setMode/resize saved an unconfirmed configuration")
     dw, dh = 900, 650
     love.resize(dw, dh)
@@ -487,15 +504,29 @@ local function displayTransactionChecks()
     check(same(Settings.load(), baseline), "Restart during preview would load unconfirmed graphics")
     Options:keypressed("right"); Options:keypressed("return")
     check(disk().msaa == 2 and disk().res_x == 900 and disk().res_y == 650, "Keep did not save actual granted dimensions/MSAA")
-    check(not Options:isDirty() and not Options.applyButton.enabled, "Resize during confirmation left stale pending edits after Keep")
+    check(not Options.graphics:isDirty() and not Options.graphics.applyButton.enabled, "Resize during confirmation left stale pending edits after Keep")
+
+    for _, mode in ipairs({ "borderless", "exclusive" }) do
+        reset()
+        behavior = "lateFullscreen"
+        repeat Options.graphics.windowMode:adjust(1) until Options.graphics.pending.windowMode == mode
+        Options.graphics:applyPending()
+        check(Options.settings.windowMode == mode and not Options.graphics.previewAdjusted,
+            "A late fullscreen report changed the mode: " .. mode)
+        Options:keypressed("right"); Options:keypressed("return") -- Keep
+        love.resize(1920, 1080) -- the compositor's late resize
+        check(disk().windowMode == mode and Settings.load().windowMode == mode,
+            "Fullscreen did not survive Keep: " .. mode)
+        behavior = nil
+    end
 
     for _, failure in ipairs({ "rejectOnce", "throwOnce", "rejectAll" }) do
         reset()
         baseline = copy(Options.settings)
-        Options.msaaSelector:adjust(1)
+        Options.graphics.msaa:adjust(1)
         behavior = failure
-        Options:applyPending()
-        check(Options.errorDialog:isOpen() and not Options.revertDialog:isOpen(), "Failed mode change has no usable error dialog")
+        Options.graphics:applyPending()
+        check(Options.graphics.dialogs.error:isOpen() and not Options.graphics.dialogs.revert:isOpen(), "Failed mode change has no usable error dialog")
         check(same(disk(), baseline), "Failed mode change overwrote confirmed settings")
         check(Options.settings.res_x == dw and Options.settings.res_y == dh and Options.settings.msaa == flags.msaa,
             "Failed recovery does not show the actual runtime state")
@@ -504,13 +535,13 @@ local function displayTransactionChecks()
 
     reset()
     Options.settings.display, flags.display = 2, 2
-    Options:resetPending()
+    Options.graphics:resetPending()
     Settings.save(Options.settings)
     baseline = copy(Options.settings)
-    Options.msaaSelector:adjust(1)
+    Options.graphics.msaa:adjust(1)
     displays = 1 -- unplugged between editing and Apply
-    Options:applyPending()
-    check(Options.graphicsError == "recovery" and Options.settings.display == 1
+    Options.graphics:applyPending()
+    check(Options.graphics.error == "recovery" and Options.settings.display == 1
         and Options.settings.windowMode == "windowed", "Missing display did not recover to primary window")
     Settings.save(Options.settings)
     check(same(disk(), baseline), "Unconfirmed recovery replaced the confirmed startup configuration")
@@ -518,12 +549,12 @@ local function displayTransactionChecks()
 
     reset()
     baseline = copy(Options.settings)
-    Options.msaaSelector:adjust(1)
-    Options:applyPending()
+    Options.graphics.msaa:adjust(1)
+    Options.graphics:applyPending()
     love.filesystem.write = function() return false, "Disk full" end
     Options:keypressed("right"); Options:keypressed("return")
     love.filesystem.write = write
-    check(Options.graphicsError == "saveFailed" and same(Options.settings, baseline), "Failed Keep did not revert graphics")
+    check(Options.graphics.error == "saveFailed" and same(Options.settings, baseline), "Failed Keep did not revert graphics")
     check(same(disk(), baseline), "Failed Keep overwrote the confirmed file")
     Options:keypressed("escape")
 
@@ -544,7 +575,7 @@ function love.load()
         I18n.load()
         for key in pairs(UI.Sfx) do if type(UI.Sfx[key]) == "function" then UI.Sfx[key] = function() end end end
         fresh()
-        check(#Options.settingInventory == 17, "Settings missing from inventory")
+        check(settingRows() == 23, "Settings missing from the tabs")
         layoutChecks()
         inputChecks()
         smoothScrollChecks()

@@ -1,27 +1,12 @@
---- Discord Rich Presence. Screens name a preset; this owns the text, the
--- connection and the retry.
---
---   function MainMenu:enter()
---       Presence.show("mainMenu")
---   end
---
--- The IPC connection comes up async a moment after launch, so a setActivity
--- right after a state change can fail. show() records the ask and update()
--- keeps retrying until it lands.
---
--- The title line isn't set from here: Discord always shows the app name from
--- the developer portal and ignores an activity `name`.
-
-local RPC = require "vendor.discordRPC"
-local Diagnostics = require "core.diagnostics"
+local Globals = require("globals")
+local rpc = require("lib.discordRPC.rpc")
+local diagnostics = require("lib.diagnostics")
 
 local Presence = {}
 
-local APP_ID = "1528201797863473362"
-local NAME = "discord" -- this service's name in Diagnostics
+local APP_ID = Globals.services.discordAppId
+local NAME = "discord"
 
--- what the F3 overlay says for each connection state; "not running" isn't an
--- error, most players simply don't have Discord open
 local STATUS = {
     disconnected = "waiting for Discord",
     handshaking = "connecting",
@@ -30,8 +15,6 @@ local STATUS = {
 
 Presence.SESSION_START = os.time()
 
--- English on purpose: presence is read by the player's Discord friends, not
--- by the player, so the game's language setting says nothing about theirs.
 local PRESETS = {
     mainMenu     = { details = "Main Menu",    state = "Getting ready", smallText = "In the menu" },
     options      = { details = "Options",      state = "Changing settings" },
@@ -45,20 +28,13 @@ local pendingKey = nil
 local delivered = false
 local wasReady = false
 
---- opens the connection; call once at boot. The handshake finishes async, so
--- nothing is ready yet when this returns.
 function Presence.initialize()
-    RPC.initialize(APP_ID, {
-        onError = function(code, detail) Diagnostics.report(NAME, code, detail) end,
+    rpc.initialize(APP_ID, {
+        onError = function(code, detail) diagnostics.report(NAME, code, detail) end,
     })
-    Diagnostics.setStatus(NAME, STATUS.disconnected)
+    diagnostics.setStatus(NAME, STATUS.disconnected)
 end
 
---- shows a preset, with any of its fields overridden. Asking for what's
--- already showing is a no-op, so re-entering a screen doesn't spend
--- Discord's setActivity rate limit (~5 per 20s).
----@param name string # a key of PRESETS
----@param overrides? table # { details?: string, state?: string, smallText?: string, startedAt?: integer }; startedAt defaults to the session start
 function Presence.show(name, overrides)
     local preset = PRESETS[name]
     assert(preset, "Presence.show: no preset named '" .. tostring(name) .. "'")
@@ -78,7 +54,7 @@ function Presence.show(name, overrides)
         timestamps = { start = startedAt },
         assets = {
             large_image = "game_logo",
-            large_text = "Starsown",
+            large_text = Globals.game.name,
             small_image = "playing_icon",
             small_text = smallText,
         },
@@ -87,31 +63,27 @@ function Presence.show(name, overrides)
     delivered = false
 end
 
---- dt matters: RPC.update runs its reconnect backoff off it, so calling this
--- bare freezes the retry timer and a failed connect becomes permanent.
----@param dt number
 function Presence.update(dt)
-    RPC.update(dt)
-    Diagnostics.setStatus(NAME, STATUS[RPC.state()] or RPC.state())
+    rpc.update(dt)
+    diagnostics.setStatus(NAME, STATUS[rpc.state()] or rpc.state())
 
     -- a fresh connection (first, or after Discord restarted) shows nothing
     -- until told, so whatever is current has to be sent again
-    local ready = RPC.isReady()
+    local ready = rpc.isReady()
     if ready and not wasReady then
         delivered = false
-        Diagnostics.clear(NAME)
+        diagnostics.clear(NAME)
     end
     wasReady = ready
 
     if delivered or not pending then return end
-    if ready and RPC.setActivity(pending) then
+    if ready and rpc.setActivity(pending) then
         delivered = true
     end
 end
 
---- closes the connection; call on quit
 function Presence.shutdown()
-    RPC.shutdown()
+    rpc.shutdown()
 end
 
 return Presence

@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  # Keep in sync with src/conf.lua's t.version.
+  # Keep in sync with game.loveVersion in src/globals.lua.
   LOVE_VERSION: "11.5"
   # Keep in sync with tools/build.ps1's $RCEDIT_VERSION.
   RCEDIT_VERSION: "v2.0.0"

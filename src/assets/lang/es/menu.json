@@ -15,22 +15,20 @@
     },
     "splashes": [
       "¡Prueba a hacer clic en las estrellas!",
-      "¡Ahora con más idle!",
+      "¡Ahora con más estrellas!",
       "¡Juega ahora!",
       "¡Todavía en fase de diseño!",
       "¡Hecho con LÖVE (el motor)!",
       "¡Cuidado con las estrellas doradas!",
       "¡Las estrellas arcoíris son más raras de lo que crees!",
-      "¡Doce temas, cero torres (por ahora)!",
       "¡La nebulosa nunca duerme!",
       "¡100% libre de microtransacciones!",
       "¡Pop va la estrella!",
       "¡Ya disponible en cuatro idiomas!",
-      "¡Tu imperio idle te espera!",
+      "¡Tu campo de estrellas te espera!",
       "¡Discord sabe lo que estás haciendo!",
       "¡Con la potencia de LuaJIT!",
-      "¡Pantallas de carga sorprendentemente bonitas!",
-      "¡Ninguna torre fue dañada en esta versión!"
+      "¡Pantallas de carga sorprendentemente bonitas!"
     ]
   }
 }

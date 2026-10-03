@@ -9,6 +9,11 @@
         "title": "Sair desta partida?",
         "message": "Você voltará ao menu principal e esta partida terminará."
       }
+    },
+    "death": {
+      "title": "VOCÊ MORREU",
+      "respawn": "Renascer",
+      "hint": "W/S ou Mouse: navegar    Enter ou Clique: selecionar"
     }
   }
 }

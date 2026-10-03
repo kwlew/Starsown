@@ -1,16 +1,14 @@
---- Labeled ON/OFF switch row: label on the left, sliding pill on the right.
--- Enter/click flips it; left/right arrows set it explicitly (left = off).
+--- Labelled ON/OFF switch row: label on the left, sliding pill on the right.
+-- Enter/click flips it; left/right set it explicitly (left = off).
 --
---   local t = Toggle.new{ label = "VSync", value = false,
---                         onChange = function(v) ... end }
+--   local t = Toggle.new{ label = "VSync", value = false, onChange = function(v) ... end }
 
-local Theme = require "ui.core.theme"
-local Widget = require "ui.widgets.widget"
+local Theme = require("ui.core.theme")
+local Widget = require("ui.widgets.widget")
 
-local Toggle = {}
-Widget.extend(Toggle)
+local Toggle = Widget.extend({})
 
-local PILL_W, PILL_H = 58, 26 -- design-space px, scaled through Theme.px at use
+local PILL_W, PILL_H = 58, 26 -- design px
 local KNOB_INSET = 3
 
 ---@param config table # Widget.new's fields, plus value: boolean and onChange: fun(value: boolean)
@@ -26,15 +24,11 @@ end
 --- onChange fires only on an actual change, so a caller can set() freely
 ---@param value boolean
 function Toggle:set(value)
-    if not self:isInteractive() then return end
-    if value == self.value then return end
+    if not self:isInteractive() or value == self.value then return end
     self.value = value
-    if self.onChange then
-        self.onChange(value)
-    end
+    if self.onChange then self.onChange(value) end
 end
 
---- flips it (Enter, or a click)
 function Toggle:activate()
     self:set(not self.value)
 end
@@ -54,9 +48,21 @@ function Toggle:preferredControlSize()
     return Theme.px(PILL_W), Theme.px(PILL_H)
 end
 
---- label left, pill right, the knob eased between its two ends
+---@return number x
+---@return number y
+---@return number w
+---@return number h
+function Toggle:pillRect()
+    local w, h = self:preferredControlSize()
+    if self.rowLayout then
+        local cx, cy, cw, ch = self:controlRect()
+        return cx + cw - w, cy + (ch - h) / 2, w, h
+    end
+    return self.x + self.w - Theme.metrics.padding - w, self.y + (self.h - h) / 2, w, h
+end
+
 function Toggle:draw()
-    local c, m = Theme.colors, Theme.metrics
+    local c = Theme.colors
     local alpha, font = self:alpha(), self:getFont()
     self:drawRow(alpha)
 
@@ -64,21 +70,14 @@ function Toggle:draw()
     self:drawLabel(font, alpha)
     Theme.popFont()
 
-    local pillW, pillH = Theme.px(PILL_W), Theme.px(PILL_H)
-    local pillX = self.x + self.w - m.padding - pillW
-    local pillY = self.y + (self.h - pillH) / 2
-    if self.rowLayout then
-        local x, y, w, h = self:controlRect()
-        pillX, pillY = x + w - pillW, y + (h - pillH) / 2
-    end
+    local x, y, w, h = self:pillRect()
     local tr, tg, tb = Theme.lerp(c.track, c.accentDim, self.knob)
     love.graphics.setColor(tr, tg, tb, alpha)
-    love.graphics.rectangle("fill", pillX, pillY, pillW, pillH, pillH / 2, pillH / 2, 64)
+    love.graphics.rectangle("fill", x, y, w, h, h / 2, h / 2, 64)
 
-    local knobR = pillH / 2 - Theme.px(KNOB_INSET)
-    local knobX = pillX + pillH / 2 + (pillW - pillH) * self.knob
+    local knobR = h / 2 - Theme.px(KNOB_INSET)
     Theme.setColor(c.knob, alpha)
-    love.graphics.circle("fill", knobX, pillY + pillH / 2, knobR, 4)
+    love.graphics.circle("fill", x + h / 2 + (w - h) * self.knob, y + h / 2, knobR, 4)
 
     love.graphics.setColor(1, 1, 1, 1)
 end

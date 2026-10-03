@@ -1,19 +1,31 @@
-local Globals = {}
+--- Values worth changing in one place. Plain data only.
+-- Safe in conf.lua: nothing here touches LÖVE.
 
--- version.txt is written into the archive by the build scripts (git describe);
--- an unpackaged `love src` run has none
-local stamped = love.filesystem.read("version.txt")
+return {
+    game = {
+        name = "Starsown",      -- window title, save folder, wordmark
+        loveVersion = "11.5",   -- keep in sync with CI
+        icon = "assets/icon/starsown-128.png",
+    },
 
-Globals.game = {
-    name      = "Starsown",
-    version   = stamped and stamped:match("^%s*(%S+)") or "dev",
-    startedAt = 0,
+    window = {
+        width = 1280,  -- first-launch size, before any saved settings
+        height = 720,
+    },
+
+    links = {
+        github = "https://github.com/kwlew/TD-Idle",
+        discord = "https://discord.gg/HEQ9PB5UHq",
+    },
+
+    services = {
+        discordAppId = "1528201797863473362",
+        statsEndpoint = "https://api.kwlew.dev/stats",
+    },
+
+    world = {
+        widthTiles = 100,
+        heightTiles = 64,
+        tickRate = 20, -- simulation steps per second
+    },
 }
-
---- stamps the session start and seeds the RNG from it; call once at boot
-function Globals.init()
-    Globals.game.startedAt = os.time()
-    math.randomseed(Globals.game.startedAt)
-end
-
-return Globals

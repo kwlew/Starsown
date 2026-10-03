@@ -1,9 +1,8 @@
---- The base every UI widget is built on. Button, Toggle, Slider, Selector,
--- and TabBar all declared the same fields and contains/labelText/update
--- bodies; this holds them once so each widget only writes what differs.
+--- The base every UI widget is built on: the shared fields, focus easing,
+-- hit-testing and the row background, so each widget only writes what
+-- differs.
 --
---   local Button = {}
---   Widget.extend(Button)
+--   local Button = Widget.extend({})
 --   Button.fontRole = "button"
 --
 --   function Button.new(config)
@@ -14,51 +13,63 @@
 --
 -- The contract a widget presents to a FocusGroup:
 --
---   required : contains(x, y)  update(dt)  draw()  enabled
+--   required : contains(x, y)  update(dt)  draw()  isInteractive()
 --   optional : activate()      -- Enter / click
 --              adjust(dir)     -- Left/Right, dir is -1 or 1
 --              mousepressed(x, y, button) -> true to capture the mouse
 --              mousemoved(x, y)
 --              mousereleased(x, y, button)
+--
+-- Settings rows also answer preferredControlSize(available) and get a
+-- measured label/control layout from measureRow (see RowLayout).
 
-local Theme = require "ui.core.theme"
+local Theme = require("ui.core.theme")
+local RowLayout = require("ui.layout.rowLayout")
 
 local Widget = {}
 Widget.__index = Widget
 
-Widget.fontRole = "body" -- overridden per class (see Button/TabBar)
+Widget.fontRole = "body" -- overridden per class
 
---- lookup goes instance -> class -> Widget, so a class table only carries its own overrides
+--- `primary` (Play) is tinted at rest, not lit -- the bloom stays reserved
+-- for actual focus, so lighting up still reads as a change
+Widget.PRIMARY_BASE_GLOW = 0.3
+
+local DISABLED_ALPHA = 0.4
+
+--- lookup goes instance -> class -> parent, so a class only carries its overrides
 ---@param class table # the subclass table
+---@param parent? table # defaults to Widget
 ---@return table class
-function Widget.extend(class)
+function Widget.extend(class, parent)
     class.__index = class
-    return setmetatable(class, { __index = Widget })
+    return setmetatable(class, { __index = parent or Widget })
 end
 
---- the fields every widget shares; a subclass constructor adds only its own
 ---@param class table
----@param config table # { label?: string|fun(self: table): string, enabled?: boolean, danger?: boolean, primary?: boolean, font?: love.Font|string, x?: number, y?: number, w?: number, h?: number }
+---@param config table # { label?: string|fun(self: table): string, enabled?: boolean, readOnly?: boolean, danger?: boolean, primary?: boolean, font?: love.Font|string, x?: number, y?: number, w?: number, h?: number }
 ---@return table
 function Widget.new(class, config)
     return setmetatable({
-        label   = config.label or "",      -- string, or function(self) -> string
-        enabled = config.enabled ~= false, -- disabled = greyed out and inert
-        danger = config.danger or false,   -- lights up red instead of accent (Quit, Discard)
-        primary = config.primary or false, -- always shows the lit look, not just while focused (Play)
-        font = config.font,                -- stored unresolved (nil, a role name, or a Font); see Widget:getFont
+        label    = config.label or "",       -- string, or function(self) -> string
+        enabled  = config.enabled ~= false,  -- disabled = greyed out and inert
+        readOnly = config.readOnly or false, -- shows its value, takes no input, not dimmed
+        danger   = config.danger or false,   -- lights up red instead of accent (Quit, Discard)
+        primary  = config.primary or false,  -- tinted at rest, not just while focused (Play)
+        font     = config.font,              -- unresolved: nil, a role name, or a Font; see getFont
         x = config.x or 0,
         y = config.y or 0,
         w = config.w or 260,
         h = config.h or Theme.metrics.rowHeight,
         focused = false,
-        glow = 0, -- eased 0..1 toward the focused look
-        time = 0, -- drives the focused pulse
-        introAlpha = 1, -- eased 0..1 by an owner playing an entrance animation (see Menu:playIntro)
+        glow = 0,       -- eased 0..1 toward the focused look
+        time = 0,       -- drives the focused pulse
+        introAlpha = 1, -- eased by an entrance animation (see Intro)
+        rowLayout = nil, -- set by measureRow, for settings rows
     }, class)
 end
 
---- set by a layout pass (see each screen's layout()), never during draw
+--- set by a layout pass, never during draw
 ---@param x number
 ---@param y number
 ---@param w number
@@ -79,12 +90,12 @@ function Widget:isInteractive()
     return self.enabled and not self.readOnly
 end
 
----@return string # the label, resolved if it's a function
+---@return string
 function Widget:labelText()
     return Theme.resolveLabel(self.label, self)
 end
 
---- resolved per draw, not in the constructor, so a Theme.rescale is picked up without rebuilding
+--- resolved per draw, so a Theme.rescale is picked up without rebuilding
 ---@return any # a love.Font
 function Widget:getFont()
     return Theme.fontFor(self.font, self.fontRole)
@@ -92,26 +103,21 @@ end
 
 ---@return number # 0..1, folding in both the disabled dim and an entrance animation
 function Widget:alpha()
-    return (self.enabled and 1 or 0.4) * self.introAlpha
+    return (self.enabled and 1 or DISABLED_ALPHA) * self.introAlpha
 end
 
---- overridden by widgets with a second reason to glow (a Slider stays lit for the length of a drag)
+--- overridden by widgets with a second reason to glow (a Slider mid-drag)
 ---@return boolean
 function Widget:isLit()
     return self.focused
 end
 
---- `primary` (Play) is tinted at rest, not lit -- the bloom/full-brightness
--- look stays reserved for actual focus/hover, so lighting up on focus still
--- reads as a change instead of "a bit more of the same thing it always shows"
-Widget.PRIMARY_BASE_GLOW = 0.3
-
---- default: a left-click inside the row activates it; returns false, only a
--- widget with a drag (Slider) captures the mouse
+--- default: a left-click inside activates; only a widget with a drag
+-- (Slider) returns true to capture the mouse
 ---@param px number
 ---@param py number
 ---@param mouseButton integer
----@return boolean # captured whether the widget wants further mouse events
+---@return boolean captured
 function Widget:mousepressed(px, py, mouseButton)
     if mouseButton == 1 and self:contains(px, py) and self.activate then
         self:activate()
@@ -119,50 +125,41 @@ function Widget:mousepressed(px, py, mouseButton)
     return false
 end
 
---- the shared row background: glow, fill and border
----@param alpha? number # defaults to the widget's own
-function Widget:drawRow(alpha)
-    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
-        alpha or self:alpha(), self.danger and "danger" or "accent",
-        self.primary and Widget.PRIMARY_BASE_GLOW or nil)
-end
-
---- Opt-in measured label/control layout, used by scrolling settings rows.
--- Relative rectangles survive scrolling without requiring another measure pass.
+---@param width number
+---@return number height
 function Widget:measureRow(width)
-    local m, font = Theme.metrics, self:getFont()
-    local inner = math.max(1, width - m.padding * 2)
-    local controlW, controlH = self:preferredControlSize(inner)
-    controlW = math.min(inner, controlW)
-    local stacked = font:getWidth(self:labelText()) + m.padding + controlW > inner
-    local labelW = stacked and inner or math.max(1, inner - controlW - m.padding)
-    local _, lines = font:getWrap(self:labelText(), labelW)
-    local labelH = math.max(1, #lines) * font:getHeight()
-    local vpad, gap = Theme.px(8), Theme.px(6)
-    local height = math.max(m.rowHeight,
-        (stacked and labelH + gap + controlH or math.max(labelH, controlH)) + vpad * 2)
-    self.rowLayout = {
-        labelX = m.padding, labelY = stacked and vpad or (height - labelH) / 2,
-        labelW = labelW, labelH = labelH,
-        x = width - m.padding - controlW,
-        y = stacked and vpad + labelH + gap or (height - controlH) / 2,
-        w = controlW, h = controlH, stacked = stacked,
-    }
+    local layout, height = RowLayout.measure(self, width)
+    self.rowLayout = layout
     return height
 end
 
+--- the control's screen rect from the measured layout
+---@return number x
+---@return number y
+---@return number w
+---@return number h
 function Widget:controlRect()
     local r = self.rowLayout
     return self.x + r.x, self.y + r.y, r.w, r.h
 end
 
---- caller owns the font stack
+--- the shared row background: glow, fill and border
+---@param alpha? number # defaults to the widget's own
+function Widget:drawRow(alpha)
+    Theme.rowChrome(self.x, self.y, self.w, self.h, self.glow, self.time,
+        alpha or self:alpha(), self.danger and "danger" or "accent",
+        self.primary and Widget.PRIMARY_BASE_GLOW or nil, self.introAlpha)
+end
+
+--- the label on the row's left, or where measureRow put it. Uses the
+-- current font, so the caller owns the font stack.
+---@param font any # a love.Font, already pushed
+---@param alpha number
 function Widget:drawLabel(font, alpha)
     Theme.setColor(Theme.colors.text, alpha)
     local r = self.rowLayout
     if r then
-        love.graphics.printf(self:labelText(), self.x + r.labelX,
-            self.y + r.labelY, r.labelW, "left")
+        love.graphics.printf(self:labelText(), self.x + r.labelX, self.y + r.labelY, r.labelW, "left")
     else
         love.graphics.print(self:labelText(), self.x + Theme.metrics.padding,
             Theme.centerY(self.y, self.h, font))

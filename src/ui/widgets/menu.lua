@@ -1,26 +1,28 @@
-local Theme = require "ui.core.theme"
-local Button = require "ui.widgets.button"
-local FocusGroup = require "ui.widgets.focusGroup"
-local Ease = require "utils.ease"
-local Math = require "utils.math"
-local Motion = require "ui.core.motion"
+--- A centred vertical column of Buttons over a FocusGroup -- the layout every
+-- screen with a list of choices uses.
+--
+--   local menu = Menu.new{ { label = "Play", icon = "play", primary = true, onSelect = ... }, ... }
+--   menu:layout(y)
+--   menu:playIntro()
+
+local Button = require("ui.widgets.button")
+local FocusGroup = require("ui.widgets.focusGroup")
+local Intro = require("ui.animation.intro")
+local Theme = require("ui.core.theme")
 
 local Menu = {}
 Menu.__index = Menu
 
-local INTRO_DURATION = 1.2
-local INTRO_STAGGER = 0.01
+local MIN_WIDTH = 280 -- design px
 
---- a vertical column of Buttons over a FocusGroup -- the layout every screen
--- with a list of choices uses
----@param items table[] # { label: string|fun(self: table): string, onSelect?: fun(self: table), enabled?: boolean, danger?: boolean, primary?: boolean }[]
+---@param items table[] # { label: string|fun(self: table): string, onSelect?: fun(self: table), icon?: string, enabled?: boolean, danger?: boolean, primary?: boolean }[]
 ---@param font? any # a love.Font or a role name; defaults to the "button" role
 ---@return table
 function Menu.new(items, font)
     local self = setmetatable({
         group = FocusGroup.new(),
+        intro = Intro.new(),
         font = font or "button",
-        minWidth = 280, -- design-space px, scaled through Theme.px at use
     }, Menu)
 
     local buttons = {}
@@ -38,14 +40,9 @@ function Menu.new(items, font)
     self.group:setWidgets(buttons)
 
     local first = self.group:focused()
-    if first then first.glow = 1 end -- first frame already shows the focus
+    if first then first.glow = 1 end -- the first frame already shows the focus
 
     return self
-end
-
----@return any # a love.Font
-function Menu:getFont()
-    return Theme.fontFor(self.font, "button")
 end
 
 ---@return table[]
@@ -59,22 +56,22 @@ function Menu:setFocus(index, silent)
     self.group:setFocus(index, silent)
 end
 
---- fn(widget, index) fires when the player moves the focus, not when the menu is built
+--- fires when the player moves the focus, not when the menu is built
 ---@param fn fun(widget: table, index: integer)
 function Menu:onFocusChanged(fn)
     self.group.onFocusChanged = fn
 end
 
---- centres the column and sizes every button to the widest label, so one long
--- translation widens the whole menu rather than truncating
+--- centres the column and sizes every button to the widest label, so one
+-- long translation widens the whole menu rather than truncating
 ---@param y number # top of the first row
 ---@param spacing? number # row pitch, defaults to rowHeight + rowGap
 function Menu:layout(y, spacing)
     local m = Theme.metrics
-    local font = self:getFont()
+    local font = Theme.fontFor(self.font, "button")
     spacing = spacing or (m.rowHeight + m.rowGap)
 
-    local width = Theme.px(self.minWidth)
+    local width = Theme.px(MIN_WIDTH)
     for _, button in ipairs(self:buttons()) do
         local icon = button.icon and m.rowHeight or 0 -- the icon column is one row-height square
         width = math.max(width, font:getWidth(button:labelText()) + m.padding * 4 + icon)
@@ -86,58 +83,22 @@ function Menu:layout(y, spacing)
     end
 end
 
---- fades the buttons in, staggered top to bottom; a no-op under reduced motion
+--- fades the buttons in, staggered top to bottom
 function Menu:playIntro()
-    if Motion.reduced then return end -- reduced motion: buttons are just there, no cascade
-    self.introTime = 0
-    for _, button in ipairs(self:buttons()) do
-        button.introAlpha = 0
-    end
+    self.intro:play(self:buttons())
 end
 
 ---@param dt number
 function Menu:update(dt)
     self.group:update(dt)
-
-    if self.introTime then
-        self.introTime = self.introTime + dt
-        local finished = true
-        for i, button in ipairs(self:buttons()) do
-            local t = (self.introTime - (i - 1) * INTRO_STAGGER) / INTRO_DURATION
-            if t < 1 then finished = false end
-            button.introAlpha = Ease.outCubic(Math.clamp01(t))
-        end
-        if finished then self.introTime = nil end
-    end
+    self.intro:update(dt)
 end
 
---- pass-throughs to the group
-function Menu:draw()              self.group:draw()                  end
-function Menu:keypressed(key)     return self.group:keypressed(key)  end
-function Menu:mousemoved(x, y)    return self.group:mousemoved(x, y) end
-
----@param x number
----@param y number
----@param button integer
----@return boolean consumed
-function Menu:mousepressed(x, y, button)
-    return self.group:mousepressed(x, y, button)
-end
-
----@param x number
----@param y number
----@param button integer
----@return boolean consumed
-function Menu:mousereleased(x, y, button)
-    return self.group:mousereleased(x, y, button)
-end
-
----@param x number
----@param y number
----@return boolean hovering
----@return boolean? danger
-function Menu:hovering(x, y)
-    return self.group:hovering(x, y)
-end
+function Menu:draw()                     self.group:draw()                           end
+function Menu:keypressed(key)            return self.group:keypressed(key)           end
+function Menu:mousemoved(x, y)           return self.group:mousemoved(x, y)          end
+function Menu:mousepressed(x, y, b)      return self.group:mousepressed(x, y, b)     end
+function Menu:mousereleased(x, y, b)     return self.group:mousereleased(x, y, b)    end
+function Menu:hovering(x, y)             return self.group:hovering(x, y)            end
 
 return Menu

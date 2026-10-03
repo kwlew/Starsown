@@ -5,7 +5,7 @@
     "total": "Stars Popped",
     "golden": "Golden Stars",
     "rainbow": "Rainbow Stars",
-    "unavailable": "-- / --",
+    "unavailable": "--",
     "sharingOff": "Stats sharing is off, so world totals aren't shown here.",
     "enableSharing": "Enable Sharing",
     "loading": "Loading world stats...",

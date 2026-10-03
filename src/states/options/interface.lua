@@ -1,72 +1,39 @@
---- Options > Interface: language, theme, fonts, cursor, motion and stats
--- sharing. Everything here applies live and saves immediately.
+--- Options > Interface: language, look, cursor, motion, privacy.
 
-local Assets = require "core.assets"
-local Settings = require "core.settings"
-local UI = require "ui"
-local I18n = require "core.i18n"
-local Stats = require "services.stats"
-local GameTitle = require "ui.text.gameTitle"
-local Rows = require "states.options.rows"
-
--- design-space pixel values (see Theme.px) offered for the custom cursor's tuning knobs
-local CURSOR_SIZES = { 2, 3, 4, 5, 6, 7, 8 }
-local CURSOR_OUTLINE_WIDTHS = { 0, 0.5, 1, 1.5, 2, 2.5, 3 }
-local CURSOR_HOVER_OUTLINE_WIDTHS = { 0.5, 1, 1.5, 2, 2.5, 3 }
-local CURSOR_CLICK_GROWTHS = { 1, 2, 3, 4, 5, 6, 8 }
-
----@param value number
----@return string
-local function pxFormat(value)
-    if value == math.floor(value) then return string.format("%dpx", value) end
-    return string.format("%.1fpx", value)
-end
-
---- switches the UI palette and rebuilds the one thing that can't just re-read
--- it: the nebula stamps accent colors into its canvases at bake time, so it
--- keeps the old theme's hues until re-baked. Shared instance from Assets, so
--- this also recolors the main menu's copy.
----@param id string
-local function applyTheme(id)
-    if not UI.Theme.setTheme(id) then return end
-
-    local nebula = Assets.get("nebula")
-    if nebula and nebula:isBaked() then nebula:bake() end
-end
+local Backdrop = require("states.shared.backdrop")
+local I18n = require("core.i18n")
+local Rows = require("states.options.rows")
+local Settings = require("core.settings")
+local Stats = require("services.stats")
+local UI = require("ui")
 
 local InterfaceTab = {}
 InterfaceTab.__index = InterfaceTab
 
---- a selector over a list of { id } entries whose choice is saved as that id
----@param screen table
----@param key string # i18n label, description key and settings field
----@param options table[]
----@param apply fun(id: string)
----@param relayout? boolean # the choice changes text metrics, so row heights must be re-measured
----@return table
-local function idSelector(screen, key, options, apply, relayout)
-    local selector = UI.Selector.new{
-        label = function() return I18n.t("options." .. key) end,
-        options = options,
-        format = function(entry) return I18n.t("options." .. key .. "Name." .. entry.id) end,
-        onChange = function(entry)
-            UI.Sfx.select()
-            screen.settings[key] = entry.id
-            apply(entry.id)
-            if relayout then screen:layout() end
-            Settings.save(screen.settings)
-        end,
-    }
-    selector.descKey = "options.desc." .. key
-    return selector
+-- design px offered for the cursor's tuning
+local CURSOR_SIZES = { 2, 3, 4, 5, 6, 7, 8 }
+local CURSOR_OUTLINES = { 0, 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_HOVER_OUTLINES = { 0.5, 1, 1.5, 2, 2.5, 3 }
+local CURSOR_CLICK_GROWTHS = { 1, 2, 3, 4, 5, 6, 8 }
+local UI_FONT_SAMPLE = "AaBbCc 0123"
+
+---@param value number
+---@return string
+local function px(value)
+    if value == math.floor(value) then return ("%dpx"):format(value) end
+    return ("%.1fpx"):format(value)
 end
 
----@param screen table # the Options state
----@return table
-function InterfaceTab.new(screen)
-    local self = setmetatable({ name = "interface" }, InterfaceTab)
+--- the nebula bakes colours in, so it rebakes
+---@param id string
+local function applyTheme(id)
+    if UI.Theme.setTheme(id) then Backdrop.rebake() end
+end
 
-    self.language = UI.Selector.new{
+---@param screen table
+---@return table
+local function languageSelector(screen)
+    return UI.Selector.new{
         label = function() return I18n.t("options.language") end,
         options = I18n.available(),
         format = function(entry) return entry.name end,
@@ -78,46 +45,54 @@ function InterfaceTab.new(screen)
             Settings.save(screen.settings)
         end,
     }
-    self.language.descKey = "options.desc.language"
+end
 
-    self.theme = idSelector(screen, "theme", UI.Theme.available(), applyTheme)
-    self.titleFont = idSelector(screen, "titleFont", GameTitle.available(), GameTitle.setFont)
-    self.uiFont = idSelector(screen, "uiFont", UI.Theme.uiFontFamilies(), UI.Theme.setUiFontFamily, true)
+---@param screen table
+function InterfaceTab:buildCursorRows(screen)
+    local Cursor = UI.Cursor
+    self.cursorColor = Rows.idSelector(screen, "customCursorColor", Cursor.pointerColors(), Cursor.setPointerColor)
+    self.cursorSize = Rows.selector(screen, "customCursorSize", CURSOR_SIZES, px, Cursor.setSize)
+    self.cursorOutline = Rows.selector(screen, "customCursorOutlineWidth", CURSOR_OUTLINES, px,
+        Cursor.setOutlineWidth)
+    self.cursorHoverOutline = Rows.selector(screen, "customCursorHoverOutlineWidth", CURSOR_HOVER_OUTLINES, px,
+        Cursor.setHoverOutlineWidth)
+    self.cursorClickGrowth = Rows.selector(screen, "customCursorClickGrowth", CURSOR_CLICK_GROWTHS, px,
+        Cursor.setClickGrowth)
+    self.cursorTuning = { self.cursorColor, self.cursorSize, self.cursorOutline,
+        self.cursorHoverOutline, self.cursorClickGrowth }
 
-    self.cursorSize = Rows.settingSelector(screen, "customCursorSize", CURSOR_SIZES, pxFormat,
-        UI.Cursor.setSize)
-    self.cursorOutlineWidth = Rows.settingSelector(screen, "customCursorOutlineWidth",
-        CURSOR_OUTLINE_WIDTHS, pxFormat, UI.Cursor.setOutlineWidth)
-    self.cursorHoverOutlineWidth = Rows.settingSelector(screen, "customCursorHoverOutlineWidth",
-        CURSOR_HOVER_OUTLINE_WIDTHS, pxFormat, UI.Cursor.setHoverOutlineWidth)
-    self.cursorClickGrowth = Rows.settingSelector(screen, "customCursorClickGrowth",
-        CURSOR_CLICK_GROWTHS, pxFormat, UI.Cursor.setClickGrowth)
-    self.cursorColor = idSelector(screen, "customCursorColor", UI.Cursor.pointerColors(),
-        UI.Cursor.setPointerColor)
-    self.cursorTuning = { self.cursorColor, self.cursorSize, self.cursorOutlineWidth,
-        self.cursorHoverOutlineWidth, self.cursorClickGrowth }
-
-    self.customCursor = Rows.settingToggle(screen, "customCursor", function(value)
-        UI.Cursor.setEnabled(value)
+    self.customCursor = Rows.toggle(screen, "customCursor", function(value)
+        Cursor.setEnabled(value)
         self:syncCursorRows(screen.settings)
         screen.group:refresh()
     end)
+end
 
-    self.reducedMotion = Rows.settingToggle(screen, "reducedMotion", UI.Motion.setReduced)
-    self.shareStats = Rows.settingToggle(screen, "shareStats", Stats.setEnabled)
+---@param screen table # the Options state
+---@return table
+function InterfaceTab.new(screen)
+    local self = setmetatable({ name = "interface" }, InterfaceTab)
 
-    self.language.section = function() return I18n.t("options.section.appearance") end
-    self.customCursor.section = function() return I18n.t("options.section.cursor") end
-    self.reducedMotion.section = function() return I18n.t("options.section.accessibility") end
-    self.shareStats.section = function() return I18n.t("options.section.privacy") end
+    self.language = languageSelector(screen)
+    self.theme = Rows.idSelector(screen, "theme", UI.Theme.available(), applyTheme)
+    self.titleFont = Rows.idSelector(screen, "titleFont", UI.GameTitle.available(), UI.GameTitle.setFont)
+    self.uiFont = Rows.idSelector(screen, "uiFont", UI.Theme.uiFontFamilies(), UI.Theme.setUiFontFamily, true)
+    self:buildCursorRows(screen)
+    self.reducedMotion = Rows.toggle(screen, "reducedMotion", UI.Motion.setReduced)
+    self.shareStats = Rows.toggle(screen, "shareStats", Stats.setEnabled)
+
+    self.language.section = Rows.section("appearance")
+    self.customCursor.section = Rows.section("cursor")
+    self.reducedMotion.section = Rows.section("accessibility")
+    self.shareStats.section = Rows.section("privacy")
 
     self.widgets = {
         self.language,
-        self.theme, UI.Preview.newTheme{},
-        self.titleFont, UI.Preview.newTitleFont{},
-        self.uiFont, UI.Preview.newUiFont{},
-        self.customCursor, self.cursorColor, self.cursorSize, self.cursorOutlineWidth,
-        self.cursorHoverOutlineWidth, self.cursorClickGrowth,
+        self.theme, UI.Swatches.new(),
+        self.titleFont, UI.FontSample.new{ text = UI.GameTitle.TEXT, role = UI.GameTitle.currentRole },
+        self.uiFont, UI.FontSample.new{ text = UI_FONT_SAMPLE, role = "button" },
+        self.customCursor, self.cursorColor, self.cursorSize, self.cursorOutline,
+        self.cursorHoverOutline, self.cursorClickGrowth,
         self.reducedMotion,
         self.shareStats,
     }
@@ -129,20 +104,19 @@ function InterfaceTab:syncCursorRows(settings)
     for _, widget in ipairs(self.cursorTuning) do widget.enabled = settings.customCursor end
 end
 
---- points every row back at the saved values; called on each visit
 ---@param settings table
 function InterfaceTab:sync(settings)
-    local function byId(id) return function(e) return e.id == id end end
-    self.language.index = Rows.indexWhere(I18n.available(), function(e) return e.code == settings.language end)
+    local byId = Rows.byId
+    self.language.index = Rows.indexWhere(self.language.options, function(e) return e.code == settings.language end)
     self.theme.index = Rows.indexWhere(UI.Theme.available(), byId(UI.Theme.current))
-    self.titleFont.index = Rows.indexWhere(GameTitle.available(), byId(GameTitle.current))
+    self.titleFont.index = Rows.indexWhere(UI.GameTitle.available(), byId(UI.GameTitle.current))
     self.uiFont.index = Rows.indexWhere(UI.Theme.uiFontFamilies(), byId(UI.Theme.currentUiFontFamily()))
 
     self.customCursor.value = settings.customCursor
     self.cursorColor.index = Rows.indexWhere(UI.Cursor.pointerColors(), byId(settings.customCursorColor))
     Rows.selectValue(self.cursorSize, settings.customCursorSize)
-    Rows.selectValue(self.cursorOutlineWidth, settings.customCursorOutlineWidth)
-    Rows.selectValue(self.cursorHoverOutlineWidth, settings.customCursorHoverOutlineWidth)
+    Rows.selectValue(self.cursorOutline, settings.customCursorOutlineWidth)
+    Rows.selectValue(self.cursorHoverOutline, settings.customCursorHoverOutlineWidth)
     Rows.selectValue(self.cursorClickGrowth, settings.customCursorClickGrowth)
     self:syncCursorRows(settings)
 
