@@ -1,8 +1,9 @@
+local Consent = require("services.consent")
 local Globals = require("globals")
 local rpc = require("lib.discordRPC.rpc")
 local diagnostics = require("lib.diagnostics")
 
-local Presence = {}
+local Presence = { enabled = false }
 
 local APP_ID = Globals.services.discordAppId
 local NAME = "discord"
@@ -28,11 +29,31 @@ local pendingKey = nil
 local delivered = false
 local wasReady = false
 
-function Presence.initialize()
+local function connect()
     rpc.initialize(APP_ID, {
         onError = function(code, detail) diagnostics.report(NAME, code, detail) end,
     })
     diagnostics.setStatus(NAME, STATUS.disconnected)
+end
+
+--- off disconnects, which clears the Discord status
+---@param enabled boolean
+function Presence.setEnabled(enabled)
+    if enabled == Presence.enabled then return end
+    Presence.enabled = enabled
+    delivered, wasReady = false, false
+    if enabled then return connect() end
+    rpc.shutdown()
+    diagnostics.clear(NAME)
+    diagnostics.setStatus(NAME, "off")
+end
+
+--- the player answered the consent question
+---@param settings table
+---@param enabled boolean
+function Presence.setConsent(settings, enabled)
+    Consent.record(settings, "sharePresence", "presenceConsentAsked", enabled)
+    Presence.setEnabled(enabled)
 end
 
 function Presence.show(name, overrides)
@@ -64,6 +85,7 @@ function Presence.show(name, overrides)
 end
 
 function Presence.update(dt)
+    if not Presence.enabled then return end
     rpc.update(dt)
     diagnostics.setStatus(NAME, STATUS[rpc.state()] or rpc.state())
 

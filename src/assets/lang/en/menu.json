@@ -13,6 +13,12 @@
       "decline": "No Thanks",
       "accept": "Share Stats"
     },
+    "presenceConsent": {
+      "title": "SHOW STARSOWN ON DISCORD?",
+      "message": "While Discord is running, Starsown can show what you're doing in the game (the screen you're on, and for how long) on your Discord profile. It talks only to the Discord app on this computer. You can change this later in Options.",
+      "decline": "No Thanks",
+      "accept": "Show on Discord"
+    },
     "splashes": [
       "Also try clicking the stars!",
       "Now with extra stars!",

@@ -575,7 +575,7 @@ function love.load()
         I18n.load()
         for key in pairs(UI.Sfx) do if type(UI.Sfx[key]) == "function" then UI.Sfx[key] = function() end end end
         fresh()
-        check(settingRows() == 23, "Settings missing from the tabs")
+        check(settingRows() == 24, "Settings missing from the tabs")
         layoutChecks()
         inputChecks()
         smoothScrollChecks()

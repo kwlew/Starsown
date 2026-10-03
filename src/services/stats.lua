@@ -7,7 +7,7 @@ local Diagnostics = require("lib.diagnostics")
 local Globals = require("globals")
 local Https = require("services.stats.https")
 local Reply = require("services.stats.reply")
-local Settings = require("core.settings")
+local Consent = require("services.consent")
 local Worker = require("services.stats.worker")
 
 local Stats = {
@@ -179,9 +179,7 @@ end
 ---@param settings table
 ---@param enabled boolean
 function Stats.setConsent(settings, enabled)
-    settings.shareStats = enabled
-    settings.statsConsentAsked = true
-    Settings.save(settings)
+    Consent.record(settings, "shareStats", "statsConsentAsked", enabled)
     Stats.setEnabled(enabled)
 end
 

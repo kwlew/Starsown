@@ -13,6 +13,12 @@
       "decline": "Agora Não",
       "accept": "Compartilhar"
     },
+    "presenceConsent": {
+      "title": "MOSTRAR STARSOWN NO DISCORD?",
+      "message": "Enquanto o Discord estiver aberto, Starsown pode mostrar no seu perfil do Discord o que você está fazendo no jogo (a tela em que está e há quanto tempo). Ele se comunica apenas com o aplicativo do Discord neste computador. Você pode alterar isso depois nas Opções.",
+      "decline": "Agora Não",
+      "accept": "Mostrar no Discord"
+    },
     "splashes": [
       "Tente clicar nas estrelas!",
       "Agora com mais estrelas!",

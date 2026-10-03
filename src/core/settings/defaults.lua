@@ -28,6 +28,8 @@ Defaults.values = {
     showStars = true,
     shareStats = false,
     statsConsentAsked = false,
+    sharePresence = false,
+    presenceConsentAsked = false,
     discordConsentAsked = false,
 }
 

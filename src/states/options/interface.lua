@@ -2,6 +2,7 @@
 
 local Backdrop = require("states.shared.backdrop")
 local I18n = require("core.i18n")
+local Presence = require("services.presence")
 local Rows = require("states.options.rows")
 local Settings = require("core.settings")
 local Stats = require("services.stats")
@@ -80,6 +81,10 @@ function InterfaceTab.new(screen)
     self:buildCursorRows(screen)
     self.reducedMotion = Rows.toggle(screen, "reducedMotion", UI.Motion.setReduced)
     self.shareStats = Rows.toggle(screen, "shareStats", Stats.setEnabled)
+    self.sharePresence = Rows.toggle(screen, "sharePresence", function(value)
+        screen.settings.presenceConsentAsked = true -- answered here instead
+        Presence.setEnabled(value)
+    end)
 
     self.language.section = Rows.section("appearance")
     self.customCursor.section = Rows.section("cursor")
@@ -95,6 +100,7 @@ function InterfaceTab.new(screen)
         self.cursorHoverOutline, self.cursorClickGrowth,
         self.reducedMotion,
         self.shareStats,
+        self.sharePresence,
     }
     return self
 end
@@ -122,6 +128,7 @@ function InterfaceTab:sync(settings)
 
     self.reducedMotion.value = settings.reducedMotion
     self.shareStats.value = settings.shareStats
+    self.sharePresence.value = settings.sharePresence
 end
 
 return InterfaceTab

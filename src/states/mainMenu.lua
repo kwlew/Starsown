@@ -2,7 +2,7 @@
 
 local Assets = require("core.assets")
 local Backdrop = require("states.shared.backdrop")
-local Consent = require("states.mainMenu.consent")
+local ConsentQueue = require("states.mainMenu.consent")
 local Corner = require("states.mainMenu.corner")
 local I18n = require("core.i18n")
 local Music = require("core.audio.music")
@@ -46,7 +46,7 @@ function MainMenu:build()
     self.corner = Corner.new()
     self.splash = UI.Splash.pick(I18n.list("menu.splashes"))
     self.shootingStars = ShootingStars.new()
-    self.consent = Consent.new(self.settings)
+    self.consent = ConsentQueue.new(self.settings)
     self.pointer = Pointer.new()
 
     -- one focus order: menu buttons, then corner links
@@ -73,7 +73,7 @@ function MainMenu:enter(previousName)
     if previousName == "loading" then self.menu:playIntro() end
     self:layout()
 
-    if Consent.needed(self.settings) then self.consent:openDialog() else self.consent:close() end
+    self.consent:advance()
 end
 
 function MainMenu:layout()

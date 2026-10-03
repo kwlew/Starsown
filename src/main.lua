@@ -42,7 +42,7 @@ function love.load(args)
 
     StateManager.register("loading", require("states.loading"))
     StateManager.switch("loading", settings)
-    Presence.initialize()
+    Presence.setEnabled(settings.presenceConsentAsked and settings.sharePresence)
 end
 
 ---@param dt number
