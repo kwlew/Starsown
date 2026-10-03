@@ -28,6 +28,7 @@
     "showNebula": "Menu Nebula",
     "showStars": "Menu Stars",
     "shareStats": "Share Play Stats",
+    "sharePresence": "Discord Rich Presence",
     "tab": {
       "audio": "Audio",
       "interface": "Interface",
@@ -103,6 +104,7 @@
       "showNebula": "Shows the drifting nebula on the main menu.",
       "showStars": "Shows the background stars and constellations on the main menu. Shooting stars always appear.",
       "shareStats": "Shares star-pop counts and a random installation ID for aggregate statistics and the online player count. Only these values are sent.",
+      "sharePresence": "Shows what you're doing in Starsown on your Discord profile while Discord is running.",
       "apply": "Applies all pending graphics changes, including changes made on another tab.",
       "back": "Returns to the previous screen."
     },

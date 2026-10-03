@@ -1,8 +1,8 @@
-local FrameLimiter = {
-    uncapped = false,
-}
+--- Whether the main loop sleeps between frames.
 
----@param value boolean # true lets the game run past the display's refresh rate
+local FrameLimiter = { uncapped = false }
+
+---@param value boolean
 function FrameLimiter.setUncapped(value)
     FrameLimiter.uncapped = value
 end

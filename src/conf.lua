@@ -1,51 +1,44 @@
----@diagnostic disable: duplicate-set-field, inject-field
---- Runs before the window exists, which is why it reads the saved settings
--- itself rather than waiting for love.load: resolution, display mode, vsync and
--- MSAA have to be right at creation. Reading them needs the save directory, so
--- the identity is set first. A failed or missing settings file leaves the
--- defaults above in place.
----@param t table # LÖVE's config table
+--- Window creation, from saved settings when they exist.
+
+local Globals = require("globals")
+
+---@diagnostic disable-next-line: duplicate-set-field
 function love.conf(t)
-    t.identity = "Starsown"
-    t.version = "11.5"
+    t.identity = Globals.game.name
+    t.version = Globals.game.loveVersion
     t.console = false
 
-    t.window.title = "Starsown"
-    t.window.icon = "assets/icon/starsown-128.png"
-    t.window.width = 1280
-    t.window.height = 720
+    t.window.title = Globals.game.name
+    t.window.icon = Globals.game.icon
+    t.window.width = Globals.window.width
+    t.window.height = Globals.window.height
     t.window.resizable = true
     t.window.vsync = 0
     t.window.msaa = 4
     t.window.fullscreen = false
     t.window.highdpi = true
 
+    -- the save directory needs the identity before reading
     local ok, settings = pcall(function()
         love.filesystem.setIdentity(t.identity)
-        return require("core.settings").load()
+        return require("core.settings.store").read()
     end)
     if ok and settings then
         t.window.vsync = settings.vsync
         t.window.msaa = settings.msaa
         t.window.display = settings.display
-        if settings.windowMode == "borderless" then
-            t.window.fullscreen = true
-            t.window.fullscreentype = "desktop"
-        elseif settings.windowMode == "exclusive" then
-            t.window.fullscreen = true
-            t.window.fullscreentype = "exclusive"
-            t.window.width = settings.res_x
-            t.window.height = settings.res_y
-        else
-            t.window.width = settings.res_x
-            t.window.height = settings.res_y
+        t.window.fullscreen = settings.windowMode ~= "windowed"
+        t.window.fullscreentype = settings.windowMode == "exclusive" and "exclusive" or "desktop"
+        if settings.windowMode ~= "borderless" then
+            t.window.width, t.window.height = settings.res_x, settings.res_y
         end
     end
 
-    local limits = require "core.displayLimits"
-    t.window.minwidth, t.window.minheight = limits.minimum(t.window.display or 1)
+    local Limits = require("core.display.limits")
+    local display = t.window.display or 1
+    t.window.minwidth, t.window.minheight = Limits.minimum(display)
     if not t.window.fullscreen then
-        t.window.width, t.window.height = limits.windowSize(t.window.width, t.window.height, t.window.display or 1)
+        t.window.width, t.window.height = Limits.windowSize(t.window.width, t.window.height, display)
     end
 
     t.modules.joystick = false

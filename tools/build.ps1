@@ -58,7 +58,7 @@ param(
     # but pcall/traceback messages lose their file:line — off by default so
     # a bug report is still debuggable.
     [switch]$StripDebug,
-    # Stamped into the archive's version.txt, which src/globals.lua reads.
+    # Stamped into the archive's version.txt, which src/core/app.lua reads.
     # Defaults to `git describe --tags --always --dirty`, or "dev" without git.
     [string]$GameVersion = ''
 )

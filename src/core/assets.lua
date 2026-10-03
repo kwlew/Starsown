@@ -1,17 +1,18 @@
+--- Shared objects by name, built once and reused across states.
+
 local Assets = { store = {} }
 
---- files a loaded asset under a name and hands it straight back, so a load
--- site can store and use it in one expression
+--- stores and returns the value, for inline use
 ---@param name string
 ---@param value any
----@return any value
+---@return any
 function Assets.set(name, value)
     Assets.store[name] = value
     return value
 end
 
 ---@param name string
----@return any|nil # nil if nothing was stored under that name
+---@return any|nil
 function Assets.get(name)
     return Assets.store[name]
 end

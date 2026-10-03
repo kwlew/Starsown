@@ -1,57 +1,69 @@
---- Owns a list of widgets and the thing every screen kept reimplementing:
--- which widget has focus, how the keyboard moves it, and where a mouse
--- event goes. Also owns generic mouse capture, so a drag can keep tracking
--- after the cursor leaves the widget's rect.
+--- Owns a list of widgets and routes input to them: which one has focus, how
+-- the keyboard moves it, and where a mouse event goes. A widget whose
+-- mousepressed returns true captures every later move and the release, so
+-- a slider drag keeps tracking after the cursor leaves its row.
 --
 --   self.group = FocusGroup.new()
 --   self.group:setWidgets{ tabBar, slider, selector, backButton }
---
---   function State:update(dt)              self.group:update(dt)              end
---   function State:keypressed(key)         self.group:keypressed(key)         end
---   function State:mousemoved(x, y)        self.group:mousemoved(x, y)        end
---   function State:mousepressed(x, y, b)   self.group:mousepressed(x, y, b)   end
---   function State:mousereleased(x, y, b)  self.group:mousereleased(x, y, b)  end
---
--- Mouse capture: a widget whose `mousepressed` returns true owns every
--- subsequent move and the release, wherever the cursor goes -- lets a
--- slider drag continue off the end of its row without focus wandering.
+--   -- forward update/draw/keypressed/mousemoved/mousepressed/mousereleased
 --
 -- Input methods return true when the event was consumed, so a screen can
 -- act on the ones the group ignored (Esc, a click on empty background).
 
-local Math = require "utils.math"
+local Bindings = require("ui.input.bindings")
+local Math = require("utils.math")
 
 local FocusGroup = {}
 FocusGroup.__index = FocusGroup
+
+local OFFSCREEN = -math.huge -- a pointer position nothing contains, to clear hover state
 
 ---@return table
 function FocusGroup.new()
     return setmetatable({
         widgets = {},
-        index = 0,     -- 0 = nothing focused (empty or all-disabled group)
-        capture = nil, -- widget owning the mouse until it releases
-        onFocusChanged = nil, -- optional onFocusChanged(widget, index); fires only on player-driven moves
+        index = 0,            -- 0 = nothing focused (empty or all-disabled group)
+        capture = nil,        -- widget owning the mouse until it releases
+        onFocusChanged = nil, -- fun(widget, index); fires only on player-driven moves
+        pointerFilter = nil,  -- fun(widget, x, y) -> boolean; e.g. a ScrollArea's clip
     }, FocusGroup)
 end
 
---- replaces the whole list (a tab switch); any in-flight drag is dropped, its owner may not be on screen anymore
----@param widgets table[] # each must answer contains/update/draw/enabled
+--- replaces the whole list (a tab switch); an in-flight drag is ended, its
+-- owner may not be on screen anymore
+---@param widgets table[]
 function FocusGroup:setWidgets(widgets)
     self:releaseCapture()
     self.widgets = widgets
-    self:focusFirst(true) -- silent: this is the screen reconfiguring itself, not the player navigating
+    self:focusFirst(true) -- silent: the screen reconfiguring itself, not the player navigating
 end
 
---- Finish a live drag before its owner disappears or a modal takes input.
+--- ends a live drag before its owner disappears or a modal takes input
 function FocusGroup:releaseCapture()
     local target = self.capture
     self.capture = nil
     if target and target.mousereleased then target:mousereleased(0, 0, 1) end
 end
 
---- Optional screen-owned clipping rule; unrelated screens accept every pointer.
+---@param widget table
+---@param x number
+---@param y number
+---@return boolean
 function FocusGroup:allowsPointer(widget, x, y)
     return not self.pointerFilter or self.pointerFilter(widget, x, y)
+end
+
+--- the first interactive widget under the pointer
+---@param x number
+---@param y number
+---@return table|nil widget
+---@return integer|nil index
+function FocusGroup:widgetAt(x, y)
+    for i, widget in ipairs(self.widgets) do
+        if widget:isInteractive() and self:allowsPointer(widget, x, y) and widget:contains(x, y) then
+            return widget, i
+        end
+    end
 end
 
 ---@return table|nil
@@ -60,7 +72,7 @@ function FocusGroup:focused()
 end
 
 ---@param index integer # 0 clears focus
----@param silent? boolean # suppress onFocusChanged (a screen reconfiguring itself, not the player navigating)
+---@param silent? boolean # suppress onFocusChanged
 function FocusGroup:setFocus(index, silent)
     local changed = index ~= self.index
     self.index = index
@@ -76,28 +88,22 @@ end
 ---@param silent? boolean
 function FocusGroup:focusFirst(silent)
     for i, widget in ipairs(self.widgets) do
-        if widget:isInteractive() then
-            self:setFocus(i, silent)
-            return
-        end
+        if widget:isInteractive() then return self:setFocus(i, silent) end
     end
     self:setFocus(0, silent)
 end
 
---- bounded by widget count, not "until we're back where we started": from an
--- unfocused group (index 0) that never comes true and would spin forever
---- wraps past either end, skipping anything not interactive
+--- wraps past either end, skipping anything not interactive. Bounded by the
+-- widget count: from an unfocused group (index 0) "until we're back where we
+-- started" would never come true.
 ---@param delta -1|1
 function FocusGroup:moveFocus(delta)
     local count = #self.widgets
-    if count == 0 then return end
-
     local index = self.index
     for _ = 1, count do
         index = Math.wrapIndex(index + delta, count)
         if self.widgets[index]:isInteractive() then
-            self:setFocus(index)
-            return
+            return self:setFocus(index)
         end
     end
 end
@@ -111,18 +117,16 @@ function FocusGroup:refresh()
     end
 end
 
---- up/down move focus; left/right and Enter go to the focused widget's own
--- adjust/activate, if it has them
+--- up/down and tab move focus; left/right and confirm go to the focused
+-- widget's adjust/activate, if it has them
 ---@param key string
 ---@return boolean consumed
 function FocusGroup:keypressed(key)
-    if key == "tab" then
-        self:moveFocus(love.keyboard.isDown("lshift", "rshift") and -1 or 1)
-        return true
-    elseif key == "up" or key == "w" then
+    local action = Bindings.action(key)
+    if action == "up" or action == "previous" then
         self:moveFocus(-1)
         return true
-    elseif key == "down" or key == "s" then
+    elseif action == "down" or action == "next" then
         self:moveFocus(1)
         return true
     end
@@ -130,44 +134,47 @@ function FocusGroup:keypressed(key)
     local widget = self:focused()
     if not (widget and widget:isInteractive()) then return false end
 
-    if key == "left" or key == "a" then
-        if widget.adjust then widget:adjust(-1) return true end
-    elseif key == "right" or key == "d" then
-        if widget.adjust then widget:adjust(1) return true end
-    elseif key == "return" or key == "kpenter" or key == "space" then
-        if widget.activate then widget:activate() return true end
+    if (action == "left" or action == "right") and widget.adjust then
+        widget:adjust(action == "left" and -1 or 1)
+        return true
+    elseif action == "confirm" and widget.activate then
+        widget:activate()
+        return true
     end
     return false
 end
 
---- hover follows the pointer, and moving over a widget focuses it -- unless a
--- drag holds the mouse, in which case focus stays put
+--- hover follows the pointer, and moving over a widget focuses it -- unless
+-- a drag holds the mouse, in which case focus stays put
 ---@param x number
 ---@param y number
 ---@return boolean consumed
 function FocusGroup:mousemoved(x, y)
-    if self.capture then -- a widget mid-drag owns the mouse; focus doesn't wander mid-drag
+    if self.capture then
         if self.capture.mousemoved then self.capture:mousemoved(x, y) end
         return true
     end
 
     for _, widget in ipairs(self.widgets) do -- hover feedback (selector chevrons, tab segments)
         if widget.mousemoved then
-            if self:allowsPointer(widget, x, y) then widget:mousemoved(x, y)
-            else widget:mousemoved(-math.huge, -math.huge) end
+            if self:allowsPointer(widget, x, y) then
+                widget:mousemoved(x, y)
+            else
+                widget:mousemoved(OFFSCREEN, OFFSCREEN)
+            end
         end
     end
 
-    for i, widget in ipairs(self.widgets) do
-        if widget:isInteractive() and self:allowsPointer(widget, x, y) and widget:contains(x, y) then
-            self:setFocus(i)
-            return true
-        end
+    local _, index = self:widgetAt(x, y)
+    if index then
+        self:setFocus(index)
+        return true
     end
     return false
 end
 
---- a press on a disabled widget is still consumed: it's inert, not a hole through to what's behind the screen
+--- a press on a disabled widget is still consumed: it's inert, not a hole
+-- through to whatever is behind the screen
 ---@param x number
 ---@param y number
 ---@param button integer
@@ -201,19 +208,15 @@ function FocusGroup:mousereleased(x, y, button)
     return true
 end
 
---- second return is the hovered widget's `danger` flag, so a screen can pass
--- both straight to UI.Cursor.setHover
+--- the second return is the hovered widget's danger flag, so a screen can
+-- pass both straight to Cursor.setHover
 ---@param x number
 ---@param y number
 ---@return boolean hovering
----@return boolean? danger
+---@return boolean danger
 function FocusGroup:hovering(x, y)
-    for _, widget in ipairs(self.widgets) do
-        if widget:isInteractive() and self:allowsPointer(widget, x, y) and widget:contains(x, y) then
-            return true, widget.danger
-        end
-    end
-    return false
+    local widget = self:widgetAt(x, y)
+    return widget ~= nil, widget ~= nil and widget.danger
 end
 
 ---@param dt number
@@ -223,8 +226,7 @@ function FocusGroup:update(dt)
     end
 end
 
---- screens that interleave widgets with other art (Options draws a panel
--- behind its rows) skip this and draw widgets themselves
+--- screens that interleave widgets with other art draw them themselves instead
 function FocusGroup:draw()
     for _, widget in ipairs(self.widgets) do
         widget:draw()

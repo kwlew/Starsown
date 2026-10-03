@@ -9,6 +9,11 @@
         "title": "Leave this run?",
         "message": "You'll return to the main menu and this run will end."
       }
+    },
+    "death": {
+      "title": "YOU DIED",
+      "respawn": "Respawn",
+      "hint": "W/S or Mouse: navigate    Enter or Click: select"
     }
   }
 }

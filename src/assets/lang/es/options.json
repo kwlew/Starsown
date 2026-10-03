@@ -28,6 +28,7 @@
     "showNebula": "Nebulosa del menú",
     "showStars": "Estrellas del menú",
     "shareStats": "Compartir estadísticas",
+    "sharePresence": "Presencia en Discord",
     "tab": {
       "audio": "Audio",
       "interface": "Interfaz",
@@ -103,6 +104,7 @@
       "showNebula": "Muestra la nebulosa animada del menú principal.",
       "showStars": "Muestra las estrellas de fondo y las constelaciones del menú principal. Las estrellas fugaces siempre aparecen.",
       "shareStats": "Comparte recuentos de estrellas reventadas y un identificador aleatorio de la instalación para estadísticas agregadas y el recuento de jugadores en línea. Solo se envían estos valores.",
+      "sharePresence": "Muestra en tu perfil de Discord lo que haces en Starsown mientras Discord está abierto.",
       "apply": "Aplica todos los cambios gráficos pendientes, incluidos los de otras pestañas.",
       "back": "Vuelve a la pantalla anterior."
     },

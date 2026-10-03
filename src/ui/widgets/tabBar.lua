@@ -1,61 +1,64 @@
---- Horizontal segmented tab bar: equal-width clickable segments with an
--- animated sliding highlight under the active tab. Keyboard left/right (via
--- :adjust) or Enter (:activate, cycles) also switch tabs when focused.
+--- Horizontal segmented tab bar: equal-width segments with a highlight that
+-- slides to the active one. Left/right (adjust) or Enter (activate, cycles)
+-- switch tabs while it's focused.
 --
---   local bar = TabBar.new{
---       tabs = { "General", "Graphics" },
---       index = 1,
---       onChange = function(name, index) ... end,
---   }
+--   local bar = TabBar.new{ tabs = { "General", "Graphics" }, index = 1,
+--                           onChange = function(name, index) ... end }
 --
 -- Sync the active tab without firing onChange by setting `bar.index` directly.
 
-local Theme = require "ui.core.theme"
-local Widget = require "ui.widgets.widget"
+local Math = require("utils.math")
+local Theme = require("ui.core.theme")
+local Widget = require("ui.widgets.widget")
 
-local TabBar = {}
-Widget.extend(TabBar)
+local TabBar = Widget.extend({})
 
 TabBar.fontRole = "button"
 
-local SEGMENT_GAP = 6 -- design-space px, scaled through Theme.px at use
+local SEGMENT_GAP = 6 -- design px
 
----@param config table # Widget.new's fields, plus tabs: (string|fun(self: table): string)[], index: integer, onChange: fun(name: string, index: integer)
+---@param config table # Widget.new's fields, plus tabs: (string|fun(self: table): string)[], index?: integer, onChange?: fun(name: any, index: integer)
 ---@return table
 function TabBar.new(config)
     local self = Widget.new(TabBar, config)
     self.tabs = config.tabs or {}
     self.index = config.index or 1
     self.onChange = config.onChange
-    self.highlight = self.index -- eased continuous position of the active marker
-    self.hovered = nil          -- segment index under the cursor, or nil
+    self.highlight = self.index -- eased, continuous position of the active marker
+    self.hovered = nil          -- segment index under the pointer
     return self
 end
 
----@param i integer
+---@param i integer # may be fractional, for the sliding highlight
 ---@return number x
 ---@return number y
 ---@return number w
 ---@return number h
 function TabBar:segmentRect(i)
-    local count = #self.tabs
+    local count = math.max(1, #self.tabs)
     local gap = Theme.px(SEGMENT_GAP)
     local segW = (self.w - gap * (count - 1)) / count
     return self.x + (i - 1) * (segW + gap), self.y, segW, self.h
 end
 
---- wraps past either end; onChange fires only on a real change, so a screen
--- can sync by assigning `index` directly instead
+---@param px number
+---@param py number
+---@return integer|nil
+function TabBar:segmentAt(px, py)
+    for i = 1, #self.tabs do
+        if Theme.pointIn(px, py, self:segmentRect(i)) then return i end
+    end
+end
+
+--- wraps past either end; onChange fires only on a real change
 ---@param index integer
 function TabBar:setIndex(index)
-    if not self:isInteractive() then return end
     local count = #self.tabs
-    index = (index - 1) % count + 1
+    if not self:isInteractive() or count == 0 then return end
+    index = Math.wrapIndex(index, count)
     if index == self.index then return end
     self.index = index
-    if self.onChange then
-        self.onChange(self.tabs[index], index)
-    end
+    if self.onChange then self.onChange(self.tabs[index], index) end
 end
 
 ---@param direction -1|1
@@ -63,40 +66,21 @@ function TabBar:adjust(direction)
     self:setIndex(self.index + direction)
 end
 
---- Enter cycles forward
 function TabBar:activate()
     self:adjust(1)
 end
 
---- returns false: a tab bar has no drag, so it never captures the mouse
----@param px number
----@param py number
----@param mouseButton integer
----@return boolean # captured; always false
+---@return boolean captured # always false, a tab bar has no drag
 function TabBar:mousepressed(px, py, mouseButton)
-    if mouseButton ~= 1 or not self:isInteractive() then return false end
-    for i = 1, #self.tabs do
-        local sx, sy, sw, sh = self:segmentRect(i)
-        if Theme.pointIn(px, py, sx, sy, sw, sh) then
-            self:setIndex(i)
-            return false
-        end
+    if mouseButton == 1 and self:isInteractive() then
+        local i = self:segmentAt(px, py)
+        if i then self:setIndex(i) end
     end
     return false
 end
 
----@param px number
----@param py number
 function TabBar:mousemoved(px, py)
-    self.hovered = nil
-    if not self:isInteractive() then return end
-    for i = 1, #self.tabs do
-        local sx, sy, sw, sh = self:segmentRect(i)
-        if Theme.pointIn(px, py, sx, sy, sw, sh) then
-            self.hovered = i
-            return
-        end
-    end
+    self.hovered = self:isInteractive() and self:segmentAt(px, py) or nil
 end
 
 --- eases the highlight toward the active segment, so a switch slides
@@ -106,40 +90,36 @@ function TabBar:update(dt)
     self.highlight = Theme.approach(self.highlight, self.index, dt)
 end
 
---- every segment, then the sliding highlight over the active one, then the labels
+--- every segment, then the sliding highlight, then the labels on top
 function TabBar:draw()
     local c, m = Theme.colors, Theme.metrics
-    local alpha = self:alpha()
+    local alpha, radius = self:alpha(), m.radius
 
     for i = 1, #self.tabs do
-        local sx, sy, sw, sh = self:segmentRect(i)
-        love.graphics.setColor(c.panel)
-        love.graphics.rectangle("fill", sx, sy, sw, sh, m.radius, m.radius, 8)
+        local x, y, w, h = self:segmentRect(i)
+        Theme.setColor(c.panel, alpha)
+        love.graphics.rectangle("fill", x, y, w, h, radius, radius, 8)
         Theme.setColor(c.panelBorder, alpha)
-        love.graphics.rectangle("line", sx, sy, sw, sh, m.radius, m.radius, 8)
+        love.graphics.rectangle("line", x, y, w, h, radius, radius, 8)
     end
 
-    local x1 = self:segmentRect(1)
-    local x2, _, segW, segH = self:segmentRect(2)
-    local stride = (#self.tabs > 1) and (x2 - x1) or 0
-    local hx = x1 + (self.highlight - 1) * stride
-
+    local hx, hy, hw, hh = self:segmentRect(self.highlight)
     if self.glow > 0.01 then
-        Theme.glowRect(hx, self.y, segW, segH, m.radius, self.glow * Theme.pulse(self.time), nil, true)
+        Theme.glowRect(hx, hy, hw, hh, radius, self.glow * Theme.pulse(self.time), nil, true)
     end
-    love.graphics.setColor(c.accentDark)
-    love.graphics.rectangle("fill", hx, self.y, segW, segH, m.radius, m.radius, 8)
+    Theme.setColor(c.accentDark, alpha)
+    love.graphics.rectangle("fill", hx, hy, hw, hh, radius, radius, 8)
     Theme.setColor(c.accent, alpha)
-    love.graphics.rectangle("line", hx, self.y, segW, segH, m.radius, m.radius, 8)
+    love.graphics.rectangle("line", hx, hy, hw, hh, radius, radius, 8)
 
     local font = self:getFont()
     Theme.pushFont(font)
     for i, name in ipairs(self.tabs) do
-        local sx, _, sw = self:segmentRect(i)
-        Theme.setColor((i == self.index or i == self.hovered) and c.text or c.textDim, alpha)
+        local x, y, w, h = self:segmentRect(i)
         local text = Theme.resolveLabel(name, self)
-        local _, lines = font:getWrap(text, sw)
-        love.graphics.printf(text, sx, self.y + (self.h - #lines * font:getHeight()) / 2, sw, "center")
+        local _, lines = font:getWrap(text, w)
+        Theme.setColor((i == self.index or i == self.hovered) and c.text or c.textDim, alpha)
+        love.graphics.printf(text, x, y + (h - #lines * font:getHeight()) / 2, w, "center")
     end
     Theme.popFont()
 

@@ -1,13 +1,15 @@
 --- Hand-drawn button icons: `assets/textures/mainMenu/<name>_icon.png`, loaded
--- on first use and cached. Authored pure white so the caller's colour tints
--- them like a Glyph. A missing file isn't an error -- Button falls back to
--- the Glyph of the same name.
+-- on first use and cached. Authored pure white so the current colour tints
+-- them like a Glyph. A missing file isn't an error -- see Icon, which falls
+-- back to the Glyph of the same name.
+
+local Math = require("utils.math")
 
 local IconTexture = {}
 
 local DIR = "assets/textures/mainMenu/"
 
-local cache = {}
+local cache = {} -- name -> love.Image, or false when there's no texture
 
 ---@param name string
 ---@return any # a love.Image, or nil when there's no texture for this name
@@ -15,13 +17,16 @@ function IconTexture.get(name)
     local cached = cache[name]
     if cached == nil then
         local path = DIR .. name .. "_icon.png"
-        local ok, image = false, nil
+        cached = false
         if love.filesystem.getInfo(path, "file") then
-            ok, image = pcall(love.graphics.newImage, path)
-            if not ok then print("[ui] failed to load " .. path .. ": " .. tostring(image)) end
+            local ok, image = pcall(love.graphics.newImage, path)
+            if ok then
+                image:setFilter("nearest", "nearest")
+                cached = image
+            else
+                print("[ui] failed to load " .. path .. ": " .. tostring(image))
+            end
         end
-        cached = ok and image or false
-        if cached then cached:setFilter("nearest", "nearest") end
         cache[name] = cached
     end
     return cached or nil
@@ -35,10 +40,10 @@ end
 ---@param size number # screen pixels
 function IconTexture.draw(image, x, y, size)
     local w, h = image:getDimensions()
-    local scale = math.max(1, math.floor(size / math.max(w, h) + 0.5))
+    local scale = math.max(1, Math.round(size / math.max(w, h)))
     love.graphics.draw(image,
-        math.floor(x + (size - w * scale) / 2 + 0.5),
-        math.floor(y + (size - h * scale) / 2 + 0.5),
+        Math.round(x + (size - w * scale) / 2),
+        Math.round(y + (size - h * scale) / 2),
         0, scale, scale)
 end
 

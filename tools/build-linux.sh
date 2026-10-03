@@ -195,7 +195,7 @@ rm -f -- "$output_path"
     zip -q -9 -r "$output_path" .
 )
 
-# Read by src/globals.lua.
+# Read by src/core/app.lua.
 version_stage="$work_dir/version"
 mkdir -p -- "$version_stage"
 printf '%s\n' "$game_version" >"$version_stage/version.txt"
@@ -204,7 +204,7 @@ printf '%s\n' "$game_version" >"$version_stage/version.txt"
     zip -q -9 "$output_path" version.txt
 )
 
-# Must match BUNDLED_HTTPS in src/services/stats.lua.
+# Must match BUNDLED in src/services/stats/https.lua.
 if [[ -n $https_lib ]]; then
     native_stage="$work_dir/native"
     mkdir -p -- "$native_stage/native/linux-x64"

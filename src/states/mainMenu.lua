@@ -1,344 +1,147 @@
---- Title screen: chroma title (via TextFactory) plus a keyboard/mouse menu of
--- themed buttons. Also the splash tag hanging under the title
--- (see ui/text/splash.lua).
+--- Title screen: title, splash, menu and the live sky.
 
-local StateManager  = require "core.stateManager"
-local Assets        = require "core.assets"
-local Presence      = require "services.presence"
-local TextFactory   = require "ui.text.textFactory"
-local UI            = require "ui"
-local I18n          = require "core.i18n"
-local Particles     = require "particles"
-local GameTitle     = require "ui.text.gameTitle"
-local Splash        = require "ui.text.splash"
-local Globals       = require "globals"
-local Format        = require "utils.format"
-
-local Stats         = require "services.stats"
-local Settings      = require "core.settings"
-
-local MENU_Y_RATIO = 0.44
-
-local GITHUB_URL = "https://github.com/kwlew/TD-Idle"
-local DISCORD_URL = "https://discord.gg/HEQ9PB5UHq"
-local SOCIAL_ICON_SIZE = 26
-local CORNER_PAD = 12
-local CORNER_GAP = 8 -- gap between version and online players labels, bottom-right corner.
-
-local STARFIELD = {
-    burst = {
-        countMin = 10,  countMax = 50,
-        sizeMin  = 0.1, sizeMax  = 2.5,
-        speedMin = 50,  speedMax = 200,
-        lifeMin  = 0.35, lifeMax = 0.75,
-        drag     = 5,
-    },
-    embers = {
-        countMin = 1,   countMax = 7,
-        sizeMin  = 0.5, sizeMax  = 1.0,
-        speedMin = 20,  speedMax = 60,
-        lifeMin  = 0.35, lifeMax = 0.75,
-        drag     = 15,
-    },
-    clickRadius    = 16,
-    spawnMin       = 0.4, spawnMax      = 1.3,
-    speedMin       = 100, speedMax      = 350,
-    lengthMin      = 100, lengthMax     = 400,
-    lifeMin        = 1.5, lifeMax       = 5.2,
-    dyingThreshold = 0.6,
-    goldenChance   = 0.004, -- ~1 in 250 stars
-    goldenSpeedMin = 70,  goldenSpeedMax = 150,
-    goldenLifeMin  = 4,   goldenLifeMax  = 13,
-    rainbowChance  = 0.001, -- ~1 in 1000 stars
-}
+local Assets = require("core.assets")
+local Backdrop = require("states.shared.backdrop")
+local ConsentQueue = require("states.mainMenu.consent")
+local Corner = require("states.mainMenu.corner")
+local I18n = require("core.i18n")
+local Music = require("core.audio.music")
+local Pointer = require("states.shared.pointer")
+local Presence = require("services.presence")
+local Settings = require("core.settings")
+local ShootingStars = require("states.mainMenu.shootingStars")
+local StateManager = require("core.state.manager")
+local Stats = require("services.stats")
+local UI = require("ui")
 
 local MainMenu = {}
 
-local buildTitle = GameTitle.build
+local MENU_Y_RATIO = 0.44
 
----@return table # a TextFactory
-local function buildVersionLabel()
-    return TextFactory:new{
-        text = Globals.game.version,
-        font = UI.Theme.font("small"),
-        color = UI.Theme.colors.textDim,
+---@param name string
+---@param opts? table
+local function go(name, opts)
+    UI.Sfx.select()
+    StateManager.fadeTo(name, opts)
+end
+
+---@return table # a UI.Menu
+local function buildMenu()
+    return UI.Menu.new{
+        { label = function() return I18n.t("menu.play") end, icon = "play", primary = true,
+          onSelect = function() go("game") end },
+        { label = function() return I18n.t("menu.stats") end, icon = "bars",
+          onSelect = function() go("stats", { returnTo = "mainMenu" }) end },
+        { label = function() return I18n.t("menu.options") end, icon = "gear",
+          onSelect = function() go("options", { returnTo = "mainMenu" }) end },
+        { label = function() return I18n.t("menu.quit") end, icon = "quit", danger = true,
+          onSelect = function() love.event.quit() end },
     }
 end
 
----@param count integer|nil # nil draws nothing rather than a 0 -- the counter is
--- unknown until the first successful response
----@return table|nil # a TextFactory
-local function buildOnlinePlayersLabel(count)
-    if not count then return nil end
-    return TextFactory:new{
-        text = I18n.t("menu.onlinePlayers", { n = Format.group(count) }),
-        font = UI.Theme.font("small"),
-        color = UI.Theme.colors.textDim,
-    }
+--- built once; the menu holds no state between visits
+function MainMenu:build()
+    self.settings = Assets.get("settings") or Settings.load()
+    self.menu = buildMenu()
+    self.corner = Corner.new()
+    self.splash = UI.Splash.pick(I18n.list("menu.splashes"))
+    self.shootingStars = ShootingStars.new()
+    self.consent = ConsentQueue.new(self.settings)
+    self.pointer = Pointer.new()
+
+    -- one focus order: menu buttons, then corner links
+    self.group = UI.FocusGroup.new()
+    self.group.onFocusChanged = UI.Sfx.focus
+    local widgets = {}
+    for _, button in ipairs(self.menu:buttons()) do widgets[#widgets + 1] = button end
+    for _, link in ipairs(self.corner.links) do widgets[#widgets + 1] = link end
+    self.group:setWidgets(widgets)
 end
 
---- reuses the backdrop the loading screen already built, and only generates one
--- if there is nothing to inherit. Alpha is reset because loading may have
--- handed it over mid-fade.
----@param existing table|nil
----@param name string # the key loading stored it under
----@param build fun(): table
----@return table
-local function inheritSky(existing, name, build)
-    local layer = existing or Assets.get(name) or build()
-    layer.alpha = 1 -- loading may have handed it over mid-fade
-    return layer
-end
-
---- records the answer so the prompt is never asked twice, and applies it now
----@param enabled boolean
-function MainMenu:saveStatsConsent(enabled)
-    Stats.setConsent(Settings.load(), enabled)
-    self.statsConsentDialog:close()
-end
-
---- Decline is listed first, so pressing Enter reflexively can't opt someone in
-function MainMenu:buildStatsConsentDialog()
-    if self.statsConsentDialog then return end
-
-    self.statsConsentDialog = UI.Dialog.new{
-        title = function() return I18n.t("menu.statsConsent.title") end,
-        message = function() return I18n.t("menu.statsConsent.message") end,
-        buttons = {
-            { label = function() return I18n.t("menu.statsConsent.decline") end,
-              onSelect = function() self:saveStatsConsent(false) end },
-            { label = function() return I18n.t("menu.statsConsent.accept") end,
-              onSelect = function() self:saveStatsConsent(true) end },
-        },
-        --- Escape and clicking the scrim are explicit declines rather than a
-        -- way to postpone the question and accidentally enable collection.
-        onCancel = function() self:saveStatsConsent(false) end,
-    }
-    self.statsConsentDialog:setFocusSound(UI.Sfx.focus)
-end
-
---- rebuilds what depends on the window and inherits what the loading screen
--- already made; the menu itself is stateless between visits and built once
----@param previousName string|nil # the entrance animation only plays coming from loading
+---@param previousName string|nil
 function MainMenu:enter(previousName)
-    UI.Music.start("menu")
-    self.title = buildTitle()
-    self.version = buildVersionLabel()
-    self.onlineCount = Stats.online
-    self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-    self.links = self.links or {
-        UI.IconLink.new{ mark = "github", url = GITHUB_URL, label = "GitHub" },
-        UI.IconLink.new{ mark = "discord", url = DISCORD_URL, label = "Discord" },
-    }
-    self.mouseX, self.mouseY = love.mouse.getPosition()
-    self.starfield = self.starfield or Particles.Starfield.new(STARFIELD)
-    self.stars = inheritSky(self.stars, "stars", function()
-        local stars = Particles.Stars.new{ enabled = Settings.load().showStars }
-        stars:spawnStars()
-        Assets.set("stars", stars) -- where Options' toggle finds it
-        return stars
-    end)
-    self.nebula = inheritSky(self.nebula, "nebula", function()
-        return Particles.Nebula.new{}:bake()
-    end)
-
-    self.splash = self.splash or Splash.pick()
-
-    if not self.menu then -- stateless between visits, so build it just once
-        self.menu = UI.Menu.new({
-            { label = function() return I18n.t("menu.play") end, icon = "play", primary = true, onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("game")
-            end },
-            { label = function() return I18n.t("menu.stats") end, icon = "bars", onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("stats", { returnTo = "mainMenu" })
-            end },
-            { label = function() return I18n.t("menu.options") end, icon = "gear", onSelect = function()
-                UI.Sfx.select()
-                StateManager.fadeTo("options", { returnTo = "mainMenu" })
-            end },
-            { label = function() return I18n.t("menu.quit") end, icon = "quit", danger = true,
-              onSelect = function()
-                love.event.quit()
-            end },
-        })
-
-        -- One combined group so Tab reaches the corner links too, after the
-        -- menu buttons -- Menu keeps its own internal group (still what
-        -- draws/positions the buttons), but real input now goes through
-        -- this one, the only thing that still calls `setFocus` on any of them.
-        self.group = UI.FocusGroup.new()
-        self.group.onFocusChanged = UI.Sfx.focus
-        local widgets = {}
-        for _, button in ipairs(self.menu:buttons()) do widgets[#widgets + 1] = button end
-        for _, link in ipairs(self.links) do widgets[#widgets + 1] = link end
-        self.group:setWidgets(widgets)
-    end
-
-    if previousName == "loading" then
-        self.menu:playIntro()
-    end
-
+    if not self.menu then self:build() end
+    Music.start("menu")
     Presence.show("mainMenu")
 
+    self.title = UI.GameTitle.build()
+    self.stars, self.nebula = Backdrop.get(self.settings)
+    self.stars.alpha, self.nebula.alpha = 1, 1 -- loading may hand over mid-fade
+    self.corner:setOnline(Stats.online)
+    self.pointer:reset()
+
+    if previousName == "loading" then self.menu:playIntro() end
     self:layout()
 
-    self:buildStatsConsentDialog()
-    if not Settings.load().statsConsentAsked then
-        self.statsConsentDialog:openDialog()
-    else
-        self.statsConsentDialog:close()
-    end
+    self.consent:advance()
 end
 
---- the title, the corner links and labels, and the menu column
 function MainMenu:layout()
-    local w, h = love.graphics.getDimensions()
-    local pad = UI.Theme.px(CORNER_PAD)
-    local iconSize = UI.Theme.px(SOCIAL_ICON_SIZE)
-
-    self.title.y = h * GameTitle.MENU_Y_RATIO
-
-    local iconY = h - iconSize - pad
-    local iconX = pad
-    for _, link in ipairs(self.links) do
-        link:setBounds(iconX, iconY, iconSize, iconSize)
-        iconX = iconX + iconSize + pad
-    end
-
-    local versionY = h - pad - self.version.font:getHeight()
-    local versionX = w - self.version.font:getWidth(self.version.text) - pad
-    self.version:setPosition(versionX, versionY)
-
-    if self.onlinePlayers then
-        local gap = UI.Theme.px(CORNER_GAP)
-        local onlineX = versionX - gap - self.onlinePlayers.font:getWidth(self.onlinePlayers.text)
-        self.onlinePlayers:setPosition(onlineX, versionY)
-    end
-
+    local h = love.graphics.getHeight()
+    self.title.y = h * UI.GameTitle.MENU_Y_RATIO
+    self.corner:layout()
     self.menu:layout(h * MENU_Y_RATIO)
-    if self.statsConsentDialog then self.statsConsentDialog:layout() end
+    self.consent:layout()
 end
 
---- rebuilds the online-players label when the figure changes, which is why it
--- re-lays out from here
+function MainMenu:resize()
+    self.title = UI.GameTitle.build()
+    self:layout()
+end
+
+---@return table # whatever has input right now
+function MainMenu:input()
+    return self.consent:isOpen() and self.consent or self.group
+end
+
 ---@param dt number
 function MainMenu:update(dt)
+    local skyPointed = not self.consent:isOpen() and love.window.hasMouseFocus()
+    self.stars:setPointer(skyPointed and self.pointer.x or nil, skyPointed and self.pointer.y or nil)
     self.nebula:update(dt)
-    if self.statsConsentDialog:isOpen() or not love.window.hasMouseFocus() then
-        self.stars:setPointer(nil, nil)
-    else
-        self.stars:setPointer(self.mouseX, self.mouseY)
-    end
     self.stars:update(dt)
-    self.starfield:update(dt)
+    self.shootingStars:update(dt)
     self.title:update(dt)
     self.splash:update(dt)
-    self.menu:update(dt) -- also drives the intro fade-in; must not be duplicated via self.group
-    for _, link in ipairs(self.links) do link:update(dt) end
-    if self.statsConsentDialog:isOpen() then
-        self.statsConsentDialog:update(dt)
-    end
+    self.menu:update(dt) -- also drives the intro
+    self.corner:update(dt)
+    if self.consent:isOpen() then self.consent:update(dt) end
 
-    if Stats.online ~= self.onlineCount then
-        self.onlineCount = Stats.online
-        self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-        self:layout()
-    end
+    if Stats.online ~= self.corner.online then self.corner:setOnline(Stats.online) end
+    self.pointer:hover(self:input())
 end
 
----@param w number
----@param h number
----@param rescaled boolean # the UI scale changed too, so the corner labels need rebuilding at the new font size
-function MainMenu:resize(w, h, rescaled)
-    self.title = buildTitle()
-    if rescaled then
-        self.version = buildVersionLabel()
-        self.onlinePlayers = buildOnlinePlayersLabel(self.onlineCount)
-    end
-    self:layout()
-end
-
----@param key string
 function MainMenu:keypressed(key)
-    if self.statsConsentDialog:isOpen() then
-        return self.statsConsentDialog:keypressed(key)
-    end
-    self.group:keypressed(key)
+    self:input():keypressed(key)
 end
 
----@param x number
----@param y number
 function MainMenu:mousemoved(x, y)
-    if self.statsConsentDialog:isOpen() then
-        self.statsConsentDialog:mousemoved(x, y)
-        self.mouseX, self.mouseY = x, y
-        return
-    end
-    self.group:mousemoved(x, y)
-    self.mouseX, self.mouseY = x, y
+    self.pointer:move(x, y)
+    self:input():mousemoved(x, y)
 end
 
---- routed in order: dialog, menu/links (one combined group), then the sky --
--- so a click only pops a star when it landed on nothing else
----@param x number
----@param y number
----@param button integer
+--- UI wins a click; only empty sky reaches stars
 function MainMenu:mousepressed(x, y, button)
-    if self.statsConsentDialog:isOpen() then
-        return self.statsConsentDialog:mousepressed(x, y, button)
-    end
-    if self.group:mousepressed(x, y, button) then return end -- UI wins the click; only empty sky reaches the starfield
-
-    local hit, golden, rainbow = self.starfield:mousepressed(x, y, button)
-    if not hit then return end -- a click on empty sky is not a pop
-    Stats.pop(rainbow and "rainbow" or golden and "golden")
+    if self:input():mousepressed(x, y, button) or self.consent:isOpen() then return end
+    if button == 1 then ShootingStars.click(self.shootingStars, x, y) end
 end
 
----@param x number
----@param y number
----@param button integer
 function MainMenu:mousereleased(x, y, button)
-    if self.statsConsentDialog:isOpen() then
-        return self.statsConsentDialog:mousereleased(x, y, button)
-    end
-    self.group:mousereleased(x, y, button)
+    self:input():mousereleased(x, y, button)
 end
 
---- back to front: nebula, stars, shooting stars, corner chrome, title, splash,
--- menu, and the consent dialog over everything
 function MainMenu:draw()
     self.nebula:draw()
-
     self.stars:draw()
-
-    self.starfield:draw()
-
-    self.version:draw()
-
-    if self.onlinePlayers then
-        self.onlinePlayers:draw()
-    end
-
-    for _, link in ipairs(self.links) do link:draw() end
+    self.shootingStars:draw()
+    self.corner:draw()
 
     self.title:drawChroma()
     self.splash:draw(self.title, love.graphics.getWidth())
-
     self.menu:draw()
+    UI.Hint.draw(I18n.t("menu.hint"), true)
 
-    UI.Label.hint(I18n.t("menu.hint"), true)
-
-    if self.statsConsentDialog:isOpen() then
-        self.statsConsentDialog:draw()
-        local hover = self.statsConsentDialog:hovering(self.mouseX or -1, self.mouseY or -1)
-        UI.Cursor.setHover(hover)
-        return
-    end
-
-    local overWidget, dangerous = self.group:hovering(self.mouseX or -1, self.mouseY or -1)
-    UI.Cursor.setHover(self.mouseX ~= nil and overWidget, dangerous)
+    if self.consent:isOpen() then self.consent:draw() end
 end
 
 return MainMenu

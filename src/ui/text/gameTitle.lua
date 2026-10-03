@@ -1,13 +1,14 @@
 --- The game's chroma wordmark, shared by the loading screen and the main
--- menu. Lives here rather than privately inside mainMenu.lua so both screens
--- draw the *same* title at the *same* pose: the loading screen eases its
--- copy into the menu's position/size on the way out, landing the state
--- switch on an identical frame instead of popping the title into existence.
+-- menu, so both draw the *same* title at the *same* pose and the loading
+-- screen can ease its copy into the menu's position without a pop.
+--
+--   local title = GameTitle.build()
+--   GameTitle.drawScaled(title, y, 1)
 
-local TextFactory = require "ui.text.textFactory"
-local Theme = require "ui.core.theme"
-local Motion = require "ui.core.motion"
-local Globals = require "globals"
+local Globals = require("globals")
+local Motion = require("ui.core.motion")
+local TextFactory = require("ui.text.textFactory")
+local Theme = require("ui.core.theme")
 
 local GameTitle = {}
 
@@ -20,73 +21,60 @@ GameTitle.FONTS = {
     { id = "orbitron", role = "title" },
     { id = "jetmono",  role = "title3" },
 }
-GameTitle.current = "acme"
+GameTitle.current = GameTitle.FONTS[1].id
+
+local roleFor = {}
+for _, entry in ipairs(GameTitle.FONTS) do roleFor[entry.id] = entry.role end
 
 ---@return table[] # { id: string, role: string }[]; the selectable title faces
 function GameTitle.available()
     return GameTitle.FONTS
 end
 
---- unknown ids are ignored (GameTitle.current stays whatever it was), same
--- fall-back-to-current shape as an unrecognized saved setting elsewhere
+--- unknown ids are ignored, same fall-back-to-current shape as an
+-- unrecognized saved setting elsewhere
 ---@param id string
----@return boolean # changed false if no face goes by that id
+---@return boolean # changed; false if no face goes by that id
 function GameTitle.setFont(id)
-    for _, entry in ipairs(GameTitle.FONTS) do
-        if entry.id == id then
-            GameTitle.current = id
-            return true
-        end
-    end
-    return false
+    if not roleFor[id] then return false end
+    GameTitle.current = id
+    return true
 end
 
 ---@return string # the theme font role for the selected face
-local function currentFontRole()
-    for _, entry in ipairs(GameTitle.FONTS) do
-        if entry.id == GameTitle.current then return entry.role end
-    end
-    return "title2"
+function GameTitle.currentRole()
+    return roleFor[GameTitle.current]
 end
 
---- exposed for anything that needs the face's typeface without a full
--- TextFactory (e.g. an inline preview, not the full chroma wordmark)
-GameTitle.currentRole = currentFontRole
-
---- rebuild on resize: wrap width is baked in at construction. A theme change
--- needs no rebuild -- the gradient holds the theme's live color tables and
--- the shader reads them fresh every draw. A font or reduced-motion change
--- does need a rebuild (see GameTitle.setFont), which happens naturally next
--- time a screen calls this from its own enter()/resize().
----@return table # title a TextFactory at the menu's pose
+--- Rebuild on resize (the wrap width is baked in) and after a font or
+-- reduced-motion change. A theme change needs no rebuild: the gradient holds
+-- the theme's live colour tables, and the shader reads them every draw.
+---@return table # a TextFactory at the menu's pose
 function GameTitle.build()
-    return TextFactory:new{
+    return TextFactory.new{
         text = GameTitle.TEXT,
         y = love.graphics.getHeight() * GameTitle.MENU_Y_RATIO,
         align = "center",
-        font = Theme.font(currentFontRole()),
+        font = Theme.font(GameTitle.currentRole()),
         gradient = Theme.titleGradient(),
-        speed = Motion.reduced and 0 or 1, -- reduced motion: color holds still instead of cycling
+        speed = Motion.reduced and 0 or 1, -- reduced motion: colour holds still instead of cycling
     }
 end
 
 --- draws `title` with its top at `y`, scaled about the window's horizontal
--- center. A transform rather than TextFactory:setSize, which reallocates a
--- Font and re-rasterizes the glyph mesh -- fine once, not every animation
--- frame. The chroma shader keys hue off screen coordinates, so the
--- gradient's period scales with the text, which reads as part of the effect.
+-- centre. A transform rather than TextFactory:setSize, which re-rasterizes
+-- -- fine once, not every animation frame.
 ---@param title table # a TextFactory from build()
 ---@param y number # top of the text
 ---@param scale number # 1 draws untransformed
 function GameTitle.drawScaled(title, y, scale)
-    local cx = love.graphics.getWidth() / 2
     title.y = y
-
     if scale == 1 then
         title:drawChroma()
         return
     end
 
+    local cx = love.graphics.getWidth() / 2
     love.graphics.push()
     love.graphics.translate(cx, y)
     love.graphics.scale(scale, scale)

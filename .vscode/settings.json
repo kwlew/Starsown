@@ -1,10 +1,14 @@
 {
     "Lua.runtime.version": "LuaJIT",
+    "Lua.runtime.special": { "love.filesystem.load": "loadfile" },
+    "Lua.workspace.library": ["/home/kwlew/.local/share/LuaCATS/love2d/library"],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.completion.callSnippet": "Replace",
     "Lua.diagnostics.globals": [
         "love"
     ],
-    "Lua.workspace.ignoreDir": [
-        "tools"
-    ],
-    "files.eol": "\n"
+    "files.eol": "\n",
+    "Lua.diagnostics.disable": [
+        "duplicate-set-field"
+    ]
 }
