@@ -25,10 +25,13 @@ function Body:drawAngle(x, y, alpha)
     return Math.lerpAngle(self.prevAngle, self.angle, alpha)
 end
 
+--- also remembers the pose, so a death effect starts where it was seen
 ---@param alpha number # 0..1 into the next tick
 function Body:draw(alpha)
     local x, y = self:lerpPosition(alpha)
-    self:drawBody(x, y, self:drawAngle(x, y, alpha), self:hurtAlpha())
+    local angle = self:drawAngle(x, y, alpha)
+    self.drawnX, self.drawnY, self.drawnAngle = x, y, angle
+    self:drawBody(x, y, angle, self:hurtAlpha())
 end
 
 --- also how a death effect draws a dead entity

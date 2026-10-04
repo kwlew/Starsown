@@ -44,6 +44,7 @@ function Swipe.new(config)
         sparks = Particles.Burst.new(SPARKS),
         impact = Particles.Burst.new(IMPACT),
         x = 0, y = 0,
+        alpha = 1, -- into the next tick; targets are judged where drawn
         angle = 0,
         dir = 1, -- flips per swing, so swings mirror
         active = false,
@@ -95,7 +96,8 @@ end
 ---@param target table
 ---@return boolean
 function Swipe:reaches(target)
-    local dx, dy = target.x - self.x, target.y - self.y
+    local tx, ty = target:lerpPosition(self.alpha)
+    local dx, dy = tx - self.x, ty - self.y
     local distance = Math.length(dx, dy)
     if distance > self.REACH + target.radius then return false end
     local slack = math.atan(target.radius / math.max(distance, 1))
@@ -109,7 +111,8 @@ function Swipe:strike(target, owner)
     self.hit[target] = true
     if not target:damage(self.damage, owner) then return end
     target:knockback(self.x, self.y, self.knockback)
-    local dx, dy = target.x - self.x, target.y - self.y
+    local tx, ty = target:lerpPosition(self.alpha)
+    local dx, dy = tx - self.x, ty - self.y
     local distance = math.max(Math.length(dx, dy), 0.001)
     local edge = distance - target.radius
     self.impact:spawn(self.x + dx / distance * edge, self.y + dy / distance * edge, UI.Theme.colors.danger)
@@ -142,8 +145,9 @@ end
 ---@param dt number
 ---@param world table
 ---@param owner table # never hit by its own swing
-function Swipe:update(dt, x, y, world, owner)
-    self.x, self.y = x, y
+---@param alpha number # 0..1 into the next tick
+function Swipe:update(dt, x, y, world, owner, alpha)
+    self.x, self.y, self.alpha = x, y, alpha
     self.cooldown = math.max(0, self.cooldown - dt)
     self.sparks:update(dt)
     self.impact:update(dt)

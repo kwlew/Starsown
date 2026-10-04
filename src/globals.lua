@@ -24,8 +24,8 @@ return {
     },
 
     world = {
-        widthTiles = 100,
-        heightTiles = 64,
-        tickRate = 20, -- simulation steps per second
+        widthTiles = 100000,
+        heightTiles = 64000,
+        tickRate = 64, -- simulation steps per second
     },
 }

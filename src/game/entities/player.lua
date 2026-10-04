@@ -5,14 +5,14 @@ local Entity = require("game.entity")
 local Stamina = require("game.components.stamina")
 local Swipe = require("game.swipe")
 
-local SPRINT_MULTIPLIER = 1.5
+local SPRINT_MULTIPLIER = 1.15
 
 local Player = Entity:extend{
     name = "player",
     kind = "player",
     mass = 4, -- crowds barely shove it
     facesMovement = false, -- faces the cursor
-    maxSpeed = 260,
+    maxSpeed = 115,
     maxHealth = 10,
     maxStamina = 100,
     invulnerableTime = 0.6,
@@ -41,7 +41,7 @@ function Player:frame(dt, world, alpha)
     self.aimX, self.aimY = world.camera:toWorld(love.mouse.getPosition())
     local x, y = self:lerpPosition(alpha)
     if Controls.attacking() then self.swipe:swing(self:aimFrom(x, y)) end
-    self.swipe:update(dt, x, y, world, self)
+    self.swipe:update(dt, x, y, world, self, alpha)
 end
 
 function Player:think(dt)
