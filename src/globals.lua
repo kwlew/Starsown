@@ -14,13 +14,20 @@ return {
     },
 
     links = {
-        github = "https://github.com/kwlew/TD-Idle",
+        github = "https://github.com/kwlew/Starsown",
         discord = "https://discord.gg/HEQ9PB5UHq",
     },
 
     services = {
         discordAppId = "1528201797863473362",
         statsEndpoint = "https://api.kwlew.dev/stats",
+    },
+
+    shootingStars = {
+        goldenChance = 0.004,  -- per spawned star; about 1 in 250
+        rainbowChance = 0.001, -- about 1 in 1000
+        showerIntervalMin = 120, -- s between meteor showers
+        showerIntervalMax = 300,
     },
 
     world = {

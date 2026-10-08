@@ -15,6 +15,9 @@ local BURST = {
     speedMin = 60, speedMax = 240,
     lifeMin = 0.35, lifeMax = 0.8,
     drag = 4,
+    streak = 0.02,
+    hot = 0.3,
+    glow = 2.5,
 }
 
 ---@param entity table # already dead; read for its look

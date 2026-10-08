@@ -1,4 +1,4 @@
---- The run overlay: health and stamina, top-left, screen space.
+--- The run overlay: health and stamina, bottom-left, screen space.
 
 local Bar = require("game.hud.bar")
 local Math = require("utils.math")
@@ -7,14 +7,12 @@ local UI = require("ui")
 local Hud = {}
 Hud.__index = Hud
 
-local MARGIN = 20
-local PAD = 10
+local MARGIN = 24
 local ROW_GAP = 4
 local HEALTH_H = 22
 local STAMINA_H = 10
 local TEXT_PAD = 8
 local FILL_SPEED = 8 -- smooths the 20 TPS steps
-local PANEL_ALPHA = 0.7
 
 ---@return table
 function Hud.new()
@@ -50,23 +48,18 @@ function Hud:draw(player)
     if not player or not self.health then return end
     local Theme = UI.Theme
     local px, c = Theme.px, Theme.colors
-    local rowH, pad = px(Bar.ICON_SIZE), px(PAD)
-    local x, y = px(MARGIN), px(MARGIN)
-    local w, h = pad * 2 + px(Bar.width()), pad * 2 + rowH * 2 + px(ROW_GAP)
+    local rowH, gap = px(Bar.ICON_SIZE), px(ROW_GAP)
+    local x = px(MARGIN)
+    local y = love.graphics.getHeight() - px(MARGIN) - rowH * 2 - gap
 
-    Theme.setColor(c.panel, (c.panel[4] or 1) * PANEL_ALPHA)
-    love.graphics.rectangle("fill", x, y, w, h)
-    Theme.setColor(c.panelBorder, PANEL_ALPHA)
-    love.graphics.rectangle("line", x, y, w, h)
-
-    local bx, by, bh = Bar.draw(self.health, "heart", x + pad, y + pad, HEALTH_H, c.danger)
+    local bx, by, bh = Bar.draw(self.health, "heart", x, y, HEALTH_H, c.danger)
     local font = Theme.font("small")
     UI.Label.draw{ text = ("%d / %d"):format(math.ceil(player.health), player.maxHealth),
         x = bx, y = Theme.centerY(by, bh, font), width = px(Bar.WIDTH) - px(TEXT_PAD),
         align = "right", font = font, shadow = true }
 
     -- grey while exhausted: no sprinting until it refills
-    Bar.draw(self.stamina, "stamina", x + pad, y + pad + rowH + px(ROW_GAP), STAMINA_H,
+    Bar.draw(self.stamina, "stamina", x, y + rowH + gap, STAMINA_H,
         player.stamina.exhausted and c.textDim or c.warning)
     love.graphics.setColor(1, 1, 1, 1)
 end

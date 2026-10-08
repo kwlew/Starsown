@@ -25,6 +25,8 @@ local SPARKS = {
     speedMin = 30, speedMax = 140,
     lifeMin = 0.12, lifeMax = 0.32,
     drag = 7,
+    streak = 0.02,
+    hot = 0.4,
 }
 local IMPACT = {
     countMin = 10, countMax = 16,
@@ -32,6 +34,9 @@ local IMPACT = {
     speedMin = 90, speedMax = 280,
     lifeMin = 0.20, lifeMax = 0.50,
     drag = 5,
+    streak = 0.03,
+    hot = 0.25,
+    glow = 2.5,
 }
 
 ---@param config? table # { damage?, knockback? }
