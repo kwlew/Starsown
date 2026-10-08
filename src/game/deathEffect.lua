@@ -15,6 +15,9 @@ local BURST = {
     speedMin = 60, speedMax = 240,
     lifeMin = 0.35, lifeMax = 0.8,
     drag = 4,
+    streak = 0.02,
+    hot = 0.3,
+    glow = 2.5,
 }
 
 ---@param entity table # already dead; read for its look
@@ -22,7 +25,9 @@ local BURST = {
 function DeathEffect.new(entity)
     local self = setmetatable({
         entity = entity,
-        x = entity.x, y = entity.y, angle = entity.angle,
+        -- last drawn pose: the tick position can be a tick ahead of it
+        x = entity.drawnX or entity.x, y = entity.drawnY or entity.y,
+        angle = entity.drawnAngle or entity.angle,
         t = 0,
         burst = Particles.Burst.new(BURST),
     }, DeathEffect)

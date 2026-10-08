@@ -12,7 +12,7 @@ local FOLLOW_RATE = 8
 ---@param world table
 ---@return table
 function Camera.new(world)
-    return setmetatable({ world = world, x = nil, y = nil }, Camera)
+    return setmetatable({ world = world, x = nil, y = nil, focusX = nil, focusY = nil }, Camera)
 end
 
 ---@return number w
@@ -35,12 +35,14 @@ end
 
 --- jumps there, no easing
 function Camera:cut(x, y)
+    self.focusX, self.focusY = x, y
     self.x, self.y = self:clamped(x, y)
 end
 
 ---@param dt number
 function Camera:follow(x, y, dt)
     if self.x == nil or UI.Motion.reduced then return self:cut(x, y) end
+    self.focusX, self.focusY = x, y
     x, y = self:clamped(x, y)
     local t = 1 - Math.decay(FOLLOW_RATE, dt)
     self.x, self.y = self.x + (x - self.x) * t, self.y + (y - self.y) * t
@@ -51,13 +53,22 @@ function Camera:reclamp()
     if self.x then self.x, self.y = self:clamped(self.x, self.y) end
 end
 
+--- one axis of offset(). Anchored on the focus's whole pixel plus the
+-- rounded lag: sprites round their own position, so rounding the camera
+-- separately made the followed sprite step back 1px while it walked.
+local function axisOffset(screen, focus, camera, s)
+    if not focus then return Math.round(screen / 2 - camera * s) end
+    return Math.round(screen / 2) - Math.round(focus * s) + Math.round((focus - camera) * s)
+end
+
 --- whole pixels, so pixel art doesn't shimmer
 ---@return number x
 ---@return number y
 function Camera:offset()
     local s = Tile.worldScale()
     local x, y = self:clamped(self.x or 0, self.y or 0)
-    return Math.round(love.graphics.getWidth() / 2 - x * s), Math.round(love.graphics.getHeight() / 2 - y * s)
+    return axisOffset(love.graphics.getWidth(), self.focusX, x, s),
+        axisOffset(love.graphics.getHeight(), self.focusY, y, s)
 end
 
 ---@return number x

@@ -1,10 +1,12 @@
 --- Shooting stars: click to pop, the rest burn out.
 
-local Burst = require("particles.burst")
+local Debris = require("particles.starfield.debris")
 local Look = require("particles.starfield.look")
 local Math = require("utils.math")
 local Motion = require("ui.core.motion")
+local Shower = require("particles.starfield.shower")
 local Sprites = require("particles.starfield.sprites")
+local StarPop = require("particles.starPop")
 local Theme = require("ui.core.theme")
 local Trails = require("particles.starfield.trails")
 
@@ -18,9 +20,14 @@ local TWINKLE = { amount = 0.18, speedMin = 5.5, speedMax = 9.5 }
 local SPECIAL_TWINKLE = { amount = 0.34, speedMin = 2.4, speedMax = 3.6 }
 local SPECIAL_SCALE = 1.7
 
-local POP_FADE = 0.7       -- s a popped trail lingers
+-- depth 0 is far: small, slow, dim; 1 is near
+local DEPTH_BIAS = 1.6 -- > 1 leans toward far
+local FAR_SCALE, FAR_SPEED, FAR_LENGTH, FAR_BRIGHTNESS = 0.55, 0.5, 0.6, 0.45
+
+local POP_FADE = 0.3       -- s a popped trail lingers, crumbling
 local CULL_MARGIN = 64
 local DYING_RETRACT = 0.65 -- trail pulled in while burning out
+local HIT_TRAIL = 48       -- px of trail behind the head that also counts as a hit
 
 local GLOW_SIZE = 4
 local HEAD_RADIUS = 2
@@ -28,32 +35,23 @@ local HEAD_SWELL = 1.6 -- px per unit of flare
 local CORE_FRAC = 0.55
 local CORE_ALPHA = 0.85
 
-local EMBERS = {
-    countMin = 4, countMax = 7,
-    speedMin = 14, speedMax = 60,
-    lifeMin = 0.25, lifeMax = 0.55,
-    sizeMin = 1, sizeMax = 2,
-    drag = 5,
-}
-
----@param base table
----@param override? table
----@return table
-local function merged(base, override)
-    local out = {}
-    for key, value in pairs(base) do out[key] = value end
-    for key, value in pairs(override or {}) do out[key] = value end
-    return out
+---@param far number
+---@param depth number # 0..1
+---@return number
+local function byDepth(far, depth)
+    return far + (1 - far) * depth
 end
 
----@param config? table # timings and ranges; `burst`, `embers` go to Burst.new
+---@param config? table # timings and ranges; `pop` goes to StarPop.new, `embers` to Debris.new,
+--   `shower` to Shower.new
 ---@return table
 function Starfield.new(config)
     config = config or {}
     return setmetatable({
         stars = {},
-        burst = Burst.new(config.burst),
-        embers = Burst.new(merged(EMBERS, config.embers)),
+        pop = StarPop.new(config.pop),
+        debris = Debris.new{ embers = config.embers },
+        shower = Shower.new(config.shower),
         clickRadius = config.clickRadius or 20,
         timer = 0,
         spawnMin = config.spawnMin or 0.4,
@@ -74,28 +72,34 @@ function Starfield.new(config)
     }, Starfield)
 end
 
---- one streak from the upper left; specials are slower, larger
-function Starfield:spawnStar()
+--- one streak from the top, heading down-right unless told otherwise;
+--- specials are slower, larger, and always near
+---@param angle? number # heading, radians
+function Starfield:spawnStar(angle)
     local w, h = love.graphics.getDimensions()
     local golden = math.random() < self.goldenChance
     local rainbow = not golden and math.random() < self.rainbowChance
     local special = golden or rainbow
     local twinkle = special and SPECIAL_TWINKLE or TWINKLE
+    local depth = special and 1 or math.random() ^ DEPTH_BIAS
 
     local speed = special and Math.randRange(self.goldenSpeedMin, self.goldenSpeedMax)
-        or Math.randRange(self.speedMin, self.speedMax)
+        or Math.randRange(self.speedMin, self.speedMax) * byDepth(FAR_SPEED, depth)
     if Motion.reduced then speed = speed * REDUCED_SPEED_SCALE end
     local maxLife = special and Math.randRange(self.goldenLifeMin, self.goldenLifeMax)
         or Math.randRange(self.lifeMin, self.lifeMax)
-    local angle = math.rad(Math.randRange(42, 48))
+    angle = angle or math.rad(Math.randRange(42, 48))
+    local dirX, dirY = math.cos(angle), math.sin(angle)
+    local x = Math.randRange(-0.05 * w, 0.65 * w)
+    if dirX < 0 then x = w - x end -- heading left: start from the right
 
     self.stars[#self.stars + 1] = {
-        x = Math.randRange(-0.05 * w, 0.65 * w),
+        x = x,
         y = Math.randRange(-0.05 * h, 0.03 * h),
-        dirX = math.cos(angle), dirY = math.sin(angle),
+        dirX = dirX, dirY = dirY,
         speed = speed,
         travelled = 0,
-        length = Math.randRange(self.lengthMin, self.lengthMax),
+        length = Math.randRange(self.lengthMin, self.lengthMax) * byDepth(FAR_LENGTH, depth),
         life = 0,
         maxLife = maxLife,
         golden = golden,
@@ -105,7 +109,8 @@ function Starfield:spawnStar()
         twinklePhase = Math.randAngle(),
         twinkleSpeed = Math.randRange(twinkle.speedMin, twinkle.speedMax),
         twinkleAmount = twinkle.amount,
-        scale = special and SPECIAL_SCALE or 1,
+        scale = special and SPECIAL_SCALE or byDepth(FAR_SCALE, depth),
+        brightness = byDepth(FAR_BRIGHTNESS, depth),
     }
 end
 
@@ -127,7 +132,22 @@ end
 function Starfield:expire(s)
     local w, h = love.graphics.getDimensions()
     if s.x < 0 or s.x > w or s.y < 0 or s.y > h then return end
-    self.embers:spawn(s.x, s.y, s.flare, s.scale * ((s.golden or s.rainbow) and 2 or 1))
+    self.debris:ember(s, self:speedOf(s))
+end
+
+--- current px/s; burning out slows it down
+---@param s table
+---@return number
+function Starfield:speedOf(s)
+    return s.speed * (1 - Look.dying(s, self.dyingThreshold) * 0.95)
+end
+
+--- px of trail drawn behind the head right now
+---@param s table
+---@return number
+function Starfield:trailLength(s)
+    local dying = Look.dying(s, self.dyingThreshold)
+    return math.min(s.length, s.travelled) * (1 - dying * DYING_RETRACT)
 end
 
 ---@param s table
@@ -141,9 +161,15 @@ function Starfield:advance(s, dt, w, h)
 
     s.life = s.life + dt
     s.twinklePhase = s.twinklePhase + s.twinkleSpeed * dt
-    local distance = s.speed * (1 - Look.dying(s, self.dyingThreshold) * 0.95) * dt
+    local speed = self:speedOf(s)
+    local distance = speed * dt
     s.x, s.y = s.x + s.dirX * distance, s.y + s.dirY * distance
     s.travelled = s.travelled + distance
+
+    if s.golden or s.rainbow then
+        local fade, _, r, g, b = Look.of(s, Look.dying(s, self.dyingThreshold))
+        self.debris:shed(s, dt, speed, fade, r, g, b)
+    end
 
     if s.life >= s.maxLife then
         self:expire(s)
@@ -152,59 +178,86 @@ function Starfield:advance(s, dt, w, h)
     return not offScreen(s, w, h)
 end
 
+--- a shower star when one is due; otherwise the steady trickle
 ---@param dt number
-function Starfield:update(dt)
+function Starfield:spawnNext(dt)
+    local showerAngle = self.shower:update(dt)
+    if showerAngle then self:spawnStar(showerAngle) end
+    if self.shower:active() then return end -- the shower has the sky to itself
+
     self.timer = self.timer - dt
     if self.timer <= 0 then
         self.timer = Math.randRange(self.spawnMin, self.spawnMax) * (Motion.reduced and REDUCED_SPAWN_SCALE or 1)
         self:spawnStar()
     end
+end
+
+---@param dt number
+function Starfield:update(dt)
+    self:spawnNext(dt)
 
     local w, h = love.graphics.getDimensions()
     for i = #self.stars, 1, -1 do
         if not self:advance(self.stars[i], dt, w, h) then table.remove(self.stars, i) end
     end
 
-    self.burst:update(dt)
-    self.embers:update(dt)
+    self.pop:update(dt)
+    self.debris:update(dt)
 end
 
---- pops the topmost star under the point
+--- px from the point to the head, or the stretch of trail just behind it
+---@param s table
+---@return number
+function Starfield:distanceTo(s, x, y)
+    local behind = -((x - s.x) * s.dirX + (y - s.y) * s.dirY)
+    behind = Math.clamp(behind, 0, math.min(HIT_TRAIL * s.scale, self:trailLength(s)))
+    return Math.length(x - (s.x - s.dirX * behind), y - (s.y - s.dirY * behind))
+end
+
+--- pops the star nearest the point, if any is within reach
 ---@param x number
 ---@param y number
 ---@return table|nil star # { golden, rainbow } of what popped
 function Starfield:popAt(x, y)
-    local r2 = self.clickRadius * self.clickRadius
-    for i = #self.stars, 1, -1 do -- later stars draw on top
-        local s = self.stars[i]
-        local dx, dy = s.x - x, s.y - y
-        if not s.popped and dx * dx + dy * dy <= r2 then
-            local debris = s.golden and s.color or Theme.fixedColors.starPop
-            self.burst:spawn(s.x, s.y, debris, (0.8 + s.speed / self.speedMax * 0.4) * s.scale)
-            s.popped = 0
-            return s
+    local best, bestDistance = nil, self.clickRadius
+    for _, s in ipairs(self.stars) do
+        if not s.popped then
+            local distance = self:distanceTo(s, x, y)
+            if distance <= bestDistance then best, bestDistance = s, distance end
         end
     end
+    if not best then return nil end
+
+    local s, speed = best, self:speedOf(best)
+    local _, _, r, g, b = Look.of(s, Look.dying(s, self.dyingThreshold))
+    self.pop:spawn(s.x, s.y, {
+        color = s.golden and s.color or Theme.fixedColors.starPop,
+        scale = (0.8 + s.speed / self.speedMax * 0.4) * s.scale,
+        vx = s.dirX * speed, vy = s.dirY * speed,
+        golden = s.golden, rainbow = s.rainbow,
+    })
+    self.debris:crumble(s, self:trailLength(s), r, g, b)
+    s.popped = 0
+    return s
 end
 
 ---@param s table
 function Starfield:queue(s)
-    local travelled = math.min(s.length, s.travelled)
     local dying = Look.dying(s, self.dyingThreshold)
     local fade, glow, r, g, b = Look.of(s, dying)
+    local length = self:trailLength(s)
 
     if s.popped then
         local k = 1 - s.popped / POP_FADE
-        if travelled >= 1 then Trails.add(s, travelled, r, g, b, fade * k * k) end
+        if length >= 1 then Trails.add(s, length, r, g, b, fade * k * k) end
         return
     end
 
     local flicker = Look.flicker(s)
     local m = Theme.metrics
     Sprites.glow(s.x, s.y, GLOW_SIZE * s.scale + m.glowLayers * m.glowSpread,
-        r, g, b, Math.clamp01(glow * flicker * 0.5))
+        r, g, b, Math.clamp01(glow * flicker * 0.5 * s.brightness))
 
-    local length = travelled * (1 - dying * DYING_RETRACT)
     if length >= 1 then Trails.add(s, length, r, g, b, fade) end
 
     local alpha = Math.clamp01(fade * flicker)
@@ -227,8 +280,8 @@ function Starfield:draw()
     Sprites.drawGlows()
     Trails.flush()
     Sprites.drawHeads()
-    self.embers:draw(true)
-    self.burst:draw(true)
+    self.debris:draw()
+    self.pop:draw(true)
     love.graphics.pop()
 end
 

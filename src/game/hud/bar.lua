@@ -11,12 +11,16 @@ Bar.ICON_SIZE = 32 -- 16px art at 2x on 720p
 Bar.WIDTH = 200
 local GAP = 8
 local BORDER = 2
+local SHADOW = 2 -- design px drop, so it reads over the ground without a panel
 
 ---@param fill number # 0..1
 ---@param color number[]
 local function drawBar(fill, x, y, w, h, color)
     local Theme, c = UI.Theme, UI.Theme.colors
     local border = math.max(1, Theme.px(BORDER))
+    local drop = Theme.px(SHADOW)
+    Theme.setColor(c.shadow)
+    love.graphics.rectangle("fill", x + drop, y + drop, w, h)
     Theme.setColor(c.panelBorder)
     love.graphics.rectangle("fill", x, y, w, h)
     Theme.setColor(c.track)
@@ -34,8 +38,12 @@ local function drawIcon(name, x, y, size)
     if not image then return end
     local w, h = image:getDimensions()
     local scale = math.max(1, Math.round(size / w))
+    local ix, iy = x + Math.round((size - w * scale) / 2), y + Math.round((size - h * scale) / 2)
+    local drop = UI.Theme.px(SHADOW)
+    UI.Theme.setColor(UI.Theme.colors.shadow)
+    love.graphics.draw(image, ix + drop, iy + drop, 0, scale, scale)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(image, x + Math.round((size - w * scale) / 2), y + Math.round((size - h * scale) / 2), 0, scale, scale)
+    love.graphics.draw(image, ix, iy, 0, scale, scale)
 end
 
 --- icon, then a bar centred beside it

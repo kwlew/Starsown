@@ -50,6 +50,7 @@ end
 function Look.of(s, dying)
     local fade, glow, colorMix = 1, 1, 0
     if dying > 0 then fade, glow, colorMix = burnOut(dying) end
+    fade = fade * s.brightness
     if s.rainbow then
         local r, g, b = Color.fromHue(s.life * RAINBOW_CYCLE)
         return fade, glow, r, g, b
