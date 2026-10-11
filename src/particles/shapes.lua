@@ -2,9 +2,9 @@
 
 local Math = require("utils.math")
 
-local Textures = {}
+local Shapes = {}
 
-Textures.SIZE = 32
+Shapes.SIZE = 32
 
 local cache = {}
 
@@ -13,7 +13,7 @@ local cache = {}
 ---@return any # a love.Image
 local function radial(name, alpha)
     if cache[name] then return cache[name] end
-    local size = Textures.SIZE
+    local size = Shapes.SIZE
     local data = love.image.newImageData(size, size)
     local center = (size - 1) / 2
     data:mapPixel(function(x, y)
@@ -27,7 +27,7 @@ local function radial(name, alpha)
 end
 
 --- soft halo, brightest in the middle
-function Textures.glow()
+function Shapes.glow()
     return radial("glow", function(d)
         if d >= 1 then return 0 end
         return (1 - d * d) ^ 2
@@ -35,8 +35,8 @@ function Textures.glow()
 end
 
 --- crisp disc with an antialiased rim
-function Textures.dot()
-    local rim = 1 / ((Textures.SIZE - 1) / 2)
+function Shapes.dot()
+    local rim = 1 / ((Shapes.SIZE - 1) / 2)
     return radial("dot", function(d) return Math.clamp01((1 + rim - d) / rim) end)
 end
 
@@ -57,12 +57,12 @@ local function pixel(name, rows)
 end
 
 --- one solid texel: chunks and debris
-function Textures.square()
+function Shapes.square()
     return pixel("square", { "#" })
 end
 
 --- a round pixel puff: smoke and dust
-function Textures.puff()
+function Shapes.puff()
     return pixel("puff", {
         "..####..",
         ".######.",
@@ -76,7 +76,7 @@ function Textures.puff()
 end
 
 --- a 4-point hit flash
-function Textures.hitStar()
+function Shapes.hitStar()
     return pixel("hitStar", {
         "...#...",
         "...#...",
@@ -88,4 +88,4 @@ function Textures.hitStar()
     })
 end
 
-return Textures
+return Shapes

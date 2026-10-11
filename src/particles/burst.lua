@@ -4,7 +4,7 @@
 --   burst:spawn(x, y, { 1, 0.4, 0.2 })
 
 local Math = require("utils.math")
-local Textures = require("particles.textures")
+local Shapes = require("particles.shapes")
 
 local Burst = {}
 Burst.__index = Burst
@@ -26,7 +26,7 @@ end
 ---@param config? table # count/speed/life/size min+max, drag, gravity, additive, fade,
 --   streak (s of travel stretched behind), hot (life spent cooling from white),
 --   glow (halo radius, in sizes), twinkle (0..1 flicker),
---   texture (a Textures name, default "dot"), spin (max rad/s; ignored with streak),
+--   texture (a Shapes name, default "dot"), spin (max rad/s; ignored with streak),
 --   grow (extra size by death, in sizes; replaces shrinking), alpha (opacity multiplier)
 ---@return table
 function Burst.new(config)
@@ -131,11 +131,11 @@ function Burst:prepare()
     local needed = #self.particles
     if self.capacity < needed then
         self.capacity = math.max(needed, self.capacity * 2, 32)
-        local image = Textures[self.texture]()
+        local image = Shapes[self.texture]()
         self.cores = love.graphics.newSpriteBatch(image, self.capacity, "stream")
         self.textureW, self.textureH = image:getDimensions()
         if self.glow > 0 then
-            self.glows = love.graphics.newSpriteBatch(Textures.glow(), self.capacity, "stream")
+            self.glows = love.graphics.newSpriteBatch(Shapes.glow(), self.capacity, "stream")
         end
     end
     self.cores:clear()
@@ -180,7 +180,7 @@ function Burst:queue(p)
     self.cores:add(p.x, p.y, angle, length / tw, width / th, tw / 2, th / 2)
 
     if self.glows then
-        local size = Textures.SIZE
+        local size = Shapes.SIZE
         local halo = radius * self.glow * 2 / size
         self.glows:setColor(r, g, b, alpha * GLOW_ALPHA)
         self.glows:add(p.x, p.y, 0, halo, halo, size / 2, size / 2)

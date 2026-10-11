@@ -1,10 +1,10 @@
 --- Batched halos and heads: two sprite batches, grown on demand.
 
-local Textures = require("particles.textures")
+local Shapes = require("particles.shapes")
 
 local Sprites = {}
 
-local TEXTURE = Textures.SIZE
+local TEXTURE = Shapes.SIZE
 
 local glows, heads
 local glowCapacity, headCapacity = 0, 0
@@ -14,11 +14,11 @@ local glowCapacity, headCapacity = 0, 0
 function Sprites.begin(stars)
     if not glows or glowCapacity < stars then
         glowCapacity = math.max(stars, glowCapacity * 2, 16)
-        glows = love.graphics.newSpriteBatch(Textures.glow(), glowCapacity, "stream")
+        glows = love.graphics.newSpriteBatch(Shapes.glow(), glowCapacity, "stream")
     end
     if not heads or headCapacity < stars * 2 then
         headCapacity = math.max(stars * 2, headCapacity * 2, 32)
-        heads = love.graphics.newSpriteBatch(Textures.dot(), headCapacity, "stream")
+        heads = love.graphics.newSpriteBatch(Shapes.dot(), headCapacity, "stream")
     end
     glows:clear()
     heads:clear()

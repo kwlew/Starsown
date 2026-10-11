@@ -1,7 +1,7 @@
 --- A hit landing on something: a pixel flash, chunks knocked away.
 
 local Particles = require("particles")
-local ParticleTextures = require("particles.textures")
+local Shapes = require("particles.shapes")
 local Tile = require("game.tile")
 
 local HitEffect = {}
@@ -54,7 +54,7 @@ end
 ---@param k number # 0..1 through it
 ---@param color number[] # RGB
 function HitEffect.star(x, y, k, color)
-    local image = ParticleTextures.hitStar()
+    local image = Shapes.hitStar()
     local w, h = image:getDimensions()
     local texel = Tile.SIZE / Tile.ART
     if k < FLASH_BIG then

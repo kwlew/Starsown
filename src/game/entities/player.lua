@@ -2,7 +2,7 @@
 
 local Controls = require("game.input.controls")
 local Entity = require("game.entity")
-local HitEffect = require("game.hitEffect")
+local HitEffect = require("game.effects.hit")
 local Stamina = require("game.components.stamina")
 local Swipe = require("game.swipe")
 local UI = require("ui")

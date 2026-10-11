@@ -1,7 +1,7 @@
 --- A melee arc: swing() starts it, update() sweeps and hits.
 -- Each target is hit at most once per swing.
 
-local HitEffect = require("game.hitEffect")
+local HitEffect = require("game.effects.hit")
 local Math = require("utils.math")
 local Particles = require("particles")
 local Render = require("game.swipe.render")

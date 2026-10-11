@@ -3,7 +3,7 @@
 
 local Math = require("utils.math")
 local Ground = require("game.ground")
-local ParticleTextures = require("particles.textures")
+local Shapes = require("particles.shapes")
 local Tile = require("game.tile")
 local UI = require("ui")
 
@@ -87,8 +87,8 @@ end
 --- inside the camera, over the world
 function Pollen:draw()
     if #self.motes == 0 then return end
-    local glow, dot = ParticleTextures.glow(), ParticleTextures.square()
-    local gs = GLOW_SIZE / ParticleTextures.SIZE
+    local glow, dot = Shapes.glow(), Shapes.square()
+    local gs = GLOW_SIZE / Shapes.SIZE
     love.graphics.push("all")
     love.graphics.scale(Tile.worldScale())
     love.graphics.setBlendMode("add")
@@ -96,7 +96,7 @@ function Pollen:draw()
         local x = m.x + math.sin(m.phase + m.t * m.sway) * SWAY
         local a = opacity(m)
         love.graphics.setColor(COLOR[1], COLOR[2], COLOR[3], a * GLOW_ALPHA)
-        love.graphics.draw(glow, x, m.y, 0, gs, gs, ParticleTextures.SIZE / 2, ParticleTextures.SIZE / 2)
+        love.graphics.draw(glow, x, m.y, 0, gs, gs, Shapes.SIZE / 2, Shapes.SIZE / 2)
         love.graphics.setColor(COLOR[1], COLOR[2], COLOR[3], a)
         love.graphics.draw(dot, x, m.y, 0, SIZE, SIZE, 0.5, 0.5)
     end

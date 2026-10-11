@@ -7,12 +7,12 @@ local Burst = require("particles.burst")
 local Ease = require("utils.ease")
 local Math = require("utils.math")
 local Motion = require("ui.core.motion")
-local Textures = require("particles.textures")
+local Shapes = require("particles.shapes")
 
 local StarPop = {}
 StarPop.__index = StarPop
 
-local TEXTURE = Textures.SIZE
+local TEXTURE = Shapes.SIZE
 
 local FLASH_LIFE = 0.16
 local FLASH_RADIUS = 22
@@ -124,9 +124,9 @@ function StarPop:drawFlash(f)
         local k = f.t / FLASH_LIFE
         local radius = FLASH_RADIUS * f.scale * Ease.outCubic(k)
         love.graphics.setColor(r, g, b, (1 - k) * 0.7)
-        sprite(Textures.glow(), f.x, f.y, radius * 1.6)
+        sprite(Shapes.glow(), f.x, f.y, radius * 1.6)
         love.graphics.setColor(1, 1, 1, (1 - k) ^ 2)
-        sprite(Textures.glow(), f.x, f.y, radius * 0.6)
+        sprite(Shapes.glow(), f.x, f.y, radius * 0.6)
     end
 
     if f.glint and f.t < GLINT_LIFE then
@@ -134,8 +134,8 @@ function StarPop:drawFlash(f)
         local length = GLINT_LENGTH * f.scale * (1 - k * 0.4)
         local angle = f.spin + f.t * GLINT_SPIN
         love.graphics.setColor(r, g, b, (1 - k) ^ 1.5)
-        sprite(Textures.glow(), f.x, f.y, 3 * f.scale, angle, length / (6 * f.scale))
-        sprite(Textures.glow(), f.x, f.y, 3 * f.scale, angle + math.pi / 2, length / (6 * f.scale))
+        sprite(Shapes.glow(), f.x, f.y, 3 * f.scale, angle, length / (6 * f.scale))
+        sprite(Shapes.glow(), f.x, f.y, 3 * f.scale, angle + math.pi / 2, length / (6 * f.scale))
     end
 end
 

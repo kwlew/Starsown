@@ -4,7 +4,7 @@
 local Bone = require("game.entities.bone")
 local Hostile = require("game.entities.hostile")
 local Math = require("utils.math")
-local ParticleTextures = require("particles.textures")
+local Shapes = require("particles.shapes")
 local Textures = require("game.textures")
 local Tile = require("game.tile")
 local UI = require("ui")
@@ -82,7 +82,7 @@ end
 ---@param k number # 0..1 through the windup
 local function drawGlint(x, y, k, scale)
     if k < GLINT_FROM then return end
-    local image = ParticleTextures.hitStar()
+    local image = Shapes.hitStar()
     local w, h = image:getDimensions()
     if k >= GLINT_WHITE then
         love.graphics.setColor(1, 1, 1, 1)

@@ -1,6 +1,6 @@
 --- Entity mixin: damage, healing, knockback and dying.
 
-local DeathEffect = require("game.deathEffect")
+local DeathEffect = require("game.effects.death")
 local Math = require("utils.math")
 local UI = require("ui")
 
