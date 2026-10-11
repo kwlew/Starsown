@@ -13,6 +13,7 @@ function Health:damage(amount, source)
     if not self.alive or amount <= 0 or self.invulnerable > 0 then return false end
     self.health = math.max(0, self.health - amount)
     self.invulnerable = self.invulnerableTime
+    self:hurt(amount, source)
     if self.health == 0 then self:kill() end
     return true
 end

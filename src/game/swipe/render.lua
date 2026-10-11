@@ -62,7 +62,6 @@ function Render.draw(swipe)
         Render.sword(swipe, fade)
     end
     swipe.sparks:draw()
-    swipe.impact:draw()
     love.graphics.pop()
 end
 

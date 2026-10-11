@@ -14,6 +14,9 @@ local Entity = {
     solid = true,  -- pushed apart from other solids
     mass = 1,      -- the lighter one gives way more
     deathEffect = true,
+    deathFade = 0.6, -- s the last pose lingers
+    deathScale = 1,  -- of the debris' size and speed
+    deathSmoke = true,
     maxSpeed = 0,
     accel = 9,     -- exponential steering rates
     decel = 10,
@@ -73,6 +76,8 @@ function Entity:think(dt, world) end
 function Entity:frame(dt, world, alpha) end
 --- drawn after every entity
 function Entity:drawEffects(alpha) end
+--- a hit landed, before any death
+function Entity:hurt(amount, source) end
 
 --- one fixed step
 ---@param dt number

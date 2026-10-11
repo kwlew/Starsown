@@ -9,7 +9,6 @@ local Textures = require("particles.textures")
 local Burst = {}
 Burst.__index = Burst
 
-local TEXTURE = Textures.SIZE
 local GLOW_ALPHA = 0.35
 local TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX = 14, 26
 
@@ -26,7 +25,9 @@ end
 
 ---@param config? table # count/speed/life/size min+max, drag, gravity, additive, fade,
 --   streak (s of travel stretched behind), hot (life spent cooling from white),
---   glow (halo radius, in sizes), twinkle (0..1 flicker)
+--   glow (halo radius, in sizes), twinkle (0..1 flicker),
+--   texture (a Textures name, default "dot"), spin (max rad/s; ignored with streak),
+--   grow (extra size by death, in sizes; replaces shrinking), alpha (opacity multiplier)
 ---@return table
 function Burst.new(config)
     config = config or {}
@@ -49,6 +50,10 @@ function Burst.new(config)
         hot = config.hot or 0,
         glow = config.glow or 0,
         twinkle = config.twinkle or 0,
+        texture = config.texture or "dot",
+        spin = config.spin or 0,
+        grow = config.grow,
+        alpha = config.alpha or 1,
         capacity = 0,
     }, Burst)
 end
@@ -68,6 +73,8 @@ function Burst:emit(x, y, angle, color, scale, vx, vy)
     p.r, p.g, p.b = color[1], color[2], color[3]
     p.phase = Math.randAngle()
     p.twinkleSpeed = Math.randRange(TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX)
+    p.angle = self.spin > 0 and Math.randAngle() or 0
+    p.spinSpeed = Math.randRange(-self.spin, self.spin)
     self.particles[#self.particles + 1] = p
 end
 
@@ -78,6 +85,14 @@ end
 function Burst:spawn(x, y, color, scale, vx, vy)
     for _ = 1, Math.randInt(self.countMin, self.countMax) do
         self:emit(x, y, Math.randAngle(), color or { 1, 1, 1 }, scale or 1, vx, vy)
+    end
+end
+
+--- a colour each, picked from `colors`
+---@param colors number[][] # RGB entries; repeats weight the pick
+function Burst:spawnMixed(x, y, colors, scale, vx, vy)
+    for _ = 1, Math.randInt(self.countMin, self.countMax) do
+        self:emit(x, y, Math.randAngle(), colors[math.random(#colors)], scale or 1, vx, vy)
     end
 end
 
@@ -103,6 +118,7 @@ function Burst:update(dt)
             p.vx = p.vx * decay
             p.vy = p.vy * decay + self.gravity * dt
             p.x, p.y = p.x + p.vx * dt, p.y + p.vy * dt
+            p.angle = p.angle + p.spinSpeed * dt
             kept = kept + 1
             self.particles[kept] = p
         end
@@ -115,7 +131,9 @@ function Burst:prepare()
     local needed = #self.particles
     if self.capacity < needed then
         self.capacity = math.max(needed, self.capacity * 2, 32)
-        self.cores = love.graphics.newSpriteBatch(Textures.dot(), self.capacity, "stream")
+        local image = Textures[self.texture]()
+        self.cores = love.graphics.newSpriteBatch(image, self.capacity, "stream")
+        self.textureW, self.textureH = image:getDimensions()
         if self.glow > 0 then
             self.glows = love.graphics.newSpriteBatch(Textures.glow(), self.capacity, "stream")
         end
@@ -139,26 +157,33 @@ end
 function Burst:queue(p)
     local t = 1 - p.life / p.maxLife
     local solid = self.fade < 1
-    local alpha = solid and math.min(1, t / self.fade) or t
+    local alpha = (solid and math.min(1, t / self.fade) or t) * self.alpha
     if self.twinkle > 0 then
         alpha = alpha * (1 - self.twinkle * (0.5 + 0.5 * math.sin(p.phase + p.life * p.twinkleSpeed)))
     end
-    local radius = p.size * (solid and 0.55 + 0.45 * t or t)
+    local radius
+    if self.grow then
+        radius = p.size * (1 + self.grow * (1 - t))
+    else
+        radius = p.size * (solid and 0.55 + 0.45 * t or t)
+    end
     local r, g, b = self:colorOf(p)
 
-    local width, length, angle = radius * 2, radius * 2, 0
+    local width, length, angle = radius * 2, radius * 2, p.angle
     if self.streak > 0 then
         local speed = Math.length(p.vx, p.vy)
         length = math.max(width, speed * self.streak)
         angle = math.atan2(p.vy, p.vx)
     end
+    local tw, th = self.textureW, self.textureH
     self.cores:setColor(r, g, b, alpha)
-    self.cores:add(p.x, p.y, angle, length / TEXTURE, width / TEXTURE, TEXTURE / 2, TEXTURE / 2)
+    self.cores:add(p.x, p.y, angle, length / tw, width / th, tw / 2, th / 2)
 
     if self.glows then
-        local halo = radius * self.glow * 2 / TEXTURE
+        local size = Textures.SIZE
+        local halo = radius * self.glow * 2 / size
         self.glows:setColor(r, g, b, alpha * GLOW_ALPHA)
-        self.glows:add(p.x, p.y, 0, halo, halo, TEXTURE / 2, TEXTURE / 2)
+        self.glows:add(p.x, p.y, 0, halo, halo, size / 2, size / 2)
     end
 end
 

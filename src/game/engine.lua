@@ -5,6 +5,8 @@ local Commands = require("game.debug.commands")
 local Entities = require("game.entities")
 local FixedStep = require("game.fixedStep")
 local Globals = require("globals")
+local Pollen = require("game.pollen")
+local SpawnEffect = require("game.spawnEffect")
 local Ground = require("game.ground")
 local Summary = require("game.debug.summary")
 local Tile = require("game.tile")
@@ -27,6 +29,7 @@ function Engine.new()
         world = world,
         camera = camera,
         clock = FixedStep.new(TICK_RATE),
+        pollen = Pollen.new(),
         showDebug = false,
         spawnX = WORLD_W / 2, spawnY = WORLD_H / 2,
     }, Engine)
@@ -37,6 +40,7 @@ end
 ---@return table
 function Engine:spawnPlayer()
     self.player = self.world:spawn(Entities.Player, self.spawnX, self.spawnY)
+    self.world:addEffect(SpawnEffect.new(self.spawnX, self.spawnY, self.player.radius))
     self.camera:cut(self.player.x, self.player.y)
     return self.player
 end
@@ -61,6 +65,7 @@ function Engine:update(dt)
         self.camera:follow(x, y, dt)
     end
     self.world:frame(dt, alpha)
+    self.pollen:update(dt, self.camera)
 end
 
 function Engine:resize()
@@ -77,6 +82,7 @@ function Engine:draw()
     self.camera:attach()
     Ground.draw(self.world, self.camera)
     self.world:draw(alpha)
+    self.pollen:draw()
     if self.showDebug then WorldOverlay.draw(self.world, alpha) end
     self.camera:detach()
     if self.showDebug then Summary.draw(self.world, self.camera) end

@@ -1,6 +1,7 @@
 --- A melee arc: swing() starts it, update() sweeps and hits.
 -- Each target is hit at most once per swing.
 
+local HitEffect = require("game.hitEffect")
 local Math = require("utils.math")
 local Particles = require("particles")
 local Render = require("game.swipe.render")
@@ -16,27 +17,17 @@ Swipe.__index = Swipe
 local DURATION = 0.24 -- to cross the arc
 local AFTERGLOW = 0.05
 local COOLDOWN = 0.40
-local SPARK_INTERVAL = 0.012
+local SPARK_INTERVAL = 0.04
 local SPARK_SCALE = 0.6
 
 local SPARKS = {
-    countMin = 2, countMax = 4,
+    countMin = 1, countMax = 2,
     sizeMin = 0.6, sizeMax = 1.8,
     speedMin = 30, speedMax = 140,
     lifeMin = 0.12, lifeMax = 0.32,
     drag = 7,
     streak = 0.02,
     hot = 0.4,
-}
-local IMPACT = {
-    countMin = 10, countMax = 16,
-    sizeMin = 1.0, sizeMax = 2.8,
-    speedMin = 90, speedMax = 280,
-    lifeMin = 0.20, lifeMax = 0.50,
-    drag = 5,
-    streak = 0.03,
-    hot = 0.25,
-    glow = 2.5,
 }
 
 ---@param config? table # { damage?, knockback? }
@@ -47,7 +38,6 @@ function Swipe.new(config)
         damage = config.damage or 1,
         knockback = config.knockback or 280,
         sparks = Particles.Burst.new(SPARKS),
-        impact = Particles.Burst.new(IMPACT),
         x = 0, y = 0,
         alpha = 1, -- into the next tick; targets are judged where drawn
         angle = 0,
@@ -120,7 +110,8 @@ function Swipe:strike(target, owner)
     local dx, dy = tx - self.x, ty - self.y
     local distance = math.max(Math.length(dx, dy), 0.001)
     local edge = distance - target.radius
-    self.impact:spawn(self.x + dx / distance * edge, self.y + dy / distance * edge, UI.Theme.colors.danger)
+    owner.world:addEffect(HitEffect.new(self.x + dx / distance * edge, self.y + dy / distance * edge,
+        math.atan2(dy, dx), UI.Theme.colors.danger))
 end
 
 --- sweeps across a crowd, not all at once
@@ -155,7 +146,6 @@ function Swipe:update(dt, x, y, world, owner, alpha)
     self.x, self.y, self.alpha = x, y, alpha
     self.cooldown = math.max(0, self.cooldown - dt)
     self.sparks:update(dt)
-    self.impact:update(dt)
     if not self.active then return end
 
     self.t = self.t + dt

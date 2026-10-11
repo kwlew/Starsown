@@ -54,7 +54,10 @@ end
 
 --- flowers per cell: patches from low-frequency noise, plus rare strays.
 -- Fractional parts become a chance of one more.
-local function flowerCount(cx, cy)
+---@param cx integer # tile column
+---@param cy integer
+---@return integer
+function Ground.flowerCount(cx, cy)
     local patch = Noise.fbm(cx / PATCH_SIZE, cy / PATCH_SIZE, FLOWER_SEED, 2)
     local density = STRAY_CHANCE
     if patch > PATCH_THRESHOLD then
@@ -78,7 +81,7 @@ local function drawFlowers(sheet, s, x0, y0, x1, y1)
     local hash = Noise.hash
     for cy = math.floor(y0 / Tile.SIZE), math.ceil(y1 / Tile.SIZE) - 1 do
         for cx = math.floor(x0 / Tile.SIZE), math.ceil(x1 / Tile.SIZE) - 1 do
-            local count = flowerCount(cx, cy)
+            local count = Ground.flowerCount(cx, cy)
             if count > 0 then
                 local kind = Noise.value(cx / PATCH_SIZE, cy / PATCH_SIZE, FLOWER_SEED + 1)
                 for i = 1, count do

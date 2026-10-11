@@ -4,10 +4,14 @@
 local Bone = require("game.entities.bone")
 local Hostile = require("game.entities.hostile")
 local Math = require("utils.math")
+local ParticleTextures = require("particles.textures")
 local Textures = require("game.textures")
 local Tile = require("game.tile")
+local UI = require("ui")
 
 local HOLD_OFFSET = 14 -- design px in front while winding up
+local GLINT_FROM = 0.4 -- of the windup before the bone glints
+local GLINT_WHITE = 0.8 -- then flashes white just before release
 
 local Skeleton = Hostile:extend{
     name = "skeleton",
@@ -74,6 +78,22 @@ function Skeleton:throw(target, world)
     world:spawn(Bone, x, y, { angle = angle, owner = self, range = self.throwRange * 1.4 })
 end
 
+--- a star brightening on the held bone: the throw's tell
+---@param k number # 0..1 through the windup
+local function drawGlint(x, y, k, scale)
+    if k < GLINT_FROM then return end
+    local image = ParticleTextures.hitStar()
+    local w, h = image:getDimensions()
+    if k >= GLINT_WHITE then
+        love.graphics.setColor(1, 1, 1, 1)
+    else
+        UI.Theme.setColor(UI.Theme.colors.highlight, (k - GLINT_FROM) / (GLINT_WHITE - GLINT_FROM))
+    end
+    love.graphics.setBlendMode("add")
+    love.graphics.draw(image, x, y, 0, scale, scale, w / 2, h / 2)
+    love.graphics.setBlendMode("alpha")
+end
+
 --- the bone held out during the windup
 ---@param alpha number
 function Skeleton:drawEffects(alpha)
@@ -84,8 +104,11 @@ function Skeleton:drawEffects(alpha)
     local hx, hy = Math.polar(x, y, a, HOLD_OFFSET)
     local s, scale = Tile.worldScale(), Tile.pixelScale()
     local w, h = image:getDimensions()
+    local bx, by = Math.round(hx * s), Math.round(hy * s)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(image, Math.round(hx * s), Math.round(hy * s), a, scale, scale, w / 2, h / 2)
+    love.graphics.draw(image, bx, by, a, scale, scale, w / 2, h / 2)
+    drawGlint(bx, by, 1 - self.windup / self.throwWindup, scale)
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 return Skeleton

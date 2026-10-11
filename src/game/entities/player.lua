@@ -2,8 +2,10 @@
 
 local Controls = require("game.input.controls")
 local Entity = require("game.entity")
+local HitEffect = require("game.hitEffect")
 local Stamina = require("game.components.stamina")
 local Swipe = require("game.swipe")
+local UI = require("ui")
 
 local SPRINT_MULTIPLIER = 1.15
 
@@ -51,6 +53,16 @@ function Player:think(dt)
     self.stamina:update(dt, sprinting)
     self.speed = self.maxSpeed * (sprinting and SPRINT_MULTIPLIER or 1)
     self.angle = self:aimFrom(self.x, self.y)
+end
+
+--- a flash on the side it came from, chunks thrown away from it
+function Player:hurt(amount, source)
+    if not self.world then return end
+    local x, y = self.drawnX or self.x, self.drawnY or self.y
+    local angle = source and math.atan2(y - source.y, x - source.x) or self.angle + math.pi
+    local edge = self.radius * 0.6
+    self.world:addEffect(HitEffect.new(
+        x - math.cos(angle) * edge, y - math.sin(angle) * edge, angle, UI.Theme.colors.danger))
 end
 
 function Player:drawEffects()
