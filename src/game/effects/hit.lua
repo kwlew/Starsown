@@ -1,11 +1,11 @@
 --- A hit landing on something: a pixel flash, chunks knocked away.
 
+local Effect = require("game.effects.effect")
 local Particles = require("particles")
 local Shapes = require("particles.shapes")
 local Tile = require("game.tile")
 
-local HitEffect = {}
-HitEffect.__index = HitEffect
+local HitEffect = Effect.extend{}
 
 local FLASH_LIFE = 0.16
 local FLASH_BIG = 0.35 -- of its life drawn at double size
@@ -21,7 +21,7 @@ local CHUNKS = {
     hot = 0.3,
     spin = 12,
     additive = false, -- matter, not light
-    texture = "square",
+    texture = "debris",
 }
 
 ---@param x number # design px, where it landed
@@ -30,23 +30,10 @@ local CHUNKS = {
 ---@param color number[] # RGB
 ---@return table
 function HitEffect.new(x, y, angle, color)
-    local self = setmetatable({
-        x = x, y = y, color = color, t = 0,
-        chunks = Particles.Burst.new(CHUNKS),
-    }, HitEffect)
-    self.chunks:spawnCone(x, y, angle, SPREAD, color)
+    local chunks = Particles.Burst.new(CHUNKS)
+    local self = Effect.init(setmetatable({ x = x, y = y, color = color }, HitEffect), { chunks }, FLASH_LIFE)
+    chunks:spawnCone(x, y, angle, SPREAD, color)
     return self
-end
-
----@return boolean
-function HitEffect:done()
-    return self.t >= FLASH_LIFE and #self.chunks.particles == 0
-end
-
----@param dt number
-function HitEffect:update(dt)
-    self.t = self.t + dt
-    self.chunks:update(dt)
 end
 
 --- a pixel star, white and doubled, then one size in `color`, fading:
@@ -54,7 +41,7 @@ end
 ---@param k number # 0..1 through it
 ---@param color number[] # RGB
 function HitEffect.star(x, y, k, color)
-    local image = Shapes.hitStar()
+    local image = Shapes.get("hit_star")
     local w, h = image:getDimensions()
     local texel = Tile.SIZE / Tile.ART
     if k < FLASH_BIG then
@@ -66,12 +53,8 @@ function HitEffect.star(x, y, k, color)
     love.graphics.draw(image, x, y, 0, texel, texel, w / 2, h / 2)
 end
 
-function HitEffect:draw()
-    love.graphics.push("all")
-    love.graphics.scale(Tile.worldScale())
-    self.chunks:draw()
-    if self.t < FLASH_LIFE then HitEffect.star(self.x, self.y, self.t / FLASH_LIFE, self.color) end
-    love.graphics.pop()
+function HitEffect:drawOver()
+    if self.t < self.life then HitEffect.star(self.x, self.y, self.t / self.life, self.color) end
 end
 
 return HitEffect

@@ -1,4 +1,5 @@
 --- Small white textures shared by every particle effect; tint with setColor.
+-- Soft ones are generated; pixel art lives in assets/textures/particles/.
 
 local Math = require("utils.math")
 
@@ -6,7 +7,11 @@ local Shapes = {}
 
 Shapes.SIZE = 32
 
-local cache = {}
+local DIR = "assets/textures/particles/"
+local BUILT_IN = { glow = true, dot = true, square = true }
+
+local cache = {} -- generated, by name
+local files = {} -- loaded, by name; false if missing
 
 ---@param name string
 ---@param alpha fun(d: number): number # d is 0 centre .. 1 edge, in texture radii
@@ -56,36 +61,29 @@ local function pixel(name, rows)
     return image
 end
 
---- one solid texel: chunks and debris
+--- one solid texel
 function Shapes.square()
     return pixel("square", { "#" })
 end
 
---- a round pixel puff: smoke and dust
-function Shapes.puff()
-    return pixel("puff", {
-        "..####..",
-        ".######.",
-        "########",
-        "########",
-        "########",
-        "########",
-        ".######.",
-        "..####..",
-    })
-end
-
---- a 4-point hit flash
-function Shapes.hitStar()
-    return pixel("hitStar", {
-        "...#...",
-        "...#...",
-        "..###..",
-        "#######",
-        "..###..",
-        "...#...",
-        "...#...",
-    })
+--- a built-in shape by name, or a pixel-art file: a bare name is
+-- assets/textures/particles/<name>.png, anything with a "/" a full path.
+-- A missing file falls back to a square.
+---@param name string
+---@return any # a love.Image
+function Shapes.get(name)
+    if BUILT_IN[name] then return Shapes[name]() end
+    if files[name] == nil then
+        local path = name:find("/") and name or DIR .. name .. ".png"
+        local ok, image = pcall(love.graphics.newImage, path)
+        if ok then
+            image:setFilter("nearest", "nearest")
+        else
+            print("[particles] failed to load " .. path .. ": " .. tostring(image))
+        end
+        files[name] = ok and image
+    end
+    return files[name] or Shapes.square()
 end
 
 return Shapes

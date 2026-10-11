@@ -9,9 +9,6 @@ local Shapes = require("particles.shapes")
 local Burst = {}
 Burst.__index = Burst
 
-local GLOW_ALPHA = 0.35
-local TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX = 14, 26
-
 --- copy of `base` with `override`'s keys on top
 ---@param base table
 ---@param override? table
@@ -23,11 +20,16 @@ function Burst.merged(base, override)
     return out
 end
 
----@param config? table # count/speed/life/size min+max, drag, gravity, additive, fade,
---   streak (s of travel stretched behind), hot (life spent cooling from white),
---   glow (halo radius, in sizes), twinkle (0..1 flicker),
---   texture (a Shapes name, default "dot"), spin (max rad/s; ignored with streak),
---   grow (extra size by death, in sizes; replaces shrinking), alpha (opacity multiplier)
+---@param config? table # count/speed/life/size min+max, drag, additive,
+--   accelX/accelY (px/s², constant; `gravity` is accelY), fade (tail of life
+--   fading out), fadeIn (s fading in), streak (s of travel stretched behind),
+--   hot (life spent cooling from white), glow (halo radius, in sizes),
+--   glowAlpha, twinkle (0..1 flicker), twinkleSpeedMin/Max (rad/s),
+--   sway (px side to side), swaySpeedMin/Max (rad/s),
+--   texture (a Shapes.get name, default "dot"), angle (starting rotation;
+--   random when spinning), spin (max rad/s; ignored with streak),
+--   grow (extra size by death, in sizes; replaces shrinking; 0 holds size),
+--   alpha (opacity multiplier)
 ---@return table
 function Burst.new(config)
     config = config or {}
@@ -43,14 +45,23 @@ function Burst.new(config)
         sizeMin = config.sizeMin or 1.5,
         sizeMax = config.sizeMax or 3.5,
         drag = config.drag or 3.5,
-        gravity = config.gravity or 0,
+        accelX = config.accelX or 0,
+        accelY = config.accelY or config.gravity or 0,
         additive = config.additive ~= false, -- light adds; matter doesn't
         fade = config.fade or 1,             -- tail of life spent fading
+        fadeIn = config.fadeIn or 0,
         streak = config.streak or 0,
         hot = config.hot or 0,
         glow = config.glow or 0,
+        glowAlpha = config.glowAlpha or 0.35,
         twinkle = config.twinkle or 0,
+        twinkleSpeedMin = config.twinkleSpeedMin or 14,
+        twinkleSpeedMax = config.twinkleSpeedMax or 26,
+        sway = config.sway or 0,
+        swaySpeedMin = config.swaySpeedMin or 0.8,
+        swaySpeedMax = config.swaySpeedMax or 1.6,
         texture = config.texture or "dot",
+        angle = config.angle,
         spin = config.spin or 0,
         grow = config.grow,
         alpha = config.alpha or 1,
@@ -72,8 +83,9 @@ function Burst:emit(x, y, angle, color, scale, vx, vy)
     p.size = Math.randRange(self.sizeMin, self.sizeMax) * scale
     p.r, p.g, p.b = color[1], color[2], color[3]
     p.phase = Math.randAngle()
-    p.twinkleSpeed = Math.randRange(TWINKLE_SPEED_MIN, TWINKLE_SPEED_MAX)
-    p.angle = self.spin > 0 and Math.randAngle() or 0
+    p.twinkleSpeed = Math.randRange(self.twinkleSpeedMin, self.twinkleSpeedMax)
+    p.swaySpeed = Math.randRange(self.swaySpeedMin, self.swaySpeedMax)
+    p.angle = self.angle or (self.spin > 0 and Math.randAngle() or 0)
     p.spinSpeed = Math.randRange(-self.spin, self.spin)
     self.particles[#self.particles + 1] = p
 end
@@ -115,8 +127,8 @@ function Burst:update(dt)
         if p.life >= p.maxLife then
             self.spent[#self.spent + 1] = p
         else
-            p.vx = p.vx * decay
-            p.vy = p.vy * decay + self.gravity * dt
+            p.vx = p.vx * decay + self.accelX * dt
+            p.vy = p.vy * decay + self.accelY * dt
             p.x, p.y = p.x + p.vx * dt, p.y + p.vy * dt
             p.angle = p.angle + p.spinSpeed * dt
             kept = kept + 1
@@ -131,7 +143,7 @@ function Burst:prepare()
     local needed = #self.particles
     if self.capacity < needed then
         self.capacity = math.max(needed, self.capacity * 2, 32)
-        local image = Shapes[self.texture]()
+        local image = Shapes.get(self.texture)
         self.cores = love.graphics.newSpriteBatch(image, self.capacity, "stream")
         self.textureW, self.textureH = image:getDimensions()
         if self.glow > 0 then
@@ -158,6 +170,7 @@ function Burst:queue(p)
     local t = 1 - p.life / p.maxLife
     local solid = self.fade < 1
     local alpha = (solid and math.min(1, t / self.fade) or t) * self.alpha
+    if self.fadeIn > 0 then alpha = alpha * math.min(1, p.life / self.fadeIn) end
     if self.twinkle > 0 then
         alpha = alpha * (1 - self.twinkle * (0.5 + 0.5 * math.sin(p.phase + p.life * p.twinkleSpeed)))
     end
@@ -175,15 +188,17 @@ function Burst:queue(p)
         length = math.max(width, speed * self.streak)
         angle = math.atan2(p.vy, p.vx)
     end
+    local x = p.x
+    if self.sway > 0 then x = x + math.sin(p.phase + p.life * p.swaySpeed) * self.sway end
     local tw, th = self.textureW, self.textureH
     self.cores:setColor(r, g, b, alpha)
-    self.cores:add(p.x, p.y, angle, length / tw, width / th, tw / 2, th / 2)
+    self.cores:add(x, p.y, angle, length / tw, width / th, tw / 2, th / 2)
 
     if self.glows then
         local size = Shapes.SIZE
         local halo = radius * self.glow * 2 / size
-        self.glows:setColor(r, g, b, alpha * GLOW_ALPHA)
-        self.glows:add(p.x, p.y, 0, halo, halo, size / 2, size / 2)
+        self.glows:setColor(r, g, b, alpha * self.glowAlpha)
+        self.glows:add(x, p.y, 0, halo, halo, size / 2, size / 2)
     end
 end
 

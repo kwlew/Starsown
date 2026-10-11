@@ -82,7 +82,7 @@ end
 ---@param k number # 0..1 through the windup
 local function drawGlint(x, y, k, scale)
     if k < GLINT_FROM then return end
-    local image = Shapes.hitStar()
+    local image = Shapes.get("hit_star")
     local w, h = image:getDimensions()
     if k >= GLINT_WHITE then
         love.graphics.setColor(1, 1, 1, 1)

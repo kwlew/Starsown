@@ -28,6 +28,7 @@ local SPARKS = {
     drag = 7,
     streak = 0.02,
     hot = 0.4,
+    texture = "spark",
 }
 
 ---@param config? table # { damage?, knockback? }

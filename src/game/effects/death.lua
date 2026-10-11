@@ -1,12 +1,11 @@
 --- A dead entity's last pose fading out, breaking into chunks of its own
 -- colours, with a puff of smoke unless it opts out.
 
+local Effect = require("game.effects.effect")
 local Particles = require("particles")
 local Textures = require("game.textures")
-local Tile = require("game.tile")
 
-local DeathEffect = {}
-DeathEffect.__index = DeathEffect
+local DeathEffect = Effect.extend{}
 
 local INHERIT = 0.3 -- of its motion carried into the debris
 local SMOKE_COLOR = { 0.85, 0.85, 0.82 }
@@ -21,7 +20,7 @@ local CHUNKS = {
     hot = 0.25, -- a white blink, so dark art reads on grass
     spin = 10,
     additive = false,
-    texture = "square",
+    texture = "debris",
 }
 local SMOKE = {
     countMin = 4, countMax = 6,
@@ -32,7 +31,7 @@ local SMOKE = {
     grow = 1.5,
     alpha = 0.5,
     additive = false,
-    texture = "puff",
+    texture = "dust",
 }
 
 ---@param entity table
@@ -46,43 +45,24 @@ end
 ---@param entity table # already dead; read for its look
 ---@return table
 function DeathEffect.new(entity)
-    local self = setmetatable({
+    local smoke, chunks = Particles.Burst.new(SMOKE), Particles.Burst.new(CHUNKS)
+    local self = Effect.init(setmetatable({
         entity = entity,
         -- last drawn pose: the tick position can be a tick ahead of it
         x = entity.drawnX or entity.x, y = entity.drawnY or entity.y,
         angle = entity.drawnAngle or entity.angle,
-        fade = entity.deathFade,
-        t = 0,
-        smoke = Particles.Burst.new(SMOKE),
-        chunks = Particles.Burst.new(CHUNKS),
-    }, DeathEffect)
+    }, DeathEffect), { smoke, chunks }, entity.deathFade)
     local x, y, scale = self.x, self.y, entity.deathScale
     local vx, vy = entity.vx * INHERIT, entity.vy * INHERIT
-    if entity.deathSmoke then self.smoke:spawn(x, y, SMOKE_COLOR, scale, vx, vy) end
-    self.chunks:spawnMixed(x, y, colorsOf(entity), scale, vx, vy)
+    if entity.deathSmoke then smoke:spawn(x, y, SMOKE_COLOR, scale, vx, vy) end
+    chunks:spawnMixed(x, y, colorsOf(entity), scale, vx, vy)
     return self
 end
 
----@return boolean
-function DeathEffect:done()
-    return self.t >= self.fade and #self.smoke.particles == 0
-        and #self.chunks.particles == 0
-end
-
----@param dt number
-function DeathEffect:update(dt)
-    self.t = self.t + dt
-    self.smoke:update(dt)
-    self.chunks:update(dt)
-end
-
+--- the pose under the debris
 function DeathEffect:draw()
-    if self.t < self.fade then self.entity:drawBody(self.x, self.y, self.angle, 1 - self.t / self.fade) end
-    love.graphics.push("all")
-    love.graphics.scale(Tile.worldScale())
-    self.smoke:draw()
-    self.chunks:draw()
-    love.graphics.pop()
+    if self.t < self.life then self.entity:drawBody(self.x, self.y, self.angle, 1 - self.t / self.life) end
+    Effect.draw(self)
 end
 
 return DeathEffect
